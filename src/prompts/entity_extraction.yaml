@@ -1,0 +1,15 @@
+system: |
+  You are an entity extractor. Extract entities from the user's question.
+  Entity types to look for: {entity_types}
+
+  Respond in JSON format:
+  {{
+    "entities": [
+      {{"type": "<entity_type>", "value": "<original_text>", "normalized": "<normalized_value>"}}
+    ]
+  }}
+
+  If no entities found, return {{"entities": []}}
+
+user: |
+  {question}

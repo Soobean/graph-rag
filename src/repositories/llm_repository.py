@@ -1,0 +1,381 @@
+"""
+LLM Repository - Azure OpenAI 접근 계층 (openai SDK 직접 사용)
+
+책임:
+- Azure OpenAI 클라이언트 관리
+- 프롬프트 실행 및 응답 파싱
+- 모델별 (light/heavy) 라우팅
+- 재시도 및 에러 핸들링
+"""
+
+import json
+import logging
+from enum import Enum
+from typing import Any, cast
+
+from openai import APIConnectionError, APIStatusError, AsyncAzureOpenAI, RateLimitError
+
+from src.config import Settings
+from src.domain.exceptions import (
+    LLMConnectionError,
+    LLMRateLimitError,
+    LLMResponseError,
+)
+from src.domain.types import (
+    CypherGenerationResult,
+    EntityExtractionResult,
+    IntentClassificationResult,
+)
+from src.utils.prompt_manager import PromptManager
+
+logger = logging.getLogger(__name__)
+
+
+class ModelTier(str, Enum):
+    """모델 티어 구분"""
+
+    LIGHT = "light"  # 빠른 작업 (intent, entity extraction)
+    HEAVY = "heavy"  # 복잡한 작업 (cypher generation, response)
+
+
+class LLMRepository:
+    """
+    Azure OpenAI LLM Repository (openai SDK 직접 사용)
+
+    프로덕션 최적화:
+    - openai SDK 직접 사용으로 최신 API 즉시 대응
+    - 세밀한 retry/timeout 제어
+    - 최소 의존성
+    """
+
+    def __init__(self, settings: Settings):
+        self._settings = settings
+        self._client: AsyncAzureOpenAI | None = None
+        self._prompt_manager = PromptManager()
+
+        logger.info(
+            f"LLMRepository initialized: light={settings.light_model_deployment}, "
+            f"heavy={settings.heavy_model_deployment}"
+        )
+
+    def _get_client(self) -> AsyncAzureOpenAI:
+        """Azure OpenAI 클라이언트 반환 (lazy initialization)"""
+        if self._client is None:
+            try:
+                self._client = AsyncAzureOpenAI(
+                    azure_endpoint=self._settings.azure_openai_endpoint,
+                    api_key=self._settings.azure_openai_api_key,
+                    api_version=self._settings.azure_openai_api_version,
+                    timeout=60.0,
+                    max_retries=3,
+                )
+            except Exception as e:
+                logger.error(f"Failed to create Azure OpenAI client: {e}")
+                raise LLMConnectionError(f"Failed to initialize LLM client: {e}") from e
+        return self._client
+
+    def _get_deployment(self, tier: ModelTier) -> str:
+        """모델 티어에 따른 배포명 반환"""
+        if tier == ModelTier.LIGHT:
+            return self._settings.light_model_deployment
+        return self._settings.heavy_model_deployment
+
+    def _supports_temperature(self, deployment: str) -> bool:
+        """모델이 temperature 파라미터를 지원하는지 확인"""
+        # GPT-5 이상 모델은 temperature를 지원하지 않음
+        return not deployment.lower().startswith("gpt-5")
+
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        model_tier: ModelTier = ModelTier.LIGHT,
+        temperature: float | None = None,
+        max_completion_tokens: int | None = None,
+    ) -> str:
+        """
+        텍스트 생성
+        """
+        client = self._get_client()
+        deployment = self._get_deployment(model_tier)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            # API 호출 파라미터 구성
+            api_params: dict[str, Any] = {
+                "model": deployment,
+                "messages": messages,
+                "max_completion_tokens": max_completion_tokens
+                if max_completion_tokens is not None
+                else self._settings.llm_max_tokens,
+            }
+
+            # GPT-5 이상 모델은 temperature 미지원
+            if self._supports_temperature(deployment):
+                api_params["temperature"] = (
+                    temperature if temperature is not None else self._settings.llm_temperature
+                )
+
+            response = await client.chat.completions.create(**api_params)
+
+            # 빈 응답 체크
+            if not response.choices:
+                raise LLMResponseError("No response choices returned from LLM")
+
+            result = response.choices[0].message.content or ""
+            logger.debug(f"LLM response ({model_tier.value}): {result[:100]}...")
+            return result
+
+        except RateLimitError as e:
+            logger.warning(f"Rate limit exceeded: {e}")
+            raise LLMRateLimitError(str(e)) from e
+        except APIConnectionError as e:
+            logger.error(f"API connection error: {e}")
+            raise LLMConnectionError(str(e)) from e
+        except APIStatusError as e:
+            logger.error(f"API status error: {e}")
+            raise LLMResponseError(f"API error: {e.status_code} - {e.message}") from e
+        except Exception as e:
+            # 예상치 못한 에러
+            logger.error(f"LLM generation failed: {e}")
+            raise LLMResponseError(f"Failed to generate response: {e}") from e
+
+    async def generate_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        model_tier: ModelTier = ModelTier.LIGHT,
+        temperature: float | None = None,
+    ) -> dict[str, Any]:
+        """
+        JSON 형식 응답 생성 (기본 dict 반환)
+        """
+        client = self._get_client()
+        deployment = self._get_deployment(model_tier)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            # API 호출 파라미터 구성
+            api_params: dict[str, Any] = {
+                "model": deployment,
+                "messages": messages,
+                "max_completion_tokens": self._settings.llm_max_tokens,
+                "response_format": {"type": "json_object"},
+            }
+
+            # GPT-5 이상 모델은 temperature 미지원
+            if self._supports_temperature(deployment):
+                api_params["temperature"] = (
+                    temperature if temperature is not None else self._settings.llm_temperature
+                )
+
+            response = await client.chat.completions.create(**api_params)
+
+            if not response.choices:
+                raise LLMResponseError("No response choices returned from LLM")
+
+            content = response.choices[0].message.content or "{}"
+            result = json.loads(content)
+            logger.debug(f"LLM JSON response ({model_tier.value}): {result}")
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing failed: {e}")
+            raise LLMResponseError(f"Invalid JSON response: {e}") from e
+        except RateLimitError as e:
+            logger.warning(f"Rate limit exceeded: {e}")
+            raise LLMRateLimitError(str(e)) from e
+        except APIConnectionError as e:
+            logger.error(f"API connection error: {e}")
+            raise LLMConnectionError(str(e)) from e
+        except APIStatusError as e:
+            logger.error(f"API status error: {e}")
+            raise LLMResponseError(f"API error: {e.status_code} - {e.message}") from e
+        except Exception as e:
+            logger.error(f"LLM JSON generation failed: {e}")
+            raise LLMResponseError(f"Failed to generate JSON response: {e}") from e
+
+    async def classify_intent(
+        self,
+        question: str,
+        available_intents: list[str],
+    ) -> IntentClassificationResult:
+        """
+        질문 의도 분류
+
+        Returns:
+            IntentClassificationResult: Intent classification result
+        """
+        prompt = self._prompt_manager.load_prompt("intent_classification")
+
+        system_prompt = prompt["system"].format(
+            available_intents=", ".join(available_intents)
+        )
+        user_prompt = prompt["user"].format(question=question)
+
+        result = await self.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_tier=ModelTier.LIGHT,
+        )
+        # Type safety: Cast result to TypedDict
+        # In a strict environment, we might want to use Pydantic to validate here.
+        # But for now we trust the LLM/JSON structure or let it fail downstream if missing keys.
+        return cast(IntentClassificationResult, result)
+
+    async def extract_entities(
+        self,
+        question: str,
+        entity_types: list[str],
+    ) -> EntityExtractionResult:
+        """
+        질문에서 엔티티 추출
+
+        Returns:
+            EntityExtractionResult: Extracted entities
+        """
+        prompt = self._prompt_manager.load_prompt("entity_extraction")
+
+        system_prompt = prompt["system"].format(entity_types=", ".join(entity_types))
+        user_prompt = prompt["user"].format(question=question)
+
+        result = await self.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_tier=ModelTier.LIGHT,
+        )
+        return cast(EntityExtractionResult, result)
+
+    async def generate_cypher(
+        self,
+        question: str,
+        schema: dict[str, Any],
+        entities: list[dict[str, Any]],
+    ) -> CypherGenerationResult:
+        """
+        Cypher 쿼리 생성
+
+        Returns:
+            CypherGenerationResult: Generated Cypher query and metadata
+        """
+        prompt = self._prompt_manager.load_prompt("cypher_generation")
+
+        schema_str = self._format_schema(schema)
+        entities_str = self._format_entities(entities)
+
+        system_prompt = prompt["system"].format(schema_str=schema_str)
+        user_prompt = prompt["user"].format(
+            question=question, entities_str=entities_str
+        )
+
+        result = await self.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_tier=ModelTier.HEAVY,
+        )
+        return cast(CypherGenerationResult, result)
+
+    async def generate_response(
+        self,
+        question: str,
+        query_results: list[dict[str, Any]],
+        cypher_query: str,
+    ) -> str:
+        """
+        최종 응답 생성
+        """
+        prompt = self._prompt_manager.load_prompt("response_generation")
+
+        results_str = self._format_results(query_results)
+
+        system_prompt = prompt["system"]  # 인자 없음
+        user_prompt = prompt["user"].format(question=question, results_str=results_str)
+
+        return await self.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_tier=ModelTier.HEAVY,
+        )
+
+    async def generate_clarification(
+        self,
+        question: str,
+        unresolved_entities: str,
+    ) -> str:
+        """
+        명확화 요청 생성
+        """
+        prompt = self._prompt_manager.load_prompt("clarification")
+
+        system_prompt = prompt["system"]
+        user_prompt = prompt["user"].format(
+            question=question,
+            unresolved_entities=unresolved_entities or "없음",
+        )
+
+        return await self.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_tier=ModelTier.LIGHT,
+        )
+
+    async def close(self) -> None:
+        """클라이언트 리소스 정리"""
+        if self._client is not None:
+            await self._client.close()
+            self._client = None
+            logger.info("LLM client closed")
+
+    def _format_schema(self, schema: dict[str, Any]) -> str:
+        """스키마를 문자열로 포맷팅"""
+        lines = []
+
+        labels = schema.get("node_labels", [])
+        if labels:
+            lines.append(f"Node Labels: {', '.join(labels)}")
+
+        rel_types = schema.get("relationship_types", [])
+        if rel_types:
+            lines.append(f"Relationship Types: {', '.join(rel_types)}")
+
+        return "\n".join(lines) if lines else "Schema information not available"
+
+    def _format_entities(self, entities: list[dict[str, Any]]) -> str:
+        """엔티티 리스트를 문자열로 포맷팅"""
+        if not entities:
+            return "No entities extracted"
+
+        lines = []
+        for entity in entities:
+            lines.append(
+                f"- {entity.get('type', 'Unknown')}: {entity.get('value', '')} "
+                f"(normalized: {entity.get('normalized', '')})"
+            )
+        return "\n".join(lines)
+
+    def _format_results(self, results: list[dict[str, Any]]) -> str:
+        """쿼리 결과를 문자열로 포맷팅"""
+        if not results:
+            return "No results found"
+
+        # 결과가 너무 많으면 요약
+        if len(results) > 10:
+            display_results = results[:10]
+            suffix = f"\n... and {len(results) - 10} more results"
+        else:
+            display_results = results
+            suffix = ""
+
+        lines = []
+        for i, result in enumerate(display_results, 1):
+            lines.append(f"{i}. {result}")
+
+        return "\n".join(lines) + suffix

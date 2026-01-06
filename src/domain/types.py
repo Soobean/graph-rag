@@ -1,0 +1,263 @@
+"""
+Domain Types
+
+시스템 전반에서 사용되는 TypedDict 정의
+dict[str, Any] 대신 명확한 타입을 사용하여 타입 안전성 확보
+"""
+
+from typing import Any, TypedDict
+
+# =============================================================================
+# Graph Schema Types
+# =============================================================================
+
+
+class PropertySchema(TypedDict, total=False):
+    """노드/관계 속성 스키마"""
+
+    name: str
+    type: str  # e.g., "STRING", "INTEGER", "LIST"
+    mandatory: bool
+
+
+class NodeSchema(TypedDict, total=False):
+    """노드 레이블 스키마"""
+
+    label: str
+    properties: list[PropertySchema]
+    count: int
+
+
+class RelationshipSchema(TypedDict, total=False):
+    """관계 타입 스키마"""
+
+    type: str
+    properties: list[PropertySchema]
+    start_labels: list[str]
+    end_labels: list[str]
+
+
+class IndexSchema(TypedDict, total=False):
+    """인덱스 스키마"""
+
+    name: str
+    type: str  # e.g., "BTREE", "FULLTEXT"
+    label: str
+    properties: list[str]
+
+
+class ConstraintSchema(TypedDict, total=False):
+    """제약조건 스키마"""
+
+    name: str
+    type: str  # e.g., "UNIQUE", "EXISTS"
+    label: str
+    properties: list[str]
+
+
+class GraphSchema(TypedDict, total=False):
+    """Neo4j 그래프 스키마 전체"""
+
+    node_labels: list[str]
+    relationship_types: list[str]
+    nodes: list[NodeSchema]
+    relationships: list[RelationshipSchema]
+    indexes: list[IndexSchema]
+    constraints: list[ConstraintSchema]
+
+
+# =============================================================================
+# Entity Types
+# =============================================================================
+
+
+class ExtractedEntity(TypedDict):
+    """LLM이 추출한 엔티티"""
+
+    type: str  # e.g., "Person", "Skill", "Department"
+    value: str  # e.g., "홍길동", "Python", "개발팀"
+    normalized: str  # 정규화된 값 (선택)
+
+
+class ResolvedEntity(TypedDict, total=False):
+    """Neo4j에서 매칭된 엔티티"""
+
+    id: int
+    labels: list[str]
+    name: str
+    properties: dict[str, Any]  # Neo4j 속성은 동적이므로 Any 허용
+    match_score: float
+    original_value: str
+
+
+# =============================================================================
+# LLM Response Types
+# =============================================================================
+
+
+class IntentClassificationResult(TypedDict):
+    """Intent 분류 결과"""
+
+    intent: str
+    confidence: float
+
+
+class EntityExtractionResult(TypedDict):
+    """엔티티 추출 결과"""
+
+    entities: list[ExtractedEntity]
+
+
+class CypherGenerationResult(TypedDict, total=False):
+    """Cypher 생성 결과"""
+
+    cypher: str
+    parameters: dict[str, Any]  # Cypher 파라미터는 동적
+    explanation: str
+
+
+class PromptTemplate(TypedDict):
+    """프롬프트 템플릿"""
+
+    system: str
+    user: str
+
+
+# =============================================================================
+# Neo4j Repository Result Types
+# =============================================================================
+
+
+class SubGraphNode(TypedDict):
+    """서브그래프 노드 구조"""
+
+    id: int
+    labels: list[str]
+    properties: dict[str, Any]
+
+
+class SubGraphRelationship(TypedDict):
+    """서브그래프 관계 구조"""
+
+    id: int
+    type: str
+    start_node_id: int
+    end_node_id: int
+    properties: dict[str, Any]
+
+
+class SubGraphResult(TypedDict):
+    """서브그래프 조회 결과"""
+
+    nodes: list[SubGraphNode]
+    relationships: list[SubGraphRelationship]
+
+
+# =============================================================================
+# Pipeline Result Types
+# =============================================================================
+
+
+class PipelineMetadata(TypedDict, total=False):
+    """파이프라인 실행 메타데이터"""
+
+    intent: str
+    intent_confidence: float
+    entities: dict[str, list[str]]
+    resolved_entities: list[ResolvedEntity]
+    cypher_query: str
+    cypher_parameters: dict[str, Any]
+    result_count: int
+    execution_path: list[str]
+    error: str | None
+
+
+class PipelineResult(TypedDict):
+    """파이프라인 최종 실행 결과"""
+
+    success: bool
+    question: str
+    response: str
+    metadata: PipelineMetadata
+    error: str | None
+
+
+# =============================================================================
+# Node Update Types (각 노드가 반환하는 상태 업데이트)
+# =============================================================================
+
+
+class IntentClassifierUpdate(TypedDict, total=False):
+    """IntentClassifier 노드 반환 타입"""
+
+    intent: str
+    intent_confidence: float
+    execution_path: list[str]
+    error: str | None
+
+
+class EntityExtractorUpdate(TypedDict, total=False):
+    """EntityExtractor 노드 반환 타입"""
+
+    entities: dict[str, list[str]]
+    execution_path: list[str]
+    error: str | None
+
+
+class SchemaFetcherUpdate(TypedDict, total=False):
+    """SchemaFetcher 노드 반환 타입"""
+
+    schema: GraphSchema
+    execution_path: list[str]
+    error: str | None
+
+
+class EntityResolverUpdate(TypedDict, total=False):
+    """EntityResolver 노드 반환 타입"""
+
+    resolved_entities: list[ResolvedEntity]
+    execution_path: list[str]
+    error: str | None
+
+
+class CypherGeneratorUpdate(TypedDict, total=False):
+    """CypherGenerator 노드 반환 타입"""
+
+    schema: GraphSchema
+    cypher_query: str
+    cypher_parameters: dict[str, Any]
+    execution_path: list[str]
+    error: str | None
+
+
+class GraphExecutorUpdate(TypedDict, total=False):
+    """GraphExecutor 노드 반환 타입"""
+
+    graph_results: list[dict[str, Any]]  # Neo4j 결과는 동적
+    result_count: int
+    execution_path: list[str]
+    error: str | None
+
+
+class ResponseGeneratorUpdate(TypedDict, total=False):
+    """ResponseGenerator 노드 반환 타입"""
+
+    response: str
+    execution_path: list[str]
+    error: str | None
+
+
+# =============================================================================
+# Type Aliases
+# =============================================================================
+
+# 노드 업데이트 타입 Union (모든 가능한 노드 반환 타입)
+NodeUpdate = (
+    IntentClassifierUpdate
+    | EntityExtractorUpdate
+    | SchemaFetcherUpdate
+    | EntityResolverUpdate
+    | CypherGeneratorUpdate
+    | GraphExecutorUpdate
+    | ResponseGeneratorUpdate
+)

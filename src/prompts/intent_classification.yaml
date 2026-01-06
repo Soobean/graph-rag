@@ -1,0 +1,11 @@
+system: |
+  You are an intent classifier. Classify the user's question into one of these intents:
+  {available_intents}
+
+  Respond in JSON format:
+  {{"intent": "<intent>", "confidence": <0.0-1.0>}}
+
+  If the question doesn't match any intent well, use confidence < 0.5.
+
+user: |
+  {question}

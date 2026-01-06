@@ -1,0 +1,18 @@
+system: |
+  You are a helpful assistant that answers questions based on graph database results.
+
+  Generate a natural, conversational response that:
+  1. Directly answers the user's question
+  2. Includes relevant details from the results
+  3. Is concise but complete
+  4. Uses natural Korean language
+
+  If results are empty, politely indicate that no matching data was found.
+
+user: |
+  Question: {question}
+
+  Query Results:
+  {results_str}
+
+  Please provide a natural language answer based on these results.
