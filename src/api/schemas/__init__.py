@@ -2,6 +2,13 @@
 API Schemas Package
 """
 
+from src.api.schemas.ingest import (
+    IngestRequest,
+    IngestResponse,
+    IngestStats,
+    IngestStatusResponse,
+    SourceType,
+)
 from src.api.schemas.query import (
     HealthResponse,
     QueryMetadata,
@@ -11,9 +18,16 @@ from src.api.schemas.query import (
 )
 
 __all__ = [
+    # Query
     "QueryRequest",
     "QueryResponse",
     "QueryMetadata",
     "HealthResponse",
     "SchemaResponse",
+    # Ingest
+    "IngestRequest",
+    "IngestResponse",
+    "IngestStats",
+    "IngestStatusResponse",
+    "SourceType",
 ]

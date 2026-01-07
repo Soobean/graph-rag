@@ -11,7 +11,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import query_router
+from src.api import ingest_router, query_router
 from src.config import get_settings
 from src.graph import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
@@ -94,6 +94,7 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(query_router)
+app.include_router(ingest_router)
 
 
 @app.get("/")
