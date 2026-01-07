@@ -3,6 +3,7 @@ Graph RAG Pipeline
 
 LangGraph를 사용한 RAG 파이프라인 정의
 - 병렬 실행: entity_extractor + schema_fetcher (Send API 사용)
+- Vector Search 기반 캐싱: cache_checker 노드로 유사 질문 캐시 활용
 """
 
 import logging
@@ -14,6 +15,7 @@ from langgraph.types import Send
 from src.config import Settings
 from src.domain.types import PipelineMetadata, PipelineResult
 from src.graph.nodes import (
+    CacheCheckerNode,
     ClarificationHandlerNode,
     CypherGeneratorNode,
     EntityExtractorNode,
@@ -24,8 +26,10 @@ from src.graph.nodes import (
     SchemaFetcherNode,
 )
 from src.graph.state import GraphRAGState
+from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.repositories.query_cache_repository import QueryCacheRepository
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +50,17 @@ class GraphRAGPipeline:
         settings: Settings,
         neo4j_repository: Neo4jRepository,
         llm_repository: LLMRepository,
+        neo4j_client: Neo4jClient | None = None,
     ):
         self._settings = settings
         self._neo4j = neo4j_repository
         self._llm = llm_repository
+
+        # Query Cache Repository 초기화 (Vector Search 활성화 시)
+        self._cache_repository: QueryCacheRepository | None = None
+        if settings.vector_search_enabled and neo4j_client:
+            self._cache_repository = QueryCacheRepository(neo4j_client, settings)
+            logger.info("Query cache repository initialized")
 
         # 노드 초기화
         self._intent_classifier = IntentClassifierNode(llm_repository)
@@ -57,17 +68,35 @@ class GraphRAGPipeline:
         self._schema_fetcher = SchemaFetcherNode(neo4j_repository)  # 병렬 실행용
         self._entity_resolver = EntityResolverNode(neo4j_repository)
         self._clarification_handler = ClarificationHandlerNode(llm_repository)
-        self._cypher_generator = CypherGeneratorNode(llm_repository, neo4j_repository)
+        self._cypher_generator = CypherGeneratorNode(
+            llm_repository,
+            neo4j_repository,
+            cache_repository=self._cache_repository,
+            settings=settings,
+        )
         self._graph_executor = GraphExecutorNode(neo4j_repository)
         self._response_generator = ResponseGeneratorNode(llm_repository)
+
+        # Cache Checker 노드 (Vector Search 활성화 시)
+        self._cache_checker: CacheCheckerNode | None = None
+        if settings.vector_search_enabled and self._cache_repository:
+            self._cache_checker = CacheCheckerNode(
+                llm_repository,
+                self._cache_repository,
+                settings,
+            )
+            logger.info("Cache checker node initialized")
 
         # 그래프 빌드
         self._graph = self._build_graph()
 
-        logger.info("GraphRAGPipeline initialized (with parallel execution)")
+        logger.info(
+            "GraphRAGPipeline initialized "
+            f"(parallel execution: ON, vector cache: {settings.vector_search_enabled})"
+        )
 
     def _build_graph(self) -> StateGraph:
-        """LangGraph 워크플로우 구성 (병렬 실행 포함)"""
+        """LangGraph 워크플로우 구성 (병렬 실행 + Vector Cache 포함)"""
         workflow = StateGraph(GraphRAGState)
 
         # 노드 추가
@@ -80,6 +109,10 @@ class GraphRAGPipeline:
         workflow.add_node("graph_executor", self._graph_executor)
         workflow.add_node("response_generator", self._response_generator)
 
+        # Cache Checker 노드 추가 (Vector Search 활성화 시)
+        if self._cache_checker:
+            workflow.add_node("cache_checker", self._cache_checker)
+
         # 시작점 설정
         workflow.set_entry_point("intent_classifier")
 
@@ -87,31 +120,78 @@ class GraphRAGPipeline:
         # 조건부 엣지 정의 (Conditional Edges)
         # ---------------------------------------------------------
 
-        # 1. Intent Classifier -> 병렬(Entity Extractor + Schema Fetcher) 또는 종료
-        def route_after_intent(
-            state: GraphRAGState,
-        ) -> list[Send] | Literal["response_generator"]:
-            """
-            Intent에 따라 라우팅:
-            - unknown: response_generator로 직접 이동
-            - 유효한 intent: entity_extractor와 schema_fetcher 병렬 실행
-            """
-            if state.get("intent") == "unknown":
-                logger.info("Intent is unknown. Skipping to response generator.")
-                return "response_generator"
+        # 1. Intent Classifier -> Cache Checker 또는 병렬(Entity Extractor + Schema Fetcher)
+        if self._cache_checker:
+            # Vector Cache 활성화 시: intent_classifier -> cache_checker
+            def route_after_intent_with_cache(
+                state: GraphRAGState,
+            ) -> Literal["cache_checker", "response_generator"]:
+                if state.get("intent") == "unknown":
+                    logger.info("Intent is unknown. Skipping to response generator.")
+                    return "response_generator"
+                return "cache_checker"
 
-            # 병렬 실행: Send API 사용
-            logger.info("Dispatching parallel execution: entity_extractor + schema_fetcher")
-            return [
-                Send("entity_extractor", state),
-                Send("schema_fetcher", state),
-            ]
+            workflow.add_conditional_edges(
+                "intent_classifier",
+                route_after_intent_with_cache,
+                ["cache_checker", "response_generator"],
+            )
 
-        workflow.add_conditional_edges(
-            "intent_classifier",
-            route_after_intent,
-            ["entity_extractor", "schema_fetcher", "response_generator"],
-        )
+            # 2. Cache Checker -> 캐시 히트 시 graph_executor, 미스 시 병렬 실행
+            def route_after_cache_check(
+                state: GraphRAGState,
+            ) -> list[Send] | Literal["cypher_generator"]:
+                """
+                캐시 결과에 따라 라우팅:
+                - cache_hit=True: cypher_generator로 이동 (캐시된 쿼리 사용)
+                - cache_hit=False: entity_extractor와 schema_fetcher 병렬 실행
+                """
+                if state.get("skip_generation"):
+                    logger.info(
+                        "Cache HIT: skipping to cypher_generator (cached query)"
+                    )
+                    return "cypher_generator"
+
+                # 캐시 미스: 병렬 실행
+                logger.info("Cache MISS: dispatching parallel execution")
+                return [
+                    Send("entity_extractor", state),
+                    Send("schema_fetcher", state),
+                ]
+
+            workflow.add_conditional_edges(
+                "cache_checker",
+                route_after_cache_check,
+                ["entity_extractor", "schema_fetcher", "cypher_generator"],
+            )
+        else:
+            # Vector Cache 비활성화 시: 기존 로직
+            def route_after_intent(
+                state: GraphRAGState,
+            ) -> list[Send] | Literal["response_generator"]:
+                """
+                Intent에 따라 라우팅:
+                - unknown: response_generator로 직접 이동
+                - 유효한 intent: entity_extractor와 schema_fetcher 병렬 실행
+                """
+                if state.get("intent") == "unknown":
+                    logger.info("Intent is unknown. Skipping to response generator.")
+                    return "response_generator"
+
+                # 병렬 실행: Send API 사용
+                logger.info(
+                    "Dispatching parallel execution: entity_extractor + schema_fetcher"
+                )
+                return [
+                    Send("entity_extractor", state),
+                    Send("schema_fetcher", state),
+                ]
+
+            workflow.add_conditional_edges(
+                "intent_classifier",
+                route_after_intent,
+                ["entity_extractor", "schema_fetcher", "response_generator"],
+            )
 
         # 2. 병렬 노드들 -> Entity Resolver로 수렴 (Fan-in)
         workflow.add_edge("entity_extractor", "entity_resolver")
@@ -127,11 +207,11 @@ class GraphRAGPipeline:
 
             # 미해결 엔티티가 있는 경우 명확화 요청
             resolved_entities = state.get("resolved_entities", [])
-            has_unresolved = any(
-                not entity.get("id") for entity in resolved_entities
-            )
+            has_unresolved = any(not entity.get("id") for entity in resolved_entities)
             if has_unresolved:
-                logger.info("Unresolved entities found. Routing to clarification_handler.")
+                logger.info(
+                    "Unresolved entities found. Routing to clarification_handler."
+                )
                 return "clarification_handler"
 
             return "cypher_generator"

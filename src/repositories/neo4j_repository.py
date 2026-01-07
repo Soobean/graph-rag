@@ -594,3 +594,171 @@ class Neo4jRepository:
                 for r in result.get("relationships", [])
             ],
         }
+
+    # ============================================
+    # Vector Search 관련 메서드
+    # ============================================
+
+    async def vector_search_nodes(
+        self,
+        embedding: list[float],
+        index_name: str,
+        labels: list[str] | None = None,
+        limit: int = 10,
+        threshold: float | None = None,
+    ) -> list[tuple[NodeResult, float]]:
+        """
+        Vector Index를 사용한 노드 유사도 검색
+
+        Args:
+            embedding: 검색 쿼리 임베딩 벡터
+            index_name: 사용할 Vector Index 이름
+            labels: 필터링할 노드 레이블 (선택)
+            limit: 최대 결과 수
+            threshold: 최소 유사도 점수 (None이면 필터링 없음)
+
+        Returns:
+            (NodeResult, score) 튜플 리스트
+        """
+        try:
+            results = await self._client.vector_search(
+                index_name=index_name,
+                embedding=embedding,
+                limit=limit,
+                threshold=threshold,
+            )
+
+            # 레이블 필터링 (필요시)
+            if labels:
+                validated_labels = set(self._validate_labels(labels))
+                results = [
+                    r
+                    for r in results
+                    if validated_labels.intersection(set(r.get("labels", [])))
+                ]
+
+            return [
+                (
+                    NodeResult(
+                        id=r["id"],
+                        labels=r["labels"],
+                        properties=r["properties"],
+                    ),
+                    r["score"],
+                )
+                for r in results
+            ]
+        except Exception as e:
+            logger.error(f"Vector search failed on index '{index_name}': {e}")
+            raise QueryExecutionError(
+                f"Vector search failed: {e}", query=f"vector_search({index_name})"
+            ) from e
+
+    async def ensure_vector_index(
+        self,
+        index_name: str,
+        label: str,
+        property_name: str,
+        dimensions: int = 1536,
+    ) -> bool:
+        """
+        Vector Index가 존재하는지 확인하고 없으면 생성
+
+        Args:
+            index_name: 인덱스 이름
+            label: 노드 레이블
+            property_name: 임베딩이 저장된 속성명
+            dimensions: 임베딩 차원
+
+        Returns:
+            성공 여부
+        """
+        return await self._client.create_vector_index(
+            index_name=index_name,
+            label=label,
+            property_name=property_name,
+            dimensions=dimensions,
+        )
+
+    async def upsert_node_embedding(
+        self,
+        node_id: str,
+        property_name: str,
+        embedding: list[float],
+    ) -> bool:
+        """
+        노드에 임베딩 저장/업데이트
+
+        Args:
+            node_id: 노드의 elementId
+            property_name: 임베딩을 저장할 속성명
+            embedding: 임베딩 벡터
+
+        Returns:
+            성공 여부
+        """
+        return await self._client.upsert_embedding(
+            node_id=node_id,
+            property_name=property_name,
+            embedding=embedding,
+        )
+
+    async def batch_upsert_node_embeddings(
+        self,
+        updates: list[dict[str, Any]],
+        property_name: str,
+    ) -> int:
+        """
+        여러 노드에 임베딩 일괄 저장
+
+        Args:
+            updates: [{"node_id": str, "embedding": list[float]}, ...]
+            property_name: 임베딩을 저장할 속성명
+
+        Returns:
+            업데이트된 노드 수
+        """
+        return await self._client.batch_upsert_embeddings(
+            updates=updates,
+            property_name=property_name,
+        )
+
+    async def find_similar_nodes(
+        self,
+        embedding: list[float],
+        index_name: str,
+        exclude_ids: list[str] | None = None,
+        limit: int = 5,
+        threshold: float = 0.7,
+    ) -> list[tuple[NodeResult, float]]:
+        """
+        주어진 임베딩과 유사한 노드 검색 (특정 노드 제외 가능)
+
+        Entity Resolution에서 유사 엔티티 찾기에 활용
+
+        Args:
+            embedding: 검색 쿼리 임베딩 벡터
+            index_name: 사용할 Vector Index 이름
+            exclude_ids: 결과에서 제외할 노드 ID 리스트
+            limit: 최대 결과 수
+            threshold: 최소 유사도 점수
+
+        Returns:
+            (NodeResult, score) 튜플 리스트
+        """
+        # 제외할 노드가 있으면 더 많이 가져와서 필터링
+        fetch_limit = limit + len(exclude_ids) if exclude_ids else limit
+
+        results = await self.vector_search_nodes(
+            embedding=embedding,
+            index_name=index_name,
+            limit=fetch_limit,
+            threshold=threshold,
+        )
+
+        # 제외 노드 필터링
+        if exclude_ids:
+            exclude_set = set(exclude_ids)
+            results = [(node, score) for node, score in results if node.id not in exclude_set]
+
+        return results[:limit]

@@ -22,7 +22,9 @@ class TestPipelineRouting:
     @pytest.fixture
     def mock_settings(self):
         """Mock Settings"""
-        return MagicMock(spec=Settings)
+        settings = MagicMock(spec=Settings)
+        settings.vector_search_enabled = False  # Vector cache 비활성화
+        return settings
 
     @pytest.fixture
     def mock_llm(self):
@@ -166,7 +168,9 @@ class TestPipelineMetadata:
 
     @pytest.fixture
     def mock_settings(self):
-        return MagicMock(spec=Settings)
+        settings = MagicMock(spec=Settings)
+        settings.vector_search_enabled = False  # Vector cache 비활성화
+        return settings
 
     @pytest.fixture
     def mock_llm(self):
@@ -265,7 +269,9 @@ class TestPipelineErrorHandling:
 
     @pytest.fixture
     def mock_settings(self):
-        return MagicMock(spec=Settings)
+        settings = MagicMock(spec=Settings)
+        settings.vector_search_enabled = False  # Vector cache 비활성화
+        return settings
 
     @pytest.fixture
     def mock_llm(self):
@@ -345,7 +351,9 @@ class TestPipelineStreaming:
 
     @pytest.fixture
     def mock_settings(self):
-        return MagicMock(spec=Settings)
+        settings = MagicMock(spec=Settings)
+        settings.vector_search_enabled = False  # Vector cache 비활성화
+        return settings
 
     @pytest.fixture
     def mock_llm(self):
@@ -404,7 +412,9 @@ class TestPipelineEmptyResults:
 
     @pytest.fixture
     def mock_settings(self):
-        return MagicMock(spec=Settings)
+        settings = MagicMock(spec=Settings)
+        settings.vector_search_enabled = False  # Vector cache 비활성화
+        return settings
 
     @pytest.fixture
     def mock_llm(self):

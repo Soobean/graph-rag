@@ -328,3 +328,205 @@ class Neo4jClient:
             schema_info["error"] = str(e)
 
         return schema_info
+
+    # ============================================
+    # Vector Index 관련 메서드
+    # ============================================
+
+    async def create_vector_index(
+        self,
+        index_name: str,
+        label: str,
+        property_name: str,
+        dimensions: int = 1536,
+        similarity_function: str = "cosine",
+    ) -> bool:
+        """
+        Neo4j Vector Index 생성
+
+        Args:
+            index_name: 인덱스 이름
+            label: 노드 레이블
+            property_name: 임베딩이 저장된 속성명
+            dimensions: 임베딩 차원 (기본값: 1536)
+            similarity_function: 유사도 함수 ('cosine', 'euclidean')
+
+        Returns:
+            성공 여부
+        """
+        # 이미 존재하는지 확인
+        check_query = """
+        SHOW INDEXES
+        WHERE name = $index_name
+        """
+        existing = await self.execute_query(check_query, {"index_name": index_name})
+        if existing:
+            logger.info(f"Vector index '{index_name}' already exists")
+            return True
+
+        # Vector Index 생성
+        # Neo4j 5.x+ 문법
+        create_query = f"""
+        CREATE VECTOR INDEX `{index_name}` IF NOT EXISTS
+        FOR (n:`{label}`)
+        ON (n.`{property_name}`)
+        OPTIONS {{
+            indexConfig: {{
+                `vector.dimensions`: $dimensions,
+                `vector.similarity_function`: $similarity_function
+            }}
+        }}
+        """
+        try:
+            await self.execute_write(
+                create_query,
+                {"dimensions": dimensions, "similarity_function": similarity_function},
+            )
+            logger.info(
+                f"Created vector index '{index_name}' on :{label}.{property_name} "
+                f"(dims={dimensions}, similarity={similarity_function})"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create vector index '{index_name}': {e}")
+            raise DatabaseError(f"Failed to create vector index: {e}") from e
+
+    async def drop_vector_index(self, index_name: str) -> bool:
+        """
+        Vector Index 삭제
+
+        Args:
+            index_name: 삭제할 인덱스 이름
+
+        Returns:
+            성공 여부
+        """
+        drop_query = f"DROP INDEX `{index_name}` IF EXISTS"
+        try:
+            await self.execute_write(drop_query)
+            logger.info(f"Dropped vector index '{index_name}'")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to drop vector index '{index_name}': {e}")
+            raise DatabaseError(f"Failed to drop vector index: {e}") from e
+
+    async def vector_search(
+        self,
+        index_name: str,
+        embedding: list[float],
+        limit: int = 10,
+        threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Vector Index를 사용한 유사도 검색
+
+        Args:
+            index_name: 검색에 사용할 인덱스 이름
+            embedding: 검색 쿼리 임베딩 벡터
+            limit: 반환할 최대 결과 수
+            threshold: 최소 유사도 점수 (None이면 필터링 없음)
+
+        Returns:
+            검색 결과 리스트 (node, score 포함)
+        """
+        # db.index.vector.queryNodes 사용 (Neo4j 5.11+)
+        query = """
+        CALL db.index.vector.queryNodes($index_name, $limit, $embedding)
+        YIELD node, score
+        """
+
+        if threshold is not None:
+            query += "WHERE score >= $threshold\n"
+
+        query += """
+        RETURN elementId(node) as id,
+               labels(node) as labels,
+               properties(node) as properties,
+               score
+        ORDER BY score DESC
+        """
+
+        params: dict[str, Any] = {
+            "index_name": index_name,
+            "limit": limit,
+            "embedding": embedding,
+        }
+        if threshold is not None:
+            params["threshold"] = threshold
+
+        try:
+            results = await self.execute_query(query, params)
+            logger.debug(
+                f"Vector search on '{index_name}': {len(results)} results (limit={limit})"
+            )
+            return results
+        except Exception as e:
+            logger.error(f"Vector search failed on '{index_name}': {e}")
+            raise DatabaseError(f"Vector search failed: {e}") from e
+
+    async def upsert_embedding(
+        self,
+        node_id: str,
+        property_name: str,
+        embedding: list[float],
+    ) -> bool:
+        """
+        노드에 임베딩 벡터 저장/업데이트
+
+        Args:
+            node_id: 노드의 elementId
+            property_name: 임베딩을 저장할 속성명
+            embedding: 임베딩 벡터
+
+        Returns:
+            성공 여부
+        """
+        query = f"""
+        MATCH (n)
+        WHERE elementId(n) = $node_id
+        SET n.`{property_name}` = $embedding
+        RETURN elementId(n) as id
+        """
+        try:
+            result = await self.execute_write(
+                query, {"node_id": node_id, "embedding": embedding}
+            )
+            if result:
+                logger.debug(f"Upserted embedding on node {node_id}")
+                return True
+            logger.warning(f"Node {node_id} not found for embedding upsert")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to upsert embedding on node {node_id}: {e}")
+            raise DatabaseError(f"Failed to upsert embedding: {e}") from e
+
+    async def batch_upsert_embeddings(
+        self,
+        updates: list[dict[str, Any]],
+        property_name: str,
+    ) -> int:
+        """
+        여러 노드에 임베딩 일괄 저장
+
+        Args:
+            updates: [{"node_id": str, "embedding": list[float]}, ...]
+            property_name: 임베딩을 저장할 속성명
+
+        Returns:
+            업데이트된 노드 수
+        """
+        query = f"""
+        UNWIND $updates AS update
+        MATCH (n)
+        WHERE elementId(n) = update.node_id
+        SET n.`{property_name}` = update.embedding
+        RETURN count(n) as updated_count
+        """
+        try:
+            result = await self.execute_write(query, {"updates": updates})
+            count = result[0]["updated_count"] if result else 0
+            logger.info(f"Batch upserted embeddings: {count} nodes updated")
+            return count
+        except Exception as e:
+            logger.error(f"Batch embedding upsert failed: {e}")
+            raise DatabaseError(f"Batch embedding upsert failed: {e}") from e

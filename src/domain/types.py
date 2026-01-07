@@ -247,6 +247,19 @@ class ResponseGeneratorUpdate(TypedDict, total=False):
     error: str | None
 
 
+class CacheCheckerUpdate(TypedDict, total=False):
+    """CacheChecker 노드 반환 타입"""
+
+    question_embedding: list[float] | None
+    cache_hit: bool
+    cache_score: float
+    skip_generation: bool
+    cypher_query: str  # 캐시 히트 시 캐싱된 쿼리
+    cypher_parameters: dict[str, Any]  # 캐시 히트 시 캐싱된 파라미터
+    execution_path: list[str]
+    error: str | None
+
+
 # =============================================================================
 # Type Aliases
 # =============================================================================
@@ -260,4 +273,5 @@ NodeUpdate = (
     | CypherGeneratorUpdate
     | GraphExecutorUpdate
     | ResponseGeneratorUpdate
+    | CacheCheckerUpdate
 )

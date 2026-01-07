@@ -41,7 +41,8 @@ graph-rag/
 │   │       ├── schema_fetcher.py        # 스키마 조회 (병렬 실행)
 │   │       ├── entity_resolver.py       # DB 엔티티 매칭
 │   │       ├── clarification_handler.py # 명확화 요청 (동명이인 등)
-│   │       ├── cypher_generator.py      # Cypher 생성
+│   │       ├── cache_checker.py         # 캐시 조회 (Vector Similarity)
+│   │       ├── cypher_generator.py      # Cypher 생성 + 캐시 저장
 │   │       ├── graph_executor.py        # Neo4j 실행
 │   │       └── response_generator.py    # 응답 생성 + 에러/빈결과 처리
 │   │
@@ -54,10 +55,11 @@ graph-rag/
 │   │
 │   ├── repositories/                    # [Repository Layer]
 │   │   ├── neo4j_repository.py          # Neo4j 데이터 접근 + 스키마 캐싱
-│   │   └── llm_repository.py            # Azure OpenAI (openai SDK 직접 사용)
+│   │   ├── llm_repository.py            # Azure OpenAI (openai SDK 직접 사용)
+│   │   └── query_cache_repository.py    # 질문-Cypher 캐싱 (Vector Index)
 │   │
 │   ├── infrastructure/                  # [Infrastructure Layer]
-│   │   └── neo4j_client.py              # Neo4j 드라이버 (Neo4j 5.x+ 호환)
+│   │   └── neo4j_client.py              # Neo4j 드라이버 + Vector Index (Neo4j 5.11+)
 │   │
 │   ├── utils/                           # [Utilities]
 │   │   └── prompt_manager.py            # YAML 프롬프트 로더 + 캐싱
@@ -288,6 +290,21 @@ class GraphRAGState(TypedDict, total=False):
 │  │ 미해결시: {"id": None, "labels": ["Person"], "original_value": "..."}│   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
+│  [Phase 3.5: 캐시 조회 - Vector Similarity Search]                          │
+│  ─────────────────────────────────────────────────────────────────────────  │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ Node: cache_checker                                [Embedding + DB] │   │
+│  │ ─────────────────────────────────────────────────────────────────── │   │
+│  │ 입력: question                                                       │   │
+│  │ 출력: cypher_query, cypher_parameters, skip_generation (캐시 히트)   │   │
+│  │ 역할: 유사 질문에 대한 캐시된 Cypher 조회                             │   │
+│  │       1. 질문을 text-embedding-3-small로 임베딩                      │   │
+│  │       2. Neo4j Vector Index로 유사 질문 검색 (threshold: 0.85)       │   │
+│  │       3. 캐시 히트 시 저장된 Cypher 반환 + skip_generation=True      │   │
+│  │ 모델: Azure OpenAI text-embedding-3-small (1536 dims)               │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
 │  [Phase 4: Cypher 생성]                                                     │
 │  ─────────────────────────────────────────────────────────────────────────  │
 │                                                                             │
@@ -297,6 +314,8 @@ class GraphRAGState(TypedDict, total=False):
 │  │ 입력: question, intent, resolved_entities, schema                    │   │
 │  │ 출력: cypher_query, cypher_parameters                                │   │
 │  │ 역할: 검증된 엔티티로 Cypher 쿼리 생성 (스키마 참조)                  │   │
+│  │       - 캐시 미스 시에만 실행 (skip_generation=False)                │   │
+│  │       - 생성된 Cypher를 Vector Index에 캐싱                          │   │
 │  │ 모델: heavy_model_deployment (복잡한 쿼리 생성)                      │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
@@ -415,54 +434,67 @@ class GraphRAGState(TypedDict, total=False):
                               │  [light_model]      │
                               └──────────┬──────────┘
                                          │
-                    ┌────────────────────┼────────────────────┐
-                    │ (Send API 병렬)    │                    │
-                    ▼                    │                    ▼
-         ┌─────────────────────┐         │         ┌─────────────────────┐
-         │  entity_extractor   │         │         │   schema_fetcher    │
-         │  (엔티티 추출)       │         │         │  (스키마 조회)       │
-         │  [light_model]      │         │         │  [DB + 캐시]        │
-         └──────────┬──────────┘         │         └──────────┬──────────┘
-                    │                    │                    │
-                    │              ┌─────┴─────┐              │
-                    └──────────────┤  Fan-in   ├──────────────┘
-                                   └─────┬─────┘
-                                         │
-                                         ▼
-                              ┌─────────────────────┐
-                              │   entity_resolver   │
-                              │  (DB 엔티티 매칭)   │
-                              │  "파이썬"→"Python"  │
-                              └──────────┬──────────┘
-                                         │
-                          ┌──────────────┴──────────────┐
-                          │ (id=None 있음)               │ (모두 해결됨)
-                          ▼                              ▼
-               ┌──────────────────┐           ┌─────────────────────┐
-               │ clarification_   │           │  cypher_generator   │
-               │ handler          │           │  (Cypher 생성)      │
-               │ (동명이인/모호)  │           │  [heavy_model]      │
-               │ [light_model]    │           └──────────┬──────────┘
-               └────────┬─────────┘                      │
-                        │                     ┌──────────┴──────────┐
-                        │                     │ (에러/빈 쿼리)       │ (정상)
-                        │                     │                      ▼
-                        │                     │           ┌─────────────────────┐
-                        │                     │           │   graph_executor    │
-                        │                     │           │   (Neo4j 실행)      │
-                        │                     │           └──────────┬──────────┘
-                        │                     │                      │
-                        │                     ▼                      ▼
-                        │           ┌─────────────────────────────────────┐
-                        │           │       response_generator            │
-                        │           │  (응답 생성 + 에러/빈결과 처리)     │
-                        │           │  [heavy_model]                      │
-                        │           └──────────────────┬──────────────────┘
-                        │                              │
-                        ▼                              ▼
-                   ┌─────────┐                    ┌─────────┐
-                   │   END   │                    │   END   │
-                   └─────────┘                    └─────────┘
+                              ┌──────────┴──────────┐
+                              │                      │
+                              ▼                      ▼
+                   ┌─────────────────────┐  ┌─────────────────────┐
+                   │   cache_checker     │  │   (intent=unknown)  │
+                   │ (Vector 캐시 조회)  │  │                      │
+                   │ [embedding_model]   │  │                      │
+                   └──────────┬──────────┘  └──────────┬──────────┘
+                              │                        │
+               ┌──────────────┴──────────────┐         │
+               │ (캐시 히트)                  │ (캐시 미스)
+               │                              ▼         │
+               │           ┌────────────────────┼────────────────────┐
+               │           │ (Send API 병렬)    │                    │
+               │           ▼                    │                    ▼
+               │ ┌─────────────────────┐        │        ┌─────────────────────┐
+               │ │  entity_extractor   │        │        │   schema_fetcher    │
+               │ │  (엔티티 추출)       │        │        │  (스키마 조회)       │
+               │ │  [light_model]      │        │        │  [DB + 캐시]        │
+               │ └──────────┬──────────┘        │        └──────────┬──────────┘
+               │            │                   │                   │
+               │            │             ┌─────┴─────┐             │
+               │            └─────────────┤  Fan-in   ├─────────────┘
+               │                          └─────┬─────┘
+               │                                │
+               │                                ▼
+               │                     ┌─────────────────────┐
+               │                     │   entity_resolver   │
+               │                     │  (DB 엔티티 매칭)   │
+               │                     │  "파이썬"→"Python"  │
+               │                     └──────────┬──────────┘
+               │                                │
+               │             ┌──────────────────┴──────────────────┐
+               │             │ (id=None 있음)                       │ (모두 해결됨)
+               │             ▼                                      ▼
+               │  ┌──────────────────┐                   ┌─────────────────────┐
+               │  │ clarification_   │                   │  cypher_generator   │
+               │  │ handler          │                   │  (Cypher 생성)      │
+               │  │ (동명이인/모호)  │                   │  + 캐시 저장        │
+               │  │ [light_model]    │                   │  [heavy_model]      │
+               │  └────────┬─────────┘                   └──────────┬──────────┘
+               │           │                                        │
+               │           │                             ┌──────────┴──────────┐
+               │           │                             │ (에러/빈 쿼리)       │ (정상)
+               │           │                             │                      ▼
+               │           │                             │           ┌─────────────────────┐
+               ▼           │                             │           │   graph_executor    │
+    ┌─────────────────────┐│                             │           │   (Neo4j 실행)      │
+    │   graph_executor    ││                             │           └──────────┬──────────┘
+    │(캐시된 Cypher 실행) ││                             │                      │
+    └──────────┬──────────┘│                             ▼                      ▼
+               │           │                  ┌─────────────────────────────────────┐
+               │           │                  │       response_generator            │
+               │           │                  │  (응답 생성 + 에러/빈결과 처리)     │
+               │           │                  │  [heavy_model]                      │
+               │           │                  └──────────────────┬──────────────────┘
+               │           │                                     │
+               ▼           ▼                                     ▼
+          ┌─────────────────────────────────────────────────────────┐
+          │                          END                             │
+          └─────────────────────────────────────────────────────────┘
 ```
 
 ### 3.5 LangGraph 코드 구조
@@ -481,7 +513,10 @@ workflow = StateGraph(GraphRAGState)
 # Phase 1: 의도 분류
 workflow.add_node("intent_classifier", intent_classifier)
 
-# Phase 2: 병렬 실행 (Send API)
+# Phase 1.5: 캐시 조회 (Vector Similarity)
+workflow.add_node("cache_checker", cache_checker)
+
+# Phase 2: 병렬 실행 (Send API) - 캐시 미스 시에만
 workflow.add_node("entity_extractor", entity_extractor)
 workflow.add_node("schema_fetcher", schema_fetcher)
 
@@ -503,19 +538,33 @@ workflow.add_node("response_generator", response_generator)
 # 시작점
 workflow.set_entry_point("intent_classifier")
 
-# Phase 1 → Phase 2: 조건부 병렬 실행 (Send API)
-def route_after_intent(state) -> list[Send] | str:
+# Phase 1 → Phase 1.5: 의도 분류 후 캐시 체크로 이동
+def route_after_intent(state) -> str:
     if state.get("intent") == "unknown":
         return "response_generator"
+    return "cache_checker"  # 항상 캐시 먼저 확인
+
+workflow.add_conditional_edges(
+    "intent_classifier",
+    route_after_intent,
+    ["cache_checker", "response_generator"],
+)
+
+# Phase 1.5 → Phase 2: 캐시 히트/미스 분기
+def route_after_cache(state) -> list[Send] | str:
+    if state.get("skip_generation"):
+        # 캐시 히트: cypher_query가 이미 있으므로 바로 실행
+        return "graph_executor"
+    # 캐시 미스: 병렬로 엔티티 추출 + 스키마 조회
     return [
         Send("entity_extractor", state),
         Send("schema_fetcher", state),
     ]
 
 workflow.add_conditional_edges(
-    "intent_classifier",
-    route_after_intent,
-    ["entity_extractor", "schema_fetcher", "response_generator"],
+    "cache_checker",
+    route_after_cache,
+    ["entity_extractor", "schema_fetcher", "graph_executor"],
 )
 
 # Phase 2 → Phase 3: Fan-in
@@ -579,7 +628,8 @@ graph = workflow.compile()
 | **schema_fetcher** | `SchemaFetcherNode` | - | schema | DB | - (캐싱) |
 | **entity_resolver** | `EntityResolverNode` | entities | resolved_entities (list[dict]) | DB | - |
 | **clarification_handler** | `ClarificationHandlerNode` | question, resolved_entities, entities | response | LLM | light_model |
-| **cypher_generator** | `CypherGeneratorNode` | question, resolved_entities, schema | cypher_query, cypher_parameters | LLM | heavy_model |
+| **cache_checker** | `CacheCheckerNode` | question | cypher_query, cypher_parameters, skip_generation | Embedding + DB | embedding_model |
+| **cypher_generator** | `CypherGeneratorNode` | question, resolved_entities, schema, skip_generation | cypher_query, cypher_parameters | LLM | heavy_model |
 | **graph_executor** | `GraphExecutorNode` | cypher_query, cypher_parameters | graph_results, result_count | DB | - |
 | **response_generator** | `ResponseGeneratorNode` | question, graph_results, cypher_query, error | response | LLM | heavy_model |
 
@@ -1275,6 +1325,15 @@ class LLMSettings(BaseSettings):
     light_model_deployment: str = "light-model"   # 가벼운 작업용 배포
     heavy_model_deployment: str = "heavy-model"   # 복잡한 작업용 배포
 
+    # Embedding 모델 설정
+    embedding_model_deployment: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536  # text-embedding-3-small 기본 차원
+
+    # Vector Search 설정
+    vector_search_enabled: bool = True
+    vector_similarity_threshold: float = 0.85  # 캐시 히트 임계값
+    query_cache_ttl_hours: int = 24            # 캐시 TTL
+
     # 모델 파라미터 (모델 버전과 무관한 공통 설정)
     temperature: float = 0.0
     max_tokens: int = 2000
@@ -1296,13 +1355,22 @@ class LLMSettings(BaseSettings):
 AZURE_OPENAI_LIGHT_MODEL_DEPLOYMENT=gpt-35-turbo-deploy
 AZURE_OPENAI_HEAVY_MODEL_DEPLOYMENT=gpt-4-deploy
 
-# 옵션 2: GPT-4o-mini + GPT-4o 조합
-AZURE_OPENAI_LIGHT_MODEL_DEPLOYMENT=gpt-4o-mini-deploy
-AZURE_OPENAI_HEAVY_MODEL_DEPLOYMENT=gpt-4o-deploy
+# 옵션 2: GPT-4o-mini + GPT-4o 조합 (권장)
+LIGHT_MODEL_DEPLOYMENT=gpt-4o-mini
+HEAVY_MODEL_DEPLOYMENT=gpt-4o
 
 # 옵션 3: 최신 GPT-5.x 조합
 AZURE_OPENAI_LIGHT_MODEL_DEPLOYMENT=gpt-5-mini-deploy
 AZURE_OPENAI_HEAVY_MODEL_DEPLOYMENT=gpt-5-2-deploy
+
+# Embedding 모델 설정
+EMBEDDING_MODEL_DEPLOYMENT=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
+
+# Vector Search / 캐싱 설정
+VECTOR_SEARCH_ENABLED=true
+VECTOR_SIMILARITY_THRESHOLD=0.85
+QUERY_CACHE_TTL_HOURS=24
 ```
 
 ### 7.2 LangGraph 1.0 호환성
@@ -1325,7 +1393,7 @@ AZURE_OPENAI_HEAVY_MODEL_DEPLOYMENT=gpt-5-2-deploy
 | Python | 3.11 | 3.12+ | async/typing 개선 |
 | LangGraph | 1.0.0 | 최신 1.x | 정식 API 안정성 |
 | FastAPI | 0.100+ | 최신 | Pydantic v2 호환 |
-| Neo4j | 5.0+ | 5.x | 기존 데이터 호환 |
+| Neo4j | 5.11+ | 5.x | **Vector Index 지원 필수** |
 | Azure OpenAI SDK | 1.0+ | 최신 | API 버전 독립적 |
 
 ---
@@ -1758,75 +1826,158 @@ async def liveness_check():
 
 ## 15. 캐싱 전략
 
-### 14.1 캐싱 레이어
+### 15.1 시맨틱 캐싱 아키텍처 (Vector Similarity)
+
+기존 해시 기반 캐싱의 한계를 극복하기 위해 **Vector Similarity 기반 시맨틱 캐싱**을 도입합니다.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     캐싱 레이어 구조                              │
+│              시맨틱 캐싱 (Vector Similarity)                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  L1: 응답 캐시 (완전 일치)                                       │
+│  질문 → 임베딩 (text-embedding-3-small, 1536 dims)               │
+│                      │                                           │
+│                      ▼                                           │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Key: hash(question)                                      │    │
-│  │ Value: {response, timestamp, hit_count}                  │    │
-│  │ TTL: 1시간                                               │    │
+│  │           Neo4j Vector Index (CachedQuery)               │    │
+│  │  ─────────────────────────────────────────────────────   │    │
+│  │  • Index Name: query_cache_embedding                     │    │
+│  │  • Similarity: Cosine                                    │    │
+│  │  • Threshold: 0.85 (설정 가능)                           │    │
+│  │  • TTL: 24시간 (설정 가능)                               │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                                                                  │
-│  L2: Cypher 결과 캐시                                            │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Key: hash(cypher_query + params)                         │    │
-│  │ Value: {graph_results, result_count}                     │    │
-│  │ TTL: 5분 (그래프 데이터 변경 주기 고려)                  │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│                                                                  │
-│  L3: 엔티티 캐시                                                 │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Key: entity_type + entity_value                          │    │
-│  │ Value: {exists, node_id, properties}                     │    │
-│  │ TTL: 30분                                                │    │
-│  └─────────────────────────────────────────────────────────┘    │
+│                      │                                           │
+│           ┌─────────┴─────────┐                                 │
+│           │                    │                                 │
+│     (score ≥ 0.85)      (score < 0.85)                          │
+│     캐시 히트               캐시 미스                            │
+│           │                    │                                 │
+│           ▼                    ▼                                 │
+│  ┌───────────────┐    ┌───────────────┐                         │
+│  │ 저장된 Cypher │    │ LLM으로 생성  │                         │
+│  │ 쿼리 반환     │    │ + 캐시 저장   │                         │
+│  └───────────────┘    └───────────────┘                         │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 14.2 캐시 구현
+### 15.2 캐싱 데이터 모델
 
-```python
-from functools import lru_cache
-import hashlib
-from cachetools import TTLCache
+```cypher
+-- CachedQuery 노드 스키마
+CREATE (c:CachedQuery {
+    question: "Python과 ML 스킬을 가진 개발자는?",
+    embedding: [0.123, -0.456, ...],  -- 1536 dims
+    cypher_query: "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)...",
+    cypher_parameters: '{"skills": ["Python", "ML"]}',
+    created_at: datetime(),
+    hit_count: 0
+})
 
-# 인메모리 캐시 (MVP)
-response_cache = TTLCache(maxsize=1000, ttl=3600)  # 1시간
-cypher_cache = TTLCache(maxsize=500, ttl=300)      # 5분
-
-def cache_key(question: str) -> str:
-    return hashlib.sha256(question.encode()).hexdigest()
-
-async def get_cached_response(question: str) -> Optional[str]:
-    key = cache_key(question)
-    if key in response_cache:
-        response_cache[key]["hit_count"] += 1
-        return response_cache[key]["response"]
-    return None
-
-async def set_cached_response(question: str, response: str):
-    key = cache_key(question)
-    response_cache[key] = {
-        "response": response,
-        "timestamp": datetime.utcnow(),
-        "hit_count": 0
+-- Vector Index 생성
+CREATE VECTOR INDEX query_cache_embedding IF NOT EXISTS
+FOR (c:CachedQuery)
+ON (c.embedding)
+OPTIONS {
+    indexConfig: {
+        `vector.dimensions`: 1536,
+        `vector.similarity_function`: 'cosine'
     }
+}
 ```
 
-### 14.3 캐시 무효화 전략
+### 15.3 시맨틱 매칭 예시
 
-| 이벤트 | 무효화 범위 |
+| 원본 질문 | 유사 질문 (캐시 히트) | 유사도 |
+|----------|---------------------|--------|
+| "Python 개발자 찾아줘" | "파이썬 스킬 보유한 직원은?" | 0.92 |
+| "ML팀 인원 조회" | "머신러닝 부서 사람들" | 0.89 |
+| "김철수 담당 프로젝트" | "김철수가 참여중인 프로젝트는?" | 0.94 |
+
+### 15.4 캐시 구현 (QueryCacheRepository)
+
+```python
+# src/repositories/query_cache_repository.py
+
+class QueryCacheRepository:
+    """Neo4j Vector Index 기반 질문-Cypher 캐싱"""
+
+    async def find_similar_query(
+        self,
+        embedding: list[float],
+        threshold: float = 0.85,
+    ) -> CachedQuery | None:
+        """
+        Vector Similarity Search로 유사 질문 검색
+
+        Args:
+            embedding: 질문 임베딩 벡터
+            threshold: 최소 유사도 점수 (default: 0.85)
+
+        Returns:
+            캐시된 쿼리 (없으면 None)
+        """
+        results = await self._client.vector_search(
+            index_name="query_cache_embedding",
+            embedding=embedding,
+            limit=1,
+            threshold=threshold,
+        )
+
+        if not results:
+            return None
+
+        # TTL 체크 (24시간)
+        cached = CachedQuery.from_neo4j(results[0])
+        if self._is_expired(cached):
+            await self._delete_cache(cached.id)
+            return None
+
+        # hit_count 증가
+        await self._increment_hit_count(cached.id)
+        return cached
+
+    async def cache_query(
+        self,
+        question: str,
+        embedding: list[float],
+        cypher_query: str,
+        cypher_parameters: dict,
+    ) -> str:
+        """새 질문-Cypher 쌍을 캐시에 저장"""
+        # CachedQuery 노드 생성 with embedding
+        ...
+```
+
+### 15.5 캐시 설정
+
+```bash
+# .env
+VECTOR_SEARCH_ENABLED=true           # 캐싱 활성화
+VECTOR_SIMILARITY_THRESHOLD=0.85     # 유사도 임계값 (0.0~1.0)
+QUERY_CACHE_TTL_HOURS=24             # 캐시 TTL (시간)
+EMBEDDING_MODEL_DEPLOYMENT=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
+```
+
+### 15.6 캐시 무효화 전략
+
+| 이벤트 | 무효화 방식 |
 |--------|------------|
-| 그래프 데이터 업데이트 | L2, L3 전체 무효화 |
-| 스키마 변경 | 전체 캐시 무효화 |
-| TTL 만료 | 개별 항목 자동 삭제 |
-| 수동 무효화 API | 지정된 키 또는 패턴 삭제 |
+| TTL 만료 (24h) | 조회 시 자동 삭제 |
+| 스키마 변경 | 전체 캐시 무효화 API 호출 |
+| 수동 무효화 | `invalidate_cache()` 메서드 |
+| 그래프 데이터 대량 업데이트 | 관리자 API로 전체 삭제 |
+
+### 15.7 성능 비교
+
+| 메트릭 | 해시 기반 (기존) | Vector Similarity (현재) |
+|--------|-----------------|-------------------------|
+| 매칭 방식 | 완전 일치 | 의미적 유사도 (0.85+) |
+| 캐시 히트율 | ~15% | ~45% (예상) |
+| Cypher 생성 호출 | 85% | 55% (예상) |
+| 스토리지 | 인메모리 (TTLCache) | Neo4j Vector Index |
+| 확장성 | 단일 인스턴스 | 클러스터 지원 |
 
 ---
 

@@ -112,6 +112,40 @@ class Settings(BaseSettings):
     )
 
     # ============================================
+    # Azure OpenAI Embedding 설정
+    # ============================================
+    embedding_model_deployment: str = Field(
+        default="text-embedding-3-small",
+        description="Azure OpenAI embedding 모델 배포명",
+    )
+    embedding_dimensions: int = Field(
+        default=1536,
+        ge=256,
+        le=3072,
+        description="Embedding 벡터 차원",
+    )
+
+    # ============================================
+    # Vector Search 설정
+    # ============================================
+    vector_similarity_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="Vector Search 유사도 임계값",
+    )
+    query_cache_ttl_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="질문-Cypher 캐시 TTL (시간)",
+    )
+    vector_search_enabled: bool = Field(
+        default=True,
+        description="Vector Search 기능 활성화 여부",
+    )
+
+    # ============================================
     # 캐시 설정
     # ============================================
     cache_enabled: bool = Field(

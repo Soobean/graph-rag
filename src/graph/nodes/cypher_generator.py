@@ -2,14 +2,17 @@
 Cypher Generator Node
 
 사용자 질문과 엔티티 정보를 바탕으로 Cypher 쿼리를 생성합니다.
+캐시 히트 시에는 생성을 스킵하고, 새로 생성 시에는 캐시에 저장합니다.
 """
 
 import logging
 
+from src.config import Settings
 from src.domain.types import CypherGeneratorUpdate, GraphSchema
 from src.graph.state import GraphRAGState
 from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.repositories.query_cache_repository import QueryCacheRepository
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +24,13 @@ class CypherGeneratorNode:
         self,
         llm_repository: LLMRepository,
         neo4j_repository: Neo4jRepository,
+        cache_repository: QueryCacheRepository | None = None,
+        settings: Settings | None = None,
     ):
         self._llm = llm_repository
         self._neo4j = neo4j_repository
+        self._cache = cache_repository
+        self._settings = settings
         self._schema_cache: GraphSchema | None = None
 
     async def _get_schema(self) -> GraphSchema:
@@ -36,6 +43,9 @@ class CypherGeneratorNode:
         """
         Cypher 쿼리 생성
 
+        캐시 히트 시에는 이미 cypher_query가 설정되어 있으므로 스킵합니다.
+        새로 생성한 쿼리는 캐시에 저장합니다.
+
         Args:
             state: 현재 파이프라인 상태
 
@@ -43,13 +53,17 @@ class CypherGeneratorNode:
             업데이트할 상태 딕셔너리
         """
         question = state["question"]
-        # entities는 dict[str, list[str]] 구조임 (e.g. {'skills': ['Python']})
-        # 하지만 LLMRepository.generate_cypher는 list[dict]를 기대할 수 있음. 확인 필요.
-        # LLMRepository 코드를 보니 list[dict]를 받아서 _format_entities로 변환함.
-        # GraphRAGState의 entities는 extraction 단계에서 구조화된 dict임.
-        # 여기서는 간단히 변환해서 넘겨주거나 LLMRepository를 맞춰야 함.
-        # 일단 호환성을 위해 변환 로직 추가.
 
+        # 캐시 히트 시 스킵 (이미 cypher_query가 설정됨)
+        if state.get("skip_generation"):
+            logger.info("Skipping Cypher generation (cache hit)")
+            # 캐시된 값은 이미 state에 있으므로 execution_path만 추가
+            return {
+                "execution_path": ["cypher_generator_cached"],
+            }
+
+        # entities는 dict[str, list[str]] 구조임 (e.g. {'skills': ['Python']})
+        # LLMRepository.generate_cypher는 list[dict]를 기대함.
         raw_entities = state.get("entities", {})
         formatted_entities = []
         for entity_type, values in raw_entities.items():
@@ -82,6 +96,9 @@ class CypherGeneratorNode:
             logger.info(f"Generated Cypher: {cypher[:100]}...")
             logger.debug(f"Parameters: {parameters}")
 
+            # 캐시에 저장 (비동기, 실패해도 진행)
+            await self._save_to_cache(state, cypher, parameters)
+
             return {
                 "schema": schema,
                 "cypher_query": cypher,
@@ -97,3 +114,42 @@ class CypherGeneratorNode:
                 "error": f"Cypher generation failed: {e}",
                 "execution_path": ["cypher_generator_error"],
             }
+
+    async def _save_to_cache(
+        self,
+        state: GraphRAGState,
+        cypher: str,
+        parameters: dict,
+    ) -> None:
+        """
+        생성된 Cypher 쿼리를 캐시에 저장
+
+        Args:
+            state: 현재 파이프라인 상태
+            cypher: 생성된 Cypher 쿼리
+            parameters: Cypher 파라미터
+        """
+        if not self._cache:
+            return
+
+        if not self._settings or not self._settings.vector_search_enabled:
+            return
+
+        # 임베딩이 없으면 저장 스킵
+        embedding = state.get("question_embedding")
+        if not embedding:
+            logger.debug("No question embedding available, skipping cache save")
+            return
+
+        try:
+            question = state["question"]
+            await self._cache.cache_query(
+                question=question,
+                embedding=embedding,
+                cypher_query=cypher,
+                cypher_parameters=parameters,
+            )
+            logger.debug(f"Saved query to cache: {question[:50]}...")
+        except Exception as e:
+            # 캐시 저장 실패는 무시 (graceful degradation)
+            logger.warning(f"Failed to save query to cache: {e}")

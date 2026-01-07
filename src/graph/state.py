@@ -58,3 +58,9 @@ class GraphRAGState(TypedDict, total=False):
     # 실행 경로 추적 (Reducer 사용)
     # 각 노드에서 ["node_name"]을 리턴하면 기존 리스트에 append 됨
     execution_path: Annotated[list[str], operator.add]
+
+    # 6. Vector Search / Cache 관련 필드
+    question_embedding: list[float] | None  # 질문 임베딩 벡터
+    cache_hit: bool  # 캐시 히트 여부
+    cache_score: float  # 캐시 유사도 점수
+    skip_generation: bool  # Cypher 생성 스킵 여부 (캐시 히트 시)

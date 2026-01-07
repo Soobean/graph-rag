@@ -334,6 +334,111 @@ class LLMRepository:
             self._client = None
             logger.info("LLM client closed")
 
+    # ============================================
+    # Embedding 관련 메서드
+    # ============================================
+
+    async def get_embedding(self, text: str) -> list[float]:
+        """
+        Azure OpenAI Embedding API를 통해 텍스트 임베딩 생성
+
+        Args:
+            text: 임베딩할 텍스트
+
+        Returns:
+            임베딩 벡터 (list[float])
+
+        Raises:
+            LLMResponseError: 임베딩 생성 실패 시
+        """
+        client = self._get_client()
+
+        try:
+            # text-embedding-3-small/large는 dimensions 파라미터 지원
+            deployment = self._settings.embedding_model_deployment
+            expected_dims = self._settings.embedding_dimensions
+
+            response = await client.embeddings.create(
+                model=deployment,
+                input=text,
+                dimensions=expected_dims,
+            )
+
+            embedding = response.data[0].embedding
+            logger.debug(
+                f"Generated embedding: dim={len(embedding)}, text='{text[:50]}...'"
+            )
+            return embedding
+
+        except RateLimitError as e:
+            logger.warning(f"Embedding rate limit exceeded: {e}")
+            raise LLMRateLimitError(str(e)) from e
+        except APIConnectionError as e:
+            logger.error(f"Embedding API connection error: {e}")
+            raise LLMConnectionError(str(e)) from e
+        except APIStatusError as e:
+            logger.error(f"Embedding API status error: {e}")
+            raise LLMResponseError(f"Embedding API error: {e.status_code} - {e.message}") from e
+        except Exception as e:
+            logger.error(f"Embedding generation failed: {e}")
+            raise LLMResponseError(f"Failed to generate embedding: {e}") from e
+
+    async def get_embeddings_batch(
+        self,
+        texts: list[str],
+        batch_size: int = 100,
+    ) -> list[list[float]]:
+        """
+        여러 텍스트 일괄 임베딩 생성 (배치 처리)
+
+        Args:
+            texts: 임베딩할 텍스트 리스트 (최대 2048개)
+            batch_size: 배치 크기 (API 제한에 맞게 조절)
+
+        Returns:
+            임베딩 벡터 리스트
+
+        Raises:
+            LLMResponseError: 임베딩 생성 실패 시
+        """
+        if not texts:
+            return []
+
+        client = self._get_client()
+        all_embeddings: list[list[float]] = []
+        deployment = self._settings.embedding_model_deployment
+
+        try:
+            # 배치 단위로 처리
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i : i + batch_size]
+
+                response = await client.embeddings.create(
+                    model=deployment,
+                    input=batch,
+                    dimensions=self._settings.embedding_dimensions,
+                )
+
+                # 순서대로 결과 추가
+                batch_embeddings = [item.embedding for item in response.data]
+                all_embeddings.extend(batch_embeddings)
+
+            logger.info(f"Generated {len(all_embeddings)} embeddings in batch")
+            return all_embeddings
+
+        except RateLimitError as e:
+            logger.warning(f"Batch embedding rate limit exceeded: {e}")
+            raise LLMRateLimitError(str(e)) from e
+        except APIConnectionError as e:
+            logger.error(f"Batch embedding API connection error: {e}")
+            raise LLMConnectionError(str(e)) from e
+        except APIStatusError as e:
+            logger.error(f"Batch embedding API status error: {e}")
+            raise LLMResponseError(f"Embedding API error: {e.status_code} - {e.message}") from e
+        except Exception as e:
+            logger.error(f"Batch embedding generation failed: {e}")
+            raise LLMResponseError(f"Failed to generate batch embeddings: {e}") from e
+
     def _format_schema(self, schema: dict[str, Any]) -> str:
         """스키마를 문자열로 포맷팅"""
         lines = []

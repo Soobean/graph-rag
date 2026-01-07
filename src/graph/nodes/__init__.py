@@ -4,6 +4,7 @@ Graph Nodes Package
 LangGraph 파이프라인의 각 노드를 정의합니다.
 """
 
+from src.graph.nodes.cache_checker import CacheCheckerNode
 from src.graph.nodes.clarification_handler import ClarificationHandlerNode
 from src.graph.nodes.cypher_generator import CypherGeneratorNode
 from src.graph.nodes.entity_extractor import EntityExtractorNode
@@ -22,4 +23,5 @@ __all__ = [
     "ResponseGeneratorNode",
     "SchemaFetcherNode",
     "ClarificationHandlerNode",
+    "CacheCheckerNode",
 ]
