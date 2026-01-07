@@ -26,7 +26,7 @@ graph-rag/
 │   ├── dependencies.py                  # FastAPI Depends (DI)
 │   ├── config.py                        # Pydantic Settings
 │   │
-│   ├── ingestion/                       # [Ingestion Layer - KG 구축] 📋
+│   ├── ingestion/                       # [Ingestion Layer - KG 구축] ✅
 │   │   ├── __init__.py
 │   │   ├── schema.py                    # 노드/관계 타입 정의 (Human Control)
 │   │   ├── models.py                    # Pydantic 모델 (Lineage, Confidence)
@@ -34,7 +34,8 @@ graph-rag/
 │   │   ├── pipeline.py                  # Extract → Validate → Save 오케스트레이션
 │   │   └── loaders/                     # 데이터 소스 어댑터
 │   │       ├── base.py
-│   │       └── csv_loader.py
+│   │       ├── csv_loader.py
+│   │       └── excel_loader.py
 │   │
 │   ├── api/                             # [Presentation Layer]
 │   │   ├── routes/
@@ -97,7 +98,7 @@ graph-rag/
 └── pyproject.toml
 ```
 
-> 📋 표시된 모듈은 **설계 완료 / 구현 예정** 상태입니다.
+> ✅ 표시된 모듈은 **구현 완료** 상태입니다.
 
 ### 2.2 레이어드 아키텍처
 
@@ -140,7 +141,7 @@ graph-rag/
 
 ## 3. 견고한 KG 추출 파이프라인 (Robust KG Ingestion)
 
-> 📋 **구현 상태**: 설계 완료 / 구현 예정
+> ✅ **구현 상태**: 구현 완료
 
 ### 3.1 설계 철학: Human-in-the-loop 하이브리드 아키텍처
 
@@ -197,88 +198,213 @@ VALID_RELATIONS = {
 }
 ```
 
-#### B. Data Models with Lineage
+#### B. Data Models with Lineage & UUID5 Entity ID
 
-데이터의 출처(Lineage)와 신뢰도(Confidence)를 관리합니다.
+데이터의 출처(Lineage)와 신뢰도(Confidence)를 관리하며, **UUID5 기반 결정적 Entity ID**를 생성합니다.
 
 ```python
 # src/ingestion/models.py
+import uuid
 from pydantic import BaseModel, Field
-from typing import List
 from .schema import NodeType, RelationType
 
+# UUID5 네임스페이스 (프로젝트 고유)
+ENTITY_NAMESPACE = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+def _normalize(value) -> str:
+    """값을 정규화 (대소문자 통일)"""
+    return str(value).strip().lower()
+
+def generate_entity_id(label: str, properties: dict) -> str:
+    """
+    UUID5 기반 결정적 Entity ID 생성
+
+    - 강한 식별자 (id, email, code): 단독 사용 → Entity Resolution에 유리
+    - 약한 식별자 (name): 모든 속성과 조합 → 동명이인 충돌 방지
+    - 대소문자 정규화: iPhone == iphone == IPHONE
+    """
+    strong_identifiers = ["id", "employee_id", "email", "code", ...]
+    weak_identifiers = ["name"]
+
+    key_parts = [label]
+
+    # 1. 강한 식별자 검색 → 단독 사용
+    for field in strong_identifiers:
+        if field in properties and properties[field]:
+            key_parts.append(_normalize(properties[field]))
+            return str(uuid.uuid5(ENTITY_NAMESPACE, "|".join(key_parts)))
+
+    # 2. 약한 식별자 → 모든 속성과 조합 (동명이인 방지)
+    for field in weak_identifiers:
+        if field in properties and properties[field]:
+            sorted_props = sorted((k, _normalize(v)) for k, v in properties.items() if v)
+            key_parts.extend([f"{k}:{v}" for k, v in sorted_props])
+            return str(uuid.uuid5(ENTITY_NAMESPACE, "|".join(key_parts)))
+
+    # 3. 식별자 없음 → 모든 속성 조합
+    sorted_props = sorted((k, _normalize(v)) for k, v in properties.items() if v)
+    key_parts.extend([f"{k}:{v}" for k, v in sorted_props])
+    return str(uuid.uuid5(ENTITY_NAMESPACE, "|".join(key_parts)))
+
 class Node(BaseModel):
-    id: str = Field(..., description="Unique Identifier (e.g. Normalized Name)")
+    id: str = Field(..., description="UUID5 기반 결정적 ID")
     label: NodeType
-    properties: dict
-    source_metadata: dict  # Lineage: {source: 'file.csv', row: 1}
+    properties: dict[str, Any]
+    source_metadata: dict[str, Any]  # Lineage: {source: 'file.csv', row: 1}
 
 class Edge(BaseModel):
     source_id: str
     target_id: str
     type: RelationType
-    properties: dict
+    properties: dict[str, Any]
     confidence: float      # 0.0 ~ 1.0 (Thresholding용)
-    source_metadata: dict
+    source_metadata: dict[str, Any]
 
 class ExtractedGraph(BaseModel):
-    nodes: List[Node]
-    edges: List[Edge]
+    nodes: list[Node]
+    edges: list[Edge]
+```
+
+**Entity ID 생성 예시:**
+```python
+# 강한 식별자 (email) → 단독 사용
+generate_entity_id("Employee", {"email": "kim@co.kr", "name": "Kim"})
+# → "Employee|kim@co.kr" → UUID: abc123...
+
+# 약한 식별자 (name만) → 모든 속성 조합 (동명이인 방지)
+generate_entity_id("Employee", {"name": "Kim", "job": "Dev"})
+# → "Employee|job:dev|name:kim" → UUID: def456...
+
+# 대소문자 정규화
+generate_entity_id("Skill", {"name": "iPhone"})  # → UUID: xyz...
+generate_entity_id("Skill", {"name": "iphone"})  # → UUID: xyz... (동일!)
 ```
 
 #### C. Extractor with Validation Logic
 
-LLM 추출 결과에 대해 Confidence Cutoff와 Schema Validation을 수행합니다.
+Azure OpenAI SDK를 직접 사용하여 LLM 추출 후 Confidence Cutoff와 Schema Validation을 수행합니다.
 
 ```python
 # src/ingestion/extractor.py
+from openai import AsyncAzureOpenAI
+
+EDGE_CONFIDENCE_THRESHOLD = 0.8
+
 class GraphExtractor:
-    def __init__(self, llm_client):
-        self.llm = llm_client
+    def __init__(self) -> None:
+        self.client = AsyncAzureOpenAI(
+            api_key=settings.azure_openai_api_key,
+            api_version=settings.azure_openai_api_version,
+            azure_endpoint=settings.azure_openai_endpoint,
+        )
+        self._json_schema = self._build_json_schema()  # Pydantic → JSON Schema
 
     async def extract(self, document: Document) -> ExtractedGraph:
-        # 1. Extraction: System Prompt에 NODE_PROPERTIES를 포함하여 호출
-        raw_graph = await self.llm.predict(document.content, schema=NODE_PROPERTIES)
+        # 1. LLM 추출 (Structured Output)
+        raw_graph = await self._run_llm(document.page_content)
 
+        # 2. UUID5 ID 생성 + Validation
+        id_mapping = {}  # LLM 임시 ID → UUID5 ID
+        for node in raw_graph.nodes:
+            old_id = node.id
+            new_id = generate_entity_id(node.label, node.properties)
+            id_mapping[old_id] = new_id
+            node.id = new_id
+
+        # 3. Edge Validation
         valid_edges = []
-        valid_nodes = raw_graph.nodes
-
-        # 2. Validation & Filtering (Post-Processing)
         for edge in raw_graph.edges:
-            # Rule 1: Confidence Cutoff (0.8 미만 폐기)
-            if edge.confidence < 0.8:
+            # Rule 1: Confidence Cutoff
+            if edge.confidence < EDGE_CONFIDENCE_THRESHOLD:
                 logger.warning(f"Low confidence edge dropped: {edge}")
                 continue
 
-            # Rule 2: Schema Validation (Source -> Target 타입 검사)
-            src_node = next((n for n in valid_nodes if n.id == edge.source_id), None)
-            tgt_node = next((n for n in valid_nodes if n.id == edge.target_id), None)
-
+            # Rule 2: Schema Validation
             if not self._is_valid_relation(src_node, tgt_node, edge.type):
-                logger.warning(f"Invalid relation schema dropped: {edge}")
                 continue
 
+            # ID 매핑 업데이트
+            edge.source_id = id_mapping[edge.source_id]
+            edge.target_id = id_mapping[edge.target_id]
             valid_edges.append(edge)
 
         return ExtractedGraph(nodes=valid_nodes, edges=valid_edges)
 
-    def _is_valid_relation(self, src, tgt, rel_type):
-        expected_src, expected_tgt = VALID_RELATIONS.get(rel_type, (None, None))
-        return src.label == expected_src and tgt.label == expected_tgt
+    async def _run_llm(self, text: str) -> ExtractedGraph:
+        """Azure OpenAI Structured Output 호출"""
+        response = await self.client.chat.completions.create(
+            model=self.deployment_name,
+            messages=[
+                {"role": "system", "content": self._get_system_prompt()},
+                {"role": "user", "content": text},
+            ],
+            response_format={"type": "json_schema", "json_schema": self._json_schema},
+        )
+        return ExtractedGraph.model_validate_json(response.choices[0].message.content)
 ```
 
-#### D. Loader & Deduplication Strategy
+#### D. Loaders (CSV, Excel)
 
-**Idempotency (멱등성)**: 파이프라인을 여러 번 실행해도 데이터가 중복되지 않아야 합니다.
+다양한 데이터 소스를 `Document` 객체로 변환하는 어댑터 패턴 구현:
 
-- **Entity Resolution**: 메모리 상에서 ID 정규화 (예: `" Kim Chol Soo "` → `"kimcholsoo"`)
-- **DB Save**: `CREATE` 대신 `MERGE` 구문 사용
+```python
+# src/ingestion/loaders/base.py
+class BaseLoader(ABC):
+    @abstractmethod
+    def load(self) -> Iterator[Document]:
+        """Document 스트림 반환 (메모리 효율적)"""
+        pass
+
+# src/ingestion/loaders/csv_loader.py
+class CSVLoader(BaseLoader):
+    def load(self) -> Iterator[Document]:
+        with open(self.file_path) as f:
+            for i, row in enumerate(csv.DictReader(f)):
+                yield Document(
+                    page_content=", ".join(f"{k}: {v}" for k, v in row.items() if v),
+                    metadata={"source": self.file_path.name, "row_index": i + 2}
+                )
+
+# src/ingestion/loaders/excel_loader.py
+class ExcelLoader(BaseLoader):
+    def load(self) -> Iterator[Document]:
+        df = pd.read_excel(self.file_path, engine="openpyxl")
+        for i, row in df.iterrows():
+            yield Document(...)
+```
+
+#### E. Pipeline & Batch Processing
+
+배치 처리 + 동시성 제어 + UNWIND를 활용한 Neo4j 저장:
+
+```python
+# src/ingestion/pipeline.py
+class IngestionPipeline:
+    def __init__(self, batch_size=50, concurrency=5):
+        self.batch_size = batch_size
+        self.concurrency = concurrency  # LLM API Rate Limit 대응
+
+    async def run(self, loader: BaseLoader) -> dict[str, int]:
+        # Document를 배치로 그룹화
+        for batch in batched(loader.load(), self.batch_size):
+            # Semaphore로 동시성 제한
+            async with asyncio.Semaphore(self.concurrency):
+                graphs = await asyncio.gather(*[extractor.extract(doc) for doc in batch])
+
+            # UNWIND로 일괄 저장
+            await self._save_batch(merged_graph)
+```
+
+#### F. Idempotent Storage (MERGE)
+
+**멱등성**: 파이프라인을 여러 번 실행해도 데이터가 중복되지 않습니다.
 
 ```cypher
--- Neo4j MERGE 예시
-MERGE (n:Employee {id: $id})
-ON CREATE SET n.name = $name, n.created_at = datetime()
-ON MATCH SET n.updated_at = datetime()
+-- Label별 배치 MERGE (UNWIND 활용)
+UNWIND $nodes AS node
+MERGE (n:Employee {id: node.id})
+ON CREATE SET n += node.props, n.created_at = datetime()
+ON MATCH SET n += node.props, n.updated_at = datetime()
 ```
 
 ### 3.4 업데이트 및 동기화 전략
