@@ -26,13 +26,23 @@ graph-rag/
 │   ├── dependencies.py                  # FastAPI Depends (DI)
 │   ├── config.py                        # Pydantic Settings
 │   │
+│   ├── ingestion/                       # [Ingestion Layer - KG 구축] 📋
+│   │   ├── __init__.py
+│   │   ├── schema.py                    # 노드/관계 타입 정의 (Human Control)
+│   │   ├── models.py                    # Pydantic 모델 (Lineage, Confidence)
+│   │   ├── extractor.py                 # LLM 기반 Triple 추출 + 검증
+│   │   ├── pipeline.py                  # Extract → Validate → Save 오케스트레이션
+│   │   └── loaders/                     # 데이터 소스 어댑터
+│   │       ├── base.py
+│   │       └── csv_loader.py
+│   │
 │   ├── api/                             # [Presentation Layer]
 │   │   ├── routes/
 │   │   │   └── query.py                 # POST /query, GET /health, GET /schema
 │   │   └── schemas/
 │   │       └── query.py                 # QueryRequest, QueryResponse (Pydantic)
 │   │
-│   ├── graph/                           # [Graph Layer - LangGraph]
+│   ├── graph/                           # [Graph Layer - LangGraph Query]
 │   │   ├── state.py                     # GraphRAGState (TypedDict)
 │   │   ├── pipeline.py                  # StateGraph 구성 + 라우팅 통합
 │   │   └── nodes/                       # 노드 구현체
@@ -82,11 +92,12 @@ graph-rag/
 │
 ├── app_chainlit.py                      # Chainlit UI (파이프라인 시각화)
 ├── app_ui.py                            # Streamlit UI (간단한 채팅)
-├── load_to_neo4j.py                     # Neo4j 데이터 로드 스크립트
 ├── .env.example                         # 환경변수 템플릿
 ├── .gitignore
 └── pyproject.toml
 ```
+
+> 📋 표시된 모듈은 **설계 완료 / 구현 예정** 상태입니다.
 
 ### 2.2 레이어드 아키텍처
 
@@ -127,9 +138,180 @@ graph-rag/
 
 ---
 
-## 3. 요구사항 분석
+## 3. 견고한 KG 추출 파이프라인 (Robust KG Ingestion)
 
-### 3.1 질문 유형 분류 및 그래프 탐색 패턴
+> 📋 **구현 상태**: 설계 완료 / 구현 예정
+
+### 3.1 설계 철학: Human-in-the-loop 하이브리드 아키텍처
+
+LLM의 창의성을 제한하고 신뢰성을 확보하기 위해 **"사람의 통제(Control)"**와 **"AI의 효율성(Efficiency)"**을 결합합니다.
+
+```
+[Raw Data] → (1. Extraction) → (2. Validation) → (3. Fusion) → [Neo4j]
+```
+
+| 역할 | 담당 | 설명 |
+|------|------|------|
+| **Human (Bone Logic)** | `schema.py` | 허용된 노드/관계의 "뼈대" 정의 (LLM 임의 확장 차단) |
+| **LLM (Extraction)** | `extractor.py` | 정의된 뼈대 안에서 비정형 텍스트 분석 |
+| **Human (Review)** | 로깅 + 검토 | 스키마 벗어나는 정보는 별도 로깅, 추후 스키마 확장 여부 결정 |
+
+### 3.2 핵심 방어 계층 (Layers of Defense)
+
+| 계층 | 역할 | 구현 방식 |
+|------|------|----------|
+| **1. Static Schema** | 구조적 제한 | `schema.py` 내 Enum 및 Pydantic 정의로 허용된 타입만 생성 |
+| **2. Confidence Check** | 품질 보장 | LLM의 확신도(Confidence) 점수 0.8 미만 데이터 자동 폐기 |
+| **3. Validation Logic** | 논리적 정합성 | 관계의 방향성 및 타입 일치 여부 검증 (예: Project가 Person을 고용 불가) |
+
+### 3.3 상세 구현 명세
+
+#### A. Schema & Models (Human Control)
+
+사람이 통제하는 "법전(Rule Book)" 역할을 합니다. 속성(Property)까지 명시하여 LLM의 환각을 방지합니다.
+
+```python
+# src/ingestion/schema.py
+from enum import Enum
+
+class NodeType(str, Enum):
+    EMPLOYEE = "Employee"
+    PROJECT = "Project"
+    SKILL = "Skill"
+
+class RelationType(str, Enum):
+    WORKS_ON = "WORKS_ON"     # Employee -> Project
+    HAS_SKILL = "HAS_SKILL"   # Employee -> Skill
+
+# LLM 가이드라인: 각 노드별 허용 속성 정의
+NODE_PROPERTIES = {
+    NodeType.EMPLOYEE: ["name", "job_type", "years_experience"],
+    NodeType.PROJECT: ["name", "status", "start_date"],
+    NodeType.SKILL: ["name", "category"],
+}
+
+# 관계 유효성 규칙 (Source Type -> Target Type)
+VALID_RELATIONS = {
+    RelationType.WORKS_ON: (NodeType.EMPLOYEE, NodeType.PROJECT),
+    RelationType.HAS_SKILL: (NodeType.EMPLOYEE, NodeType.SKILL),
+}
+```
+
+#### B. Data Models with Lineage
+
+데이터의 출처(Lineage)와 신뢰도(Confidence)를 관리합니다.
+
+```python
+# src/ingestion/models.py
+from pydantic import BaseModel, Field
+from typing import List
+from .schema import NodeType, RelationType
+
+class Node(BaseModel):
+    id: str = Field(..., description="Unique Identifier (e.g. Normalized Name)")
+    label: NodeType
+    properties: dict
+    source_metadata: dict  # Lineage: {source: 'file.csv', row: 1}
+
+class Edge(BaseModel):
+    source_id: str
+    target_id: str
+    type: RelationType
+    properties: dict
+    confidence: float      # 0.0 ~ 1.0 (Thresholding용)
+    source_metadata: dict
+
+class ExtractedGraph(BaseModel):
+    nodes: List[Node]
+    edges: List[Edge]
+```
+
+#### C. Extractor with Validation Logic
+
+LLM 추출 결과에 대해 Confidence Cutoff와 Schema Validation을 수행합니다.
+
+```python
+# src/ingestion/extractor.py
+class GraphExtractor:
+    def __init__(self, llm_client):
+        self.llm = llm_client
+
+    async def extract(self, document: Document) -> ExtractedGraph:
+        # 1. Extraction: System Prompt에 NODE_PROPERTIES를 포함하여 호출
+        raw_graph = await self.llm.predict(document.content, schema=NODE_PROPERTIES)
+
+        valid_edges = []
+        valid_nodes = raw_graph.nodes
+
+        # 2. Validation & Filtering (Post-Processing)
+        for edge in raw_graph.edges:
+            # Rule 1: Confidence Cutoff (0.8 미만 폐기)
+            if edge.confidence < 0.8:
+                logger.warning(f"Low confidence edge dropped: {edge}")
+                continue
+
+            # Rule 2: Schema Validation (Source -> Target 타입 검사)
+            src_node = next((n for n in valid_nodes if n.id == edge.source_id), None)
+            tgt_node = next((n for n in valid_nodes if n.id == edge.target_id), None)
+
+            if not self._is_valid_relation(src_node, tgt_node, edge.type):
+                logger.warning(f"Invalid relation schema dropped: {edge}")
+                continue
+
+            valid_edges.append(edge)
+
+        return ExtractedGraph(nodes=valid_nodes, edges=valid_edges)
+
+    def _is_valid_relation(self, src, tgt, rel_type):
+        expected_src, expected_tgt = VALID_RELATIONS.get(rel_type, (None, None))
+        return src.label == expected_src and tgt.label == expected_tgt
+```
+
+#### D. Loader & Deduplication Strategy
+
+**Idempotency (멱등성)**: 파이프라인을 여러 번 실행해도 데이터가 중복되지 않아야 합니다.
+
+- **Entity Resolution**: 메모리 상에서 ID 정규화 (예: `" Kim Chol Soo "` → `"kimcholsoo"`)
+- **DB Save**: `CREATE` 대신 `MERGE` 구문 사용
+
+```cypher
+-- Neo4j MERGE 예시
+MERGE (n:Employee {id: $id})
+ON CREATE SET n.name = $name, n.created_at = datetime()
+ON MATCH SET n.updated_at = datetime()
+```
+
+### 3.4 업데이트 및 동기화 전략
+
+데이터의 성격에 따라 업데이트 주기를 이원화하여 리소스 효율을 최적화합니다.
+
+| 데이터 유형 | 업데이트 방식 | 주기 | 예시 |
+|------------|--------------|------|------|
+| **Hot Data** | Event-Driven | 실시간 | 신규 입사자, 프로젝트 상태 변경 (Kafka 연동) |
+| **Cold Data** | Batch Processing | 일간/주간 | 자격증 데이터베이스, 과거 이력 정리 |
+
+### 3.5 Query Pipeline과의 연결점
+
+| Ingestion 컴포넌트 | Query 컴포넌트 | 공유 자원 |
+|-------------------|---------------|----------|
+| `ingestion/schema.py` | `graph/nodes/entity_resolver.py` | 동의어 사전 (Alias Table) |
+| `ingestion/models.py` | `domain/types.py` | 노드/관계 타입 정의 |
+
+> 💡 `entity_resolver`의 한글-영문 매핑 로직은 Ingestion의 `schema.py`와 동의어 사전을 공유합니다.
+
+### 3.6 검증 계획 (Testing)
+
+| 구분 | 테스트 항목 | 설명 |
+|------|------------|------|
+| **Unit Test** | `test_schema_validation.py` | 허용되지 않은 관계(예: Project→Employee)가 필터링되는지 검증 |
+| **Unit Test** | `test_idempotency.py` | 동일 데이터를 2회 적재 시 노드/엣지 개수가 변하지 않는지 확인 |
+| **E2E Test** | 파이프라인 통합 테스트 | Raw CSV → Extraction → Validation → Neo4j 적재 후 데이터 무결성 확인 |
+
+---
+
+## 4. 요구사항 분석
+
+### 4.1 질문 유형 분류 및 그래프 탐색 패턴
 
 | 유형 | 설명 | 예시 질문 | 그래프 탐색 패턴 | 복잡도 |
 |------|------|----------|-----------------|--------|
@@ -141,7 +323,7 @@ graph-rag/
 | **F. 자격증 기반 검색** | 인증/자격 기반 필터링 | "AWS 자격증 보유자 중 프로젝트 미배정자는?" | `(e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)` | 저 |
 | **G. 경로 기반 분석** | 다중 홉 관계 분석 | "A 프로젝트 경험자 중 B 부서로 이동 가능한 인력은?" | Multi-hop traversal | 고 |
 
-### 3.2 질문 유형별 상세 탐색 패턴
+### 4.2 질문 유형별 상세 탐색 패턴
 
 ```cypher
 -- [A. 인력 추천 패턴]
@@ -176,9 +358,9 @@ RETURN d.name, COUNT(e), COLLECT(skills)
 
 ---
 
-## 4. LangGraph 기반 시스템 아키텍처
+## 5. LangGraph 기반 시스템 아키텍처
 
-### 3.1 State 스키마 정의
+### 5.1 State 스키마 정의
 
 ```python
 from typing import TypedDict, Literal, Any, Annotated
@@ -227,7 +409,7 @@ class GraphRAGState(TypedDict, total=False):
     execution_path: Annotated[list[str], operator.add]
 ```
 
-### 3.2 LangGraph 노드 정의
+### 5.2 LangGraph 노드 정의
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -358,7 +540,7 @@ class GraphRAGState(TypedDict, total=False):
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.3 LangGraph 엣지 정의
+### 5.3 LangGraph 엣지 정의
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -420,7 +602,7 @@ class GraphRAGState(TypedDict, total=False):
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.4 LangGraph 전체 구조 (시각화)
+### 5.4 LangGraph 전체 구조 (시각화)
 
 ```
                                       ┌─────────┐
@@ -497,7 +679,7 @@ class GraphRAGState(TypedDict, total=False):
           └─────────────────────────────────────────────────────────┘
 ```
 
-### 3.5 LangGraph 코드 구조
+### 5.5 LangGraph 코드 구조
 
 ```python
 from langgraph.graph import StateGraph, END
@@ -619,7 +801,7 @@ workflow.add_edge("response_generator", END)
 graph = workflow.compile()
 ```
 
-### 3.6 각 노드 상세 명세
+### 5.6 각 노드 상세 명세
 
 | 노드 | 클래스명 | 입력 State 필드 | 출력 State 필드 | LLM/DB | 모델 티어 |
 |------|----------|----------------|----------------|--------|-----------|
@@ -633,7 +815,7 @@ graph = workflow.compile()
 | **graph_executor** | `GraphExecutorNode` | cypher_query, cypher_parameters | graph_results, result_count | DB | - |
 | **response_generator** | `ResponseGeneratorNode` | question, graph_results, cypher_query, error | response | LLM | heavy_model |
 
-### 3.7 Entity Resolver 상세 로직
+### 5.7 Entity Resolver 상세 로직
 
 ```python
 # src/graph/nodes/entity_resolver.py
@@ -712,9 +894,9 @@ async def resolve_skill(raw_skill: str) -> dict:
 
 ---
 
-## 5. 핵심 설계 결정사항
+## 6. 핵심 설계 결정사항
 
-### 4.1 자연어 → Cypher 변환 전략
+### 6.1 자연어 → Cypher 변환 전략
 
 #### 전략 비교
 
@@ -746,7 +928,7 @@ cypher_generator 노드 내부 로직:
   └───────────────────┘ └───────────────────┘ └───────────────────┘
 ```
 
-### 4.2 그래프 탐색 깊이 제한
+### 6.2 그래프 탐색 깊이 제한
 
 | 질문 유형 | 최대 홉 수 | 이유 |
 |-----------|-----------|------|
@@ -755,7 +937,7 @@ cypher_generator 노드 내부 로직:
 | 경로 탐색 | 5 홉 | 조직 내 합리적 연결 거리 |
 | 멘토링 체인 | 4 홉 | 멘토→멘티→멘티 계층 |
 
-### 4.3 벡터 검색 필요 여부
+### 6.3 벡터 검색 필요 여부
 
 **MVP에서는 벡터 검색 불필요**
 
@@ -769,7 +951,7 @@ cypher_generator 노드 내부 로직:
 - 프로젝트 설명, 스킬 상세 등 긴 텍스트 추가
 - 유사도 기반 검색 필요 ("ML과 비슷한 스킬은?")
 
-### 4.4 데이터 모델 선택: TypedDict vs Pydantic
+### 6.4 데이터 모델 선택: TypedDict vs Pydantic
 
 **결정: 레이어별 적합한 도구 사용 (혼용)**
 
@@ -875,9 +1057,9 @@ async def query(request: QueryRequest, pipeline = Depends(get_graph_pipeline)):
 
 ---
 
-## 6. 노드 재사용성 설계
+## 7. 노드 재사용성 설계
 
-### 5.1 설계 철학
+### 7.1 설계 철학
 
 각 노드는 **독립적인 컴포넌트**로 설계하여 다른 프로젝트/도메인에서 재사용 가능하도록 합니다.
 
@@ -910,7 +1092,7 @@ async def query(request: QueryRequest, pipeline = Depends(get_graph_pipeline)):
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 노드 인터페이스 표준
+### 7.2 노드 인터페이스 표준
 
 모든 노드는 다음 인터페이스를 따릅니다:
 
@@ -965,7 +1147,7 @@ class ConfigurableNode(BaseNode[StateT]):
         ...
 ```
 
-### 5.3 의존성 주입 패턴
+### 7.3 의존성 주입 패턴
 
 각 노드는 외부 의존성을 생성자에서 주입받습니다:
 
@@ -1079,7 +1261,7 @@ class GraphExecutor(ConfigurableNode):
         self.timeout = timeout_seconds
 ```
 
-### 5.4 설정 파일 구조
+### 7.4 설정 파일 구조
 
 노드 설정을 외부 파일로 분리:
 
@@ -1159,7 +1341,7 @@ cypher_templates:
     RETURN e, p, COUNT(skill) as match_count
 ```
 
-### 5.6 노드 독립 테스트
+### 7.5 노드 독립 테스트
 
 각 노드는 독립적으로 테스트 가능:
 
@@ -1242,9 +1424,9 @@ class TestGraphExecutor:
 
 ---
 
-## 7. 구현 우선순위
+## 8. 구현 우선순위
 
-### 6.1 MVP 단계 (Phase 1) - 4주
+### 8.1 MVP 단계 (Phase 1) - 4주
 
 **Week 1-2: Core Pipeline (LangGraph)**
 - [P0] LangGraph StateGraph 구조 설정
@@ -1269,7 +1451,7 @@ class TestGraphExecutor:
 - [O] D. 조직 분석 (부서별 통계)
 - [O] F. 자격증 기반 검색
 
-### 6.2 Phase 2 - 확장 기능 (4-6주)
+### 8.2 Phase 2 - 확장 기능 (4-6주)
 
 - 관계 탐색 (shortestPath, allPaths) - C, G 유형
 - 멘토링 네트워크 탐색 - E 유형
@@ -1277,7 +1459,7 @@ class TestGraphExecutor:
 - 대화 히스토리 (State 확장)
 - 결과 시각화
 
-### 6.3 Phase 3 - 고급 기능
+### 8.3 Phase 3 - 고급 기능
 
 - 벡터 검색 통합 노드
 - Human-in-the-loop (LangGraph interrupt)
@@ -1285,7 +1467,7 @@ class TestGraphExecutor:
 
 ---
 
-## 8. 기술 스택
+## 9. 기술 스택
 
 | 레이어 | 기술 | 이유 |
 |--------|------|------|
@@ -1303,7 +1485,7 @@ class TestGraphExecutor:
 > - 세밀한 retry/timeout 제어
 > - 디버깅 용이성
 
-### 7.1 모델 버전 호환성 전략
+### 9.1 모델 버전 호환성 전략
 
 시스템은 특정 모델 버전에 의존하지 않고, 모든 Azure OpenAI 배포 모델과 호환되도록 설계합니다:
 
@@ -1373,7 +1555,7 @@ VECTOR_SIMILARITY_THRESHOLD=0.85
 QUERY_CACHE_TTL_HOURS=24
 ```
 
-### 7.2 LangGraph 1.0 호환성
+### 9.2 LangGraph 1.0 호환성
 
 > **참고**: 본 문서의 모든 LangGraph 코드는 1.0+ 기준으로 작성되었습니다. (섹션 3.5 참조)
 
@@ -1386,7 +1568,7 @@ QUERY_CACHE_TTL_HOURS=24
 | 종료점 | `"__end__"` 문자열 | `END` 상수 |
 | 병렬 실행 | 암시적 fan-out | 명시적 다중 edge |
 
-### 7.3 버전 호환성 매트릭스
+### 9.3 버전 호환성 매트릭스
 
 | 컴포넌트 | 최소 버전 | 권장 버전 | 비고 |
 |----------|----------|----------|------|
@@ -1398,7 +1580,7 @@ QUERY_CACHE_TTL_HOURS=24
 
 ---
 
-## 9. 성공 지표 (MVP)
+## 10. 성공 지표 (MVP)
 
 | 지표 | 목표 | 측정 방법 |
 |------|------|----------|
@@ -1409,9 +1591,9 @@ QUERY_CACHE_TTL_HOURS=24
 
 ---
 
-## 10. 보안 요구사항
+## 11. 보안 요구사항
 
-### 9.1 인증 및 권한
+### 11.1 인증 및 권한
 
 | 구분 | 방식 | 설명 |
 |------|------|------|
@@ -1419,7 +1601,7 @@ QUERY_CACHE_TTL_HOURS=24
 | **Neo4j 인증** | 환경변수 기반 | `NEO4J_USER`, `NEO4J_PASSWORD` 환경변수 사용 |
 | **Azure OpenAI 인증** | Managed Identity 또는 API Key | 프로덕션은 Managed Identity 권장 |
 
-### 9.2 데이터 접근 제어
+### 11.2 데이터 접근 제어
 
 ```python
 # 역할 기반 접근 제어 (RBAC)
@@ -1436,7 +1618,7 @@ def apply_access_filter(cypher: str, user_role: str) -> str:
     return cypher
 ```
 
-### 9.3 민감 데이터 처리
+### 11.3 민감 데이터 처리
 
 | 데이터 유형 | 처리 방식 |
 |------------|----------|
@@ -1444,7 +1626,7 @@ def apply_access_filter(cypher: str, user_role: str) -> str:
 | 급여/평가 정보 | 관리자 권한만 접근 가능 |
 | LLM 프롬프트 로깅 | 개인정보 제거 후 저장 |
 
-### 9.4 감사 로깅
+### 11.4 감사 로깅
 
 ```python
 # 감사 로그 스키마
@@ -1460,9 +1642,9 @@ class AuditLog(BaseModel):
 
 ---
 
-## 11. 에러 핸들링 상세
+## 12. 에러 핸들링 상세
 
-### 10.1 에러 유형 분류
+### 12.1 에러 유형 분류
 
 | 에러 유형 | 코드 | 재시도 | 사용자 메시지 |
 |----------|------|--------|--------------|
@@ -1474,7 +1656,7 @@ class AuditLog(BaseModel):
 | **빈 결과** | E006 | 재시도 없음 | "조건에 맞는 결과가 없습니다" |
 | **권한 없음** | E007 | 재시도 없음 | "해당 정보에 접근 권한이 없습니다" |
 
-### 10.2 재시도 정책
+### 12.2 재시도 정책
 
 ```python
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -1498,7 +1680,7 @@ async def execute_cypher(query: str) -> list:
     ...
 ```
 
-### 10.3 Fallback 전략
+### 12.3 Fallback 전략
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1522,9 +1704,9 @@ async def execute_cypher(query: str) -> list:
 
 ---
 
-## 12. 성능 요구사항 상세
+## 13. 성능 요구사항 상세
 
-### 11.1 레이턴시 목표
+### 13.1 레이턴시 목표
 
 | 지표 | 목표 | 알림 임계값 |
 |------|------|------------|
@@ -1532,7 +1714,7 @@ async def execute_cypher(query: str) -> list:
 | **P95 응답시간** | < 5초 | > 7초 시 경고 |
 | **P99 응답시간** | < 10초 | > 15초 시 알림 |
 
-### 11.2 노드별 타임아웃 설정
+### 13.2 노드별 타임아웃 설정
 
 | 노드 | 타임아웃 | 비고 |
 |------|---------|------|
@@ -1543,7 +1725,7 @@ async def execute_cypher(query: str) -> list:
 | response_generator | 10초 | LLM 호출 포함 |
 | **전체 파이프라인** | 60초 | 모든 노드 합계 |
 
-### 11.3 동시성 및 처리량
+### 13.3 동시성 및 처리량
 
 | 지표 | MVP 목표 | Phase 2 목표 |
 |------|---------|-------------|
@@ -1551,7 +1733,7 @@ async def execute_cypher(query: str) -> list:
 | 최대 동시 접속자 | 20명 | 100명 |
 | LLM 동시 호출 | 5개 | 20개 (Rate Limit 고려) |
 
-### 11.4 리소스 제한
+### 13.4 리소스 제한
 
 ```python
 # FastAPI 설정
@@ -1578,9 +1760,9 @@ async def query(request: QueryRequest):
 
 ---
 
-## 13. 평가 체계
+## 14. 평가 체계
 
-### 12.1 평가 데이터셋 구성
+### 14.1 평가 데이터셋 구성
 
 | 질문 유형 | 샘플 수 | 난이도 분포 |
 |----------|--------|------------|
@@ -1590,7 +1772,7 @@ async def query(request: QueryRequest):
 | F. 자격증 검색 | 20개 | 쉬움 10, 중간 8, 어려움 2 |
 | **합계** | **100개** | |
 
-### 12.2 평가 기준
+### 14.2 평가 기준
 
 ```yaml
 # 평가 루브릭
@@ -1620,7 +1802,7 @@ evaluation_criteria:
       - 1: "모든 정보가 그래프 데이터 기반"
 ```
 
-### 12.3 자동 평가 메트릭
+### 14.3 자동 평가 메트릭
 
 ```python
 # 자동 평가 메트릭
@@ -1648,7 +1830,7 @@ class AutoMetrics:
         return covered / len(question_entities) if question_entities else 1.0
 ```
 
-### 12.4 평가 프로세스
+### 14.4 평가 프로세스
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1675,9 +1857,9 @@ class AutoMetrics:
 
 ---
 
-## 14. 배포 및 운영 환경
+## 15. 배포 및 운영 환경
 
-### 13.1 컨테이너화
+### 15.1 컨테이너화
 
 ```dockerfile
 # Dockerfile
@@ -1734,7 +1916,7 @@ volumes:
   neo4j_data:
 ```
 
-### 13.2 환경별 설정
+### 15.2 환경별 설정
 
 | 환경 | 용도 | LLM 배포 전략 | 로깅 레벨 |
 |------|------|--------------|----------|
@@ -1745,7 +1927,7 @@ volumes:
 > **참고**: 실제 모델 버전(gpt-35-turbo, gpt-4, gpt-4o, gpt-5.x 등)은 Azure Portal 배포 이름으로 추상화됩니다.
 > 환경변수 `AZURE_OPENAI_LIGHT_MODEL_DEPLOYMENT`, `AZURE_OPENAI_HEAVY_MODEL_DEPLOYMENT`로 설정합니다.
 
-### 13.3 CI/CD 파이프라인
+### 15.3 CI/CD 파이프라인
 
 ```yaml
 # .github/workflows/ci.yml
@@ -1795,7 +1977,7 @@ jobs:
           # 프로덕션 배포 (수동 승인 필요)
 ```
 
-### 13.4 헬스체크 엔드포인트
+### 15.4 헬스체크 엔드포인트
 
 ```python
 @app.get("/health")
@@ -1824,9 +2006,9 @@ async def liveness_check():
 
 ---
 
-## 15. 캐싱 전략
+## 16. 캐싱 전략
 
-### 15.1 시맨틱 캐싱 아키텍처 (Vector Similarity)
+### 16.1 시맨틱 캐싱 아키텍처 (Vector Similarity)
 
 기존 해시 기반 캐싱의 한계를 극복하기 위해 **Vector Similarity 기반 시맨틱 캐싱**을 도입합니다.
 
@@ -1861,7 +2043,7 @@ async def liveness_check():
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 15.2 캐싱 데이터 모델
+### 16.2 캐싱 데이터 모델
 
 ```cypher
 -- CachedQuery 노드 스키마
@@ -1886,7 +2068,7 @@ OPTIONS {
 }
 ```
 
-### 15.3 시맨틱 매칭 예시
+### 16.3 시맨틱 매칭 예시
 
 | 원본 질문 | 유사 질문 (캐시 히트) | 유사도 |
 |----------|---------------------|--------|
@@ -1894,7 +2076,7 @@ OPTIONS {
 | "ML팀 인원 조회" | "머신러닝 부서 사람들" | 0.89 |
 | "김철수 담당 프로젝트" | "김철수가 참여중인 프로젝트는?" | 0.94 |
 
-### 15.4 캐시 구현 (QueryCacheRepository)
+### 16.4 캐시 구현 (QueryCacheRepository)
 
 ```python
 # src/repositories/query_cache_repository.py
@@ -1949,7 +2131,7 @@ class QueryCacheRepository:
         ...
 ```
 
-### 15.5 캐시 설정
+### 16.5 캐시 설정
 
 ```bash
 # .env
@@ -1960,7 +2142,7 @@ EMBEDDING_MODEL_DEPLOYMENT=text-embedding-3-small
 EMBEDDING_DIMENSIONS=1536
 ```
 
-### 15.6 캐시 무효화 전략
+### 16.6 캐시 무효화 전략
 
 | 이벤트 | 무효화 방식 |
 |--------|------------|
@@ -1969,7 +2151,7 @@ EMBEDDING_DIMENSIONS=1536
 | 수동 무효화 | `invalidate_cache()` 메서드 |
 | 그래프 데이터 대량 업데이트 | 관리자 API로 전체 삭제 |
 
-### 15.7 성능 비교
+### 16.7 성능 비교
 
 | 메트릭 | 해시 기반 (기존) | Vector Similarity (현재) |
 |--------|-----------------|-------------------------|
@@ -1981,9 +2163,9 @@ EMBEDDING_DIMENSIONS=1536
 
 ---
 
-## 16. 모니터링 및 관측성
+## 17. 모니터링 및 관측성
 
-### 15.1 메트릭 수집
+### 17.1 메트릭 수집
 
 ```python
 from prometheus_client import Counter, Histogram, Gauge
@@ -2016,7 +2198,7 @@ LLM_TOKEN_USAGE = Counter(
 )
 ```
 
-### 15.2 로깅 표준
+### 17.2 로깅 표준
 
 ```python
 import structlog
@@ -2042,7 +2224,7 @@ logger.info(
 # CRITICAL: 시스템 장애
 ```
 
-### 15.3 분산 추적
+### 17.3 분산 추적
 
 ```python
 from opentelemetry import trace
@@ -2066,7 +2248,7 @@ async def process_query(question: str):
     # ... 추적 계속
 ```
 
-### 15.4 알림 규칙
+### 17.4 알림 규칙
 
 | 조건 | 심각도 | 알림 채널 |
 |------|--------|----------|
@@ -2076,7 +2258,7 @@ async def process_query(question: str):
 | LLM API 연속 실패 3회 | Warning | Slack |
 | 캐시 히트율 < 20% | Info | Slack (일간 리포트) |
 
-### 15.5 대시보드 구성
+### 17.5 대시보드 구성
 
 ```yaml
 # Grafana 대시보드 패널 구성
@@ -2109,9 +2291,9 @@ panels:
 
 ---
 
-## 16. UI 옵션
+## 18. UI 옵션
 
-### 16.1 Chainlit UI (권장)
+### 18.1 Chainlit UI (권장)
 
 파이프라인 실행 단계를 시각적으로 보여주는 대화형 UI
 
@@ -2137,14 +2319,14 @@ chainlit run app_chainlit.py --port 8080
 💬 Response Generation    → 최종 응답
 ```
 
-### 16.2 Streamlit UI (간단한 버전)
+### 18.2 Streamlit UI (간단한 버전)
 
 ```bash
 # 실행
 streamlit run app_ui.py --server.port 8501
 ```
 
-### 16.3 FastAPI REST API
+### 18.3 FastAPI REST API
 
 ```bash
 # 실행
@@ -2158,9 +2340,9 @@ GET  /api/v1/schema   # 스키마 조회
 
 ---
 
-## 17. 호환성 노트
+## 19. 호환성 노트
 
-### 17.1 Neo4j 5.x+ 호환성
+### 19.1 Neo4j 5.x+ 호환성
 
 **elementId() 사용:**
 - Neo4j 5.x에서 `id()` 함수가 deprecated
@@ -2184,7 +2366,7 @@ class NodeResult:
     properties: dict[str, Any]
 ```
 
-### 17.2 GPT-5 모델 호환성
+### 19.2 GPT-5 모델 호환성
 
 GPT-5 이상 모델은 `temperature` 파라미터를 지원하지 않음:
 
@@ -2199,7 +2381,7 @@ if self._supports_temperature(deployment):
     api_params["temperature"] = temperature
 ```
 
-### 17.3 인증 방식 (Neo4j 2025.x)
+### 19.3 인증 방식 (Neo4j 2025.x)
 
 Neo4j 2025.x 서버는 명시적 `basic_auth()` 사용 필요:
 
