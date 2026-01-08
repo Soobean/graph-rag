@@ -38,6 +38,13 @@ class ModelTier(str, Enum):
     HEAVY = "heavy"  # 복잡한 작업 (cypher generation, response)
 
 
+FALLBACK_EXCEPTIONS = (
+    LLMRateLimitError,  # Rate limit 발생 시 (429)
+    LLMConnectionError,  # 네트워크/연결 실패 시
+    LLMResponseError,  # 응답 처리/파싱 실패 시
+)
+
+
 class LLMRepository:
     """
     Azure OpenAI LLM Repository (openai SDK 직접 사용)
@@ -221,6 +228,120 @@ class LLMRepository:
             logger.error(f"LLM JSON generation failed: {e}")
             raise LLMResponseError(f"Failed to generate JSON response: {e}") from e
 
+    # ============================================
+    # Fallback 헬퍼 메서드 (HEAVY → LIGHT)
+    # ============================================
+
+    async def _generate_with_fallback(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float | None = None,
+        max_completion_tokens: int | None = None,
+    ) -> str:
+        """
+        텍스트 생성 with Fallback (HEAVY → LIGHT → Error)
+
+        HEAVY 티어 실패 시 LIGHT 티어로 자동 fallback합니다.
+
+        Args:
+            system_prompt: 시스템 프롬프트
+            user_prompt: 사용자 프롬프트
+            temperature: 온도 파라미터 (선택, 모델 미지원 시 자동 제외)
+            max_completion_tokens: 최대 토큰 수 (선택)
+
+        Returns:
+            생성된 텍스트
+
+        Raises:
+            LLMResponseError: HEAVY, LIGHT 모두 실패 시
+
+        Note:
+            - 모든 티어가 실패하면 마지막 에러를 포함한 LLMResponseError 발생
+            - HEAVY와 LIGHT가 서로 다른 예외로 실패할 수 있음
+        """
+        # 1. HEAVY 티어 시도
+        try:
+            return await self.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model_tier=ModelTier.HEAVY,
+                temperature=temperature,
+                max_completion_tokens=max_completion_tokens,
+            )
+        except FALLBACK_EXCEPTIONS as e:
+            logger.warning(
+                f"HEAVY tier failed, falling back to LIGHT: {type(e).__name__}: {e}"
+            )
+
+        # 2. LIGHT 티어 fallback
+        try:
+            result = await self.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model_tier=ModelTier.LIGHT,
+                temperature=temperature,
+                max_completion_tokens=max_completion_tokens,
+            )
+            logger.info("Fallback to LIGHT tier succeeded")
+            return result
+        except FALLBACK_EXCEPTIONS as e:
+            logger.error(f"LIGHT tier also failed: {type(e).__name__}: {e}")
+            raise LLMResponseError(f"All model tiers failed. Last error: {e}") from e
+
+    async def _generate_json_with_fallback(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float | None = None,
+    ) -> dict[str, Any]:
+        """
+        JSON 생성 with Fallback (HEAVY → LIGHT → Error)
+
+        HEAVY 티어 실패 시 LIGHT 티어로 자동 fallback합니다.
+
+        Args:
+            system_prompt: 시스템 프롬프트
+            user_prompt: 사용자 프롬프트
+            temperature: 온도 파라미터 (선택, 모델 미지원 시 자동 제외)
+
+        Returns:
+            생성된 JSON (dict)
+
+        Raises:
+            LLMResponseError: HEAVY, LIGHT 모두 실패 시
+
+        Note:
+            - 모든 티어가 실패하면 마지막 에러를 포함한 LLMResponseError 발생
+            - HEAVY와 LIGHT가 서로 다른 예외로 실패할 수 있음
+        """
+        # 1. HEAVY 티어 시도
+        try:
+            return await self.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model_tier=ModelTier.HEAVY,
+                temperature=temperature,
+            )
+        except FALLBACK_EXCEPTIONS as e:
+            logger.warning(
+                f"HEAVY tier failed, falling back to LIGHT: {type(e).__name__}: {e}"
+            )
+
+        # 2. LIGHT 티어 fallback
+        try:
+            result = await self.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model_tier=ModelTier.LIGHT,
+                temperature=temperature,
+            )
+            logger.info("Fallback to LIGHT tier succeeded (JSON)")
+            return result
+        except FALLBACK_EXCEPTIONS as e:
+            logger.error(f"LIGHT tier also failed (JSON): {type(e).__name__}: {e}")
+            raise LLMResponseError(f"All model tiers failed. Last error: {e}") from e
+
     async def classify_intent(
         self,
         question: str,
@@ -287,10 +408,16 @@ class LLMRepository:
         entities: list[dict[str, Any]],
     ) -> CypherGenerationResult:
         """
-        Cypher 쿼리 생성
+        Cypher 쿼리 생성 (with Fallback: HEAVY → LIGHT → Error)
+
+        Cypher 생성은 복잡한 작업이므로 HEAVY 티어를 우선 사용하고,
+        실패 시 LIGHT 티어로 fallback합니다.
 
         Returns:
             CypherGenerationResult: Generated Cypher query and metadata
+
+        Raises:
+            LLMResponseError: 모든 티어 실패 시
         """
         prompt = self._prompt_manager.load_prompt("cypher_generation")
 
@@ -302,10 +429,10 @@ class LLMRepository:
             question=question, entities_str=entities_str
         )
 
-        result = await self.generate_json(
+        # Fallback 적용: HEAVY → LIGHT → Error
+        result = await self._generate_json_with_fallback(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model_tier=ModelTier.HEAVY,
         )
         return cast(CypherGenerationResult, result)
 
@@ -317,13 +444,19 @@ class LLMRepository:
         chat_history: str = "",
     ) -> str:
         """
-        최종 응답 생성
+        최종 응답 생성 (with Fallback: HEAVY → LIGHT → Error)
+
+        응답 생성은 복잡한 작업이므로 HEAVY 티어를 우선 사용하고,
+        실패 시 LIGHT 티어로 fallback합니다.
 
         Args:
             question: 사용자 질문
             query_results: Neo4j 쿼리 결과
             cypher_query: 실행된 Cypher 쿼리
             chat_history: 이전 대화 기록 (포맷된 문자열)
+
+        Raises:
+            LLMResponseError: 모든 티어 실패 시
         """
         prompt = self._prompt_manager.load_prompt("response_generation")
 
@@ -336,10 +469,10 @@ class LLMRepository:
             chat_history=self._format_chat_history_for_prompt(chat_history),
         )
 
-        return await self.generate(
+        # Fallback 적용: HEAVY → LIGHT → Error
+        return await self._generate_with_fallback(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model_tier=ModelTier.HEAVY,
         )
 
     async def generate_clarification(
