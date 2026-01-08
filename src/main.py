@@ -52,9 +52,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     neo4j_repo = Neo4jRepository(neo4j_client)
     llm_repo = LLMRepository(settings)
 
-    # Pipeline 초기화
-    pipeline = GraphRAGPipeline(settings, neo4j_repo, llm_repo)
-    logger.info("Pipeline initialized")
+    # 스키마 사전 로드 (파이프라인에 주입)
+    try:
+        graph_schema = await neo4j_repo.get_schema()
+        logger.info(
+            f"Schema loaded: "
+            f"{len(graph_schema.get('node_labels', []))} labels, "
+            f"{len(graph_schema.get('relationship_types', []))} relationships"
+        )
+    except Exception as e:
+        logger.error(f"Failed to load graph schema: {e}")
+        raise RuntimeError("Schema loading is required for pipeline initialization") from e
+
+    # Pipeline 초기화 (스키마 주입)
+    pipeline = GraphRAGPipeline(
+        settings=settings,
+        neo4j_repository=neo4j_repo,
+        llm_repository=llm_repo,
+        neo4j_client=neo4j_client,
+        graph_schema=graph_schema,
+    )
+    logger.info("Pipeline initialized with pre-loaded schema")
 
     # app.state에 저장 (멀티 워커 환경에서 각 워커가 자체 인스턴스 보유)
     app.state.neo4j_client = neo4j_client

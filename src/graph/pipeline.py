@@ -2,9 +2,9 @@
 Graph RAG Pipeline
 
 LangGraph를 사용한 RAG 파이프라인 정의
-- 병렬 실행: entity_extractor + schema_fetcher (Send API 사용)
 - Vector Search 기반 캐싱: cache_checker 노드로 유사 질문 캐시 활용
 - MemorySaver Checkpointer로 대화 기록 자동 관리
+- 스키마는 초기화 시 주입 (런타임 조회 제거)
 """
 
 import logging
@@ -13,10 +13,9 @@ from typing import Literal
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
-from langgraph.types import Send
 
 from src.config import Settings
-from src.domain.types import PipelineMetadata, PipelineResult
+from src.domain.types import GraphSchema, PipelineMetadata, PipelineResult
 from src.graph.nodes import (
     CacheCheckerNode,
     ClarificationHandlerNode,
@@ -26,7 +25,6 @@ from src.graph.nodes import (
     GraphExecutorNode,
     IntentClassifierNode,
     ResponseGeneratorNode,
-    SchemaFetcherNode,
 )
 from src.graph.state import GraphRAGState
 from src.infrastructure.neo4j_client import Neo4jClient
@@ -43,9 +41,25 @@ class GraphRAGPipeline:
 
     질문 → 의도분류 → 엔티티추출 → 엔티티해석 → Cypher생성 → 쿼리실행 → 응답생성
 
+    Note:
+        - graph_schema는 앱 시작 시 한 번 로드하여 주입 (성능 최적화)
+        - 스키마 미주입 시 CypherGenerator가 Neo4j에서 직접 조회 (fallback)
+        - 스키마 변경 시 파이프라인 재생성 또는 앱 재시작 필요
+
     사용 예시:
-        pipeline = GraphRAGPipeline(settings, neo4j_repo, llm_repo)
-        result = await pipeline.run("홍길동의 부서는 어디인가요?")
+        # 1. 스키마 사전 로드
+        schema = await neo4j_repo.get_schema()
+
+        # 2. 파이프라인 생성 (스키마 주입 권장)
+        pipeline = GraphRAGPipeline(
+            settings=settings,
+            neo4j_repository=neo4j_repo,
+            llm_repository=llm_repo,
+            graph_schema=schema,
+        )
+
+        # 3. 실행
+        result = await pipeline.run("홍길동의 부서는?", session_id="user-123")
     """
 
     def __init__(
@@ -54,10 +68,12 @@ class GraphRAGPipeline:
         neo4j_repository: Neo4jRepository,
         llm_repository: LLMRepository,
         neo4j_client: Neo4jClient | None = None,
+        graph_schema: GraphSchema | None = None,
     ):
         self._settings = settings
         self._neo4j = neo4j_repository
         self._llm = llm_repository
+        self._graph_schema = graph_schema  # 초기화 시 주입된 스키마
 
         # Query Cache Repository 초기화 (Vector Search 활성화 시)
         self._cache_repository: QueryCacheRepository | None = None
@@ -68,7 +84,6 @@ class GraphRAGPipeline:
         # 노드 초기화
         self._intent_classifier = IntentClassifierNode(llm_repository)
         self._entity_extractor = EntityExtractorNode(llm_repository)
-        self._schema_fetcher = SchemaFetcherNode(neo4j_repository)  # 병렬 실행용
         self._entity_resolver = EntityResolverNode(neo4j_repository)
         self._clarification_handler = ClarificationHandlerNode(llm_repository)
         self._cypher_generator = CypherGeneratorNode(
@@ -98,18 +113,17 @@ class GraphRAGPipeline:
 
         logger.info(
             "GraphRAGPipeline initialized "
-            f"(parallel execution: ON, vector cache: {settings.vector_search_enabled}, "
-            "checkpointer: MemorySaver)"
+            f"(vector cache: {settings.vector_search_enabled}, "
+            f"schema injected: {graph_schema is not None}, checkpointer: MemorySaver)"
         )
 
     def _build_graph(self) -> StateGraph:
-        """LangGraph 워크플로우 구성 (병렬 실행 + Vector Cache 포함)"""
+        """LangGraph 워크플로우 구성 (Vector Cache + Checkpointer)"""
         workflow = StateGraph(GraphRAGState)
 
-        # 노드 추가
+        # 노드 추가 (schema_fetcher 제거됨 - 스키마는 초기화 시 주입)
         workflow.add_node("intent_classifier", self._intent_classifier)
         workflow.add_node("entity_extractor", self._entity_extractor)
-        workflow.add_node("schema_fetcher", self._schema_fetcher)  # 병렬 실행용
         workflow.add_node("entity_resolver", self._entity_resolver)
         workflow.add_node("clarification_handler", self._clarification_handler)
         workflow.add_node("cypher_generator", self._cypher_generator)
@@ -127,7 +141,7 @@ class GraphRAGPipeline:
         # 조건부 엣지 정의 (Conditional Edges)
         # ---------------------------------------------------------
 
-        # 1. Intent Classifier -> Cache Checker 또는 병렬(Entity Extractor + Schema Fetcher)
+        # 1. Intent Classifier -> Cache Checker 또는 Entity Extractor
         if self._cache_checker:
             # Vector Cache 활성화 시: intent_classifier -> cache_checker
             def route_after_intent_with_cache(
@@ -144,14 +158,14 @@ class GraphRAGPipeline:
                 ["cache_checker", "response_generator"],
             )
 
-            # 2. Cache Checker -> 캐시 히트 시 graph_executor, 미스 시 병렬 실행
+            # 2. Cache Checker -> 캐시 히트 시 cypher_generator, 미스 시 entity_extractor
             def route_after_cache_check(
                 state: GraphRAGState,
-            ) -> list[Send] | Literal["cypher_generator"]:
+            ) -> Literal["cypher_generator", "entity_extractor"]:
                 """
                 캐시 결과에 따라 라우팅:
                 - cache_hit=True: cypher_generator로 이동 (캐시된 쿼리 사용)
-                - cache_hit=False: entity_extractor와 schema_fetcher 병렬 실행
+                - cache_hit=False: entity_extractor로 이동
                 """
                 if state.get("skip_generation"):
                     logger.info(
@@ -159,50 +173,38 @@ class GraphRAGPipeline:
                     )
                     return "cypher_generator"
 
-                # 캐시 미스: 병렬 실행
-                logger.info("Cache MISS: dispatching parallel execution")
-                return [
-                    Send("entity_extractor", state),
-                    Send("schema_fetcher", state),
-                ]
+                logger.info("Cache MISS: proceeding to entity_extractor")
+                return "entity_extractor"
 
             workflow.add_conditional_edges(
                 "cache_checker",
                 route_after_cache_check,
-                ["entity_extractor", "schema_fetcher", "cypher_generator"],
+                ["entity_extractor", "cypher_generator"],
             )
         else:
-            # Vector Cache 비활성화 시: 기존 로직
+            # Vector Cache 비활성화 시: intent -> entity_extractor
             def route_after_intent(
                 state: GraphRAGState,
-            ) -> list[Send] | Literal["response_generator"]:
+            ) -> Literal["entity_extractor", "response_generator"]:
                 """
                 Intent에 따라 라우팅:
                 - unknown: response_generator로 직접 이동
-                - 유효한 intent: entity_extractor와 schema_fetcher 병렬 실행
+                - 유효한 intent: entity_extractor로 이동
                 """
                 if state.get("intent") == "unknown":
                     logger.info("Intent is unknown. Skipping to response generator.")
                     return "response_generator"
 
-                # 병렬 실행: Send API 사용
-                logger.info(
-                    "Dispatching parallel execution: entity_extractor + schema_fetcher"
-                )
-                return [
-                    Send("entity_extractor", state),
-                    Send("schema_fetcher", state),
-                ]
+                return "entity_extractor"
 
             workflow.add_conditional_edges(
                 "intent_classifier",
                 route_after_intent,
-                ["entity_extractor", "schema_fetcher", "response_generator"],
+                ["entity_extractor", "response_generator"],
             )
 
-        # 2. 병렬 노드들 -> Entity Resolver로 수렴 (Fan-in)
+        # 2. Entity Extractor -> Entity Resolver (순차 실행)
         workflow.add_edge("entity_extractor", "entity_resolver")
-        workflow.add_edge("schema_fetcher", "entity_resolver")
 
         # 3. Entity Resolver -> Cypher Generator 또는 Clarification Handler
         def route_after_resolver(
@@ -285,13 +287,15 @@ class GraphRAGPipeline:
         thread_id = session_id or "default"
         config = {"configurable": {"thread_id": thread_id}}
 
-        # 사용자 메시지를 포함한 초기 상태
+        # 초기 상태 구성 (스키마 포함)
         initial_state: GraphRAGState = {
             "question": question,
             "session_id": session_id or "",
             "messages": [HumanMessage(content=question)],
             "execution_path": [],
         }
+        if self._graph_schema:
+            initial_state["schema"] = self._graph_schema
 
         try:
             # 파이프라인 실행
@@ -353,13 +357,15 @@ class GraphRAGPipeline:
         thread_id = session_id or "default"
         config = {"configurable": {"thread_id": thread_id}}
 
-        # 사용자 메시지를 포함한 초기 상태
+        # 초기 상태 구성 (스키마 포함)
         initial_state: GraphRAGState = {
             "question": question,
             "session_id": session_id or "",
             "messages": [HumanMessage(content=question)],
             "execution_path": [],
         }
+        if self._graph_schema:
+            initial_state["schema"] = self._graph_schema
 
         try:
             # 파이프라인 스트리밍 실행

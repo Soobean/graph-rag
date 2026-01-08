@@ -12,7 +12,6 @@ from src.graph.nodes.entity_resolver import EntityResolverNode
 from src.graph.nodes.graph_executor import GraphExecutorNode
 from src.graph.nodes.intent_classifier import IntentClassifierNode
 from src.graph.nodes.response_generator import ResponseGeneratorNode
-from src.graph.nodes.schema_fetcher import SchemaFetcherNode
 
 __all__ = [
     "IntentClassifierNode",
@@ -21,7 +20,6 @@ __all__ = [
     "CypherGeneratorNode",
     "GraphExecutorNode",
     "ResponseGeneratorNode",
-    "SchemaFetcherNode",
     "ClarificationHandlerNode",
     "CacheCheckerNode",
 ]

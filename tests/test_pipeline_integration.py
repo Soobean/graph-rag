@@ -5,53 +5,17 @@ Pipeline Integration Tests
 
 실행 방법:
     pytest tests/test_pipeline_integration.py -v
+
+Note:
+    공통 fixture (mock_settings, mock_llm, mock_neo4j, graph_schema, pipeline)는
+    tests/conftest.py에 정의되어 있습니다.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
-
-from src.config import Settings
-from src.graph.pipeline import GraphRAGPipeline
-from src.repositories.llm_repository import LLMRepository
-from src.repositories.neo4j_repository import Neo4jRepository
 
 
 class TestPipelineRouting:
     """파이프라인 라우팅 로직 테스트"""
-
-    @pytest.fixture
-    def mock_settings(self):
-        """Mock Settings"""
-        settings = MagicMock(spec=Settings)
-        settings.vector_search_enabled = False  # Vector cache 비활성화
-        return settings
-
-    @pytest.fixture
-    def mock_llm(self):
-        """Mock LLM Repository"""
-        llm = MagicMock(spec=LLMRepository)
-        llm.classify_intent = AsyncMock()
-        llm.extract_entities = AsyncMock()
-        llm.generate_cypher = AsyncMock()
-        llm.generate_response = AsyncMock()
-        return llm
-
-    @pytest.fixture
-    def mock_neo4j(self):
-        """Mock Neo4j Repository"""
-        neo4j = MagicMock(spec=Neo4jRepository)
-        neo4j.find_entities_by_name = AsyncMock(return_value=[])
-        neo4j.get_schema = AsyncMock(return_value={
-            "node_labels": ["Person"],
-            "relationship_types": ["WORKS_AT"],
-        })
-        neo4j.execute_cypher = AsyncMock(return_value=[])
-        return neo4j
-
-    @pytest.fixture
-    def pipeline(self, mock_settings, mock_neo4j, mock_llm):
-        """테스트용 파이프라인"""
-        return GraphRAGPipeline(mock_settings, mock_neo4j, mock_llm)
 
     @pytest.mark.asyncio
     async def test_unknown_intent_skips_to_response(
@@ -98,7 +62,7 @@ class TestPipelineRouting:
     async def test_normal_flow_all_nodes(
         self, pipeline, mock_llm, mock_neo4j
     ):
-        """정상 흐름 시 모든 노드 실행 (병렬 실행 포함)"""
+        """정상 흐름 시 모든 노드 실행 (순차 실행)"""
         mock_llm.classify_intent.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
@@ -120,11 +84,10 @@ class TestPipelineRouting:
         assert result["success"] is True
         path = result["metadata"]["execution_path"]
 
-        # 병렬 실행 노드 포함
+        # 순차 실행 노드 (스키마는 초기화 시 주입됨)
         expected_nodes = [
             "intent_classifier",
             "entity_extractor",
-            "schema_fetcher",  # 병렬 실행
             "entity_resolver",
             "cypher_generator",
             "graph_executor",
@@ -133,68 +96,9 @@ class TestPipelineRouting:
         for node in expected_nodes:
             assert node in path, f"{node} not in path: {path}"
 
-    @pytest.mark.asyncio
-    async def test_parallel_execution(
-        self, pipeline, mock_llm, mock_neo4j
-    ):
-        """entity_extractor와 schema_fetcher 병렬 실행 확인"""
-        mock_llm.classify_intent.return_value = {
-            "intent": "personnel_search",
-            "confidence": 0.9,
-        }
-        mock_llm.extract_entities.return_value = {"entities": []}
-        mock_llm.generate_cypher.return_value = {
-            "cypher": "MATCH (n) RETURN n",
-            "parameters": {},
-        }
-        mock_neo4j.execute_cypher.return_value = []
-        mock_llm.generate_response.return_value = "결과 없음"
-
-        result = await pipeline.run("테스트 질문")
-
-        path = result["metadata"]["execution_path"]
-
-        # 병렬 실행된 노드들이 모두 경로에 포함되어야 함
-        assert "entity_extractor" in path
-        assert "schema_fetcher" in path
-
-        # schema가 state에 저장되었는지 확인 (CypherGenerator에서 사용)
-        # mock_neo4j.get_schema가 호출되었는지 확인
-        mock_neo4j.get_schema.assert_called()
-
 
 class TestPipelineMetadata:
     """파이프라인 메타데이터 테스트"""
-
-    @pytest.fixture
-    def mock_settings(self):
-        settings = MagicMock(spec=Settings)
-        settings.vector_search_enabled = False  # Vector cache 비활성화
-        return settings
-
-    @pytest.fixture
-    def mock_llm(self):
-        llm = MagicMock(spec=LLMRepository)
-        llm.classify_intent = AsyncMock()
-        llm.extract_entities = AsyncMock()
-        llm.generate_cypher = AsyncMock()
-        llm.generate_response = AsyncMock()
-        return llm
-
-    @pytest.fixture
-    def mock_neo4j(self):
-        neo4j = MagicMock(spec=Neo4jRepository)
-        neo4j.find_entities_by_name = AsyncMock(return_value=[])
-        neo4j.get_schema = AsyncMock(return_value={
-            "node_labels": ["Person"],
-            "relationship_types": ["WORKS_AT"],
-        })
-        neo4j.execute_cypher = AsyncMock(return_value=[])
-        return neo4j
-
-    @pytest.fixture
-    def pipeline(self, mock_settings, mock_neo4j, mock_llm):
-        return GraphRAGPipeline(mock_settings, mock_neo4j, mock_llm)
 
     @pytest.mark.asyncio
     async def test_metadata_includes_intent(self, pipeline, mock_llm, mock_neo4j):
@@ -267,36 +171,6 @@ class TestPipelineMetadata:
 class TestPipelineErrorHandling:
     """파이프라인 에러 처리 테스트"""
 
-    @pytest.fixture
-    def mock_settings(self):
-        settings = MagicMock(spec=Settings)
-        settings.vector_search_enabled = False  # Vector cache 비활성화
-        return settings
-
-    @pytest.fixture
-    def mock_llm(self):
-        llm = MagicMock(spec=LLMRepository)
-        llm.classify_intent = AsyncMock()
-        llm.extract_entities = AsyncMock()
-        llm.generate_cypher = AsyncMock()
-        llm.generate_response = AsyncMock()
-        return llm
-
-    @pytest.fixture
-    def mock_neo4j(self):
-        neo4j = MagicMock(spec=Neo4jRepository)
-        neo4j.find_entities_by_name = AsyncMock(return_value=[])
-        neo4j.get_schema = AsyncMock(return_value={
-            "node_labels": ["Person"],
-            "relationship_types": ["WORKS_AT"],
-        })
-        neo4j.execute_cypher = AsyncMock(return_value=[])
-        return neo4j
-
-    @pytest.fixture
-    def pipeline(self, mock_settings, mock_neo4j, mock_llm):
-        return GraphRAGPipeline(mock_settings, mock_neo4j, mock_llm)
-
     @pytest.mark.asyncio
     async def test_intent_classifier_error(self, pipeline, mock_llm):
         """Intent classifier 에러 시 graceful 처리 (fallback to unknown)"""
@@ -349,36 +223,6 @@ class TestPipelineErrorHandling:
 class TestPipelineStreaming:
     """파이프라인 스트리밍 모드 테스트"""
 
-    @pytest.fixture
-    def mock_settings(self):
-        settings = MagicMock(spec=Settings)
-        settings.vector_search_enabled = False  # Vector cache 비활성화
-        return settings
-
-    @pytest.fixture
-    def mock_llm(self):
-        llm = MagicMock(spec=LLMRepository)
-        llm.classify_intent = AsyncMock()
-        llm.extract_entities = AsyncMock()
-        llm.generate_cypher = AsyncMock()
-        llm.generate_response = AsyncMock()
-        return llm
-
-    @pytest.fixture
-    def mock_neo4j(self):
-        neo4j = MagicMock(spec=Neo4jRepository)
-        neo4j.find_entities_by_name = AsyncMock(return_value=[])
-        neo4j.get_schema = AsyncMock(return_value={
-            "node_labels": ["Person"],
-            "relationship_types": ["WORKS_AT"],
-        })
-        neo4j.execute_cypher = AsyncMock(return_value=[])
-        return neo4j
-
-    @pytest.fixture
-    def pipeline(self, mock_settings, mock_neo4j, mock_llm):
-        return GraphRAGPipeline(mock_settings, mock_neo4j, mock_llm)
-
     @pytest.mark.asyncio
     async def test_streaming_yields_events(self, pipeline, mock_llm, mock_neo4j):
         """스트리밍 모드에서 각 노드 이벤트 yield"""
@@ -409,36 +253,6 @@ class TestPipelineStreaming:
 
 class TestPipelineEmptyResults:
     """빈 결과 처리 테스트"""
-
-    @pytest.fixture
-    def mock_settings(self):
-        settings = MagicMock(spec=Settings)
-        settings.vector_search_enabled = False  # Vector cache 비활성화
-        return settings
-
-    @pytest.fixture
-    def mock_llm(self):
-        llm = MagicMock(spec=LLMRepository)
-        llm.classify_intent = AsyncMock()
-        llm.extract_entities = AsyncMock()
-        llm.generate_cypher = AsyncMock()
-        llm.generate_response = AsyncMock()
-        return llm
-
-    @pytest.fixture
-    def mock_neo4j(self):
-        neo4j = MagicMock(spec=Neo4jRepository)
-        neo4j.find_entities_by_name = AsyncMock(return_value=[])
-        neo4j.get_schema = AsyncMock(return_value={
-            "node_labels": ["Person"],
-            "relationship_types": ["WORKS_AT"],
-        })
-        neo4j.execute_cypher = AsyncMock(return_value=[])
-        return neo4j
-
-    @pytest.fixture
-    def pipeline(self, mock_settings, mock_neo4j, mock_llm):
-        return GraphRAGPipeline(mock_settings, mock_neo4j, mock_llm)
 
     @pytest.mark.asyncio
     async def test_empty_query_results(self, pipeline, mock_llm, mock_neo4j):

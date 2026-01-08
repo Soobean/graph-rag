@@ -28,15 +28,22 @@ async def run_verification():
     # Mock Neo4j
     mock_neo4j = MagicMock(spec=Neo4jRepository)
     mock_neo4j.find_entities_by_name = AsyncMock(return_value=[])
-    mock_neo4j.get_schema = AsyncMock(return_value={"node_labels": ["Person"]})
     mock_neo4j.execute_cypher = AsyncMock(return_value=[])
 
-    pipeline = GraphRAGPipeline(settings, mock_neo4j, mock_llm)
+    # 스키마 사전 로드 (파이프라인 초기화 전)
+    graph_schema = {"node_labels": ["Person"], "relationship_types": ["WORKS_AT"]}
+
+    pipeline = GraphRAGPipeline(
+        settings=settings,
+        neo4j_repository=mock_neo4j,
+        llm_repository=mock_llm,
+        graph_schema=graph_schema,
+    )
 
     print("\n=== Test 1: Unknown Intent (Skip to End) ===")
     mock_llm.classify_intent.return_value = {"intent": "unknown", "confidence": 0.0}
 
-    result = await pipeline.run("알 수 없는 질문")
+    result = await pipeline.run("알 수 없는 질문", session_id="test-1")
     print(f"Path: {result['metadata']['execution_path']}")
     assert "entity_extractor" not in result["metadata"]["execution_path"]
     # ResponseGenerator adds "response_generator_empty" when result is empty
@@ -52,7 +59,7 @@ async def run_verification():
     mock_llm.generate_cypher.side_effect = Exception("Cypher Error")  # 에러 발생
     mock_llm.generate_response.return_value = "오류가 발생했습니다."
 
-    result = await pipeline.run("에러 유발 질문")
+    result = await pipeline.run("에러 유발 질문", session_id="test-2")
     print(f"Path: {result['metadata']['execution_path']}")
     assert "cypher_generator_error" in result["metadata"]["execution_path"]
     assert "graph_executor" not in result["metadata"]["execution_path"]
@@ -75,7 +82,7 @@ async def run_verification():
     mock_neo4j.execute_cypher.return_value = [{"n": "Kim"}]
     mock_llm.generate_response.return_value = "Kim을 찾았습니다."
 
-    result = await pipeline.run("정상 질문")
+    result = await pipeline.run("정상 질문", session_id="test-3")
     print(f"Path: {result['metadata']['execution_path']}")
     expected_path = [
         "intent_classifier",
