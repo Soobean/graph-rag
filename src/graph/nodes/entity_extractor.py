@@ -8,6 +8,7 @@ import logging
 
 from src.domain.types import EntityExtractorUpdate
 from src.graph.state import GraphRAGState
+from src.graph.utils import format_chat_history
 from src.repositories.llm_repository import LLMRepository
 
 logger = logging.getLogger(__name__)
@@ -50,9 +51,14 @@ class EntityExtractorNode:
         logger.info(f"Extracting entities from: {question[:50]}...")
 
         try:
+            # 대화 기록 포맷팅 (현재 질문 제외)
+            messages = state.get("messages", [])
+            chat_history = format_chat_history(messages)
+
             result = await self._llm.extract_entities(
                 question=question,
                 entity_types=self._entity_types,
+                chat_history=chat_history,
             )
 
             raw_entities = result.get("entities", [])

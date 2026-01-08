@@ -6,13 +6,17 @@ system: |
   2. Includes relevant details from the results
   3. Is concise but complete
   4. Uses natural Korean language
+  5. Consider the previous conversation context when interpreting pronouns like "그 사람", "그것", "거기" etc.
 
   If results are empty, politely indicate that no matching data was found.
 
 user: |
-  Question: {question}
+  Previous conversation:
+  {chat_history}
+
+  Current question: {question}
 
   Query Results:
   {results_str}
 
-  Please provide a natural language answer based on these results.
+  Please provide a natural language answer based on these results and conversation context.

@@ -8,4 +8,7 @@ system: |
   If the question doesn't match any intent well, use confidence < 0.5.
 
 user: |
-  {question}
+  Previous conversation:
+  {chat_history}
+
+  Current question: {question}

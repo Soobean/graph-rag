@@ -4,10 +4,14 @@ Graph RAG 파이프라인 상태 정의
 LangGraph의 상태 관리를 위한 TypedDict 정의
 - ARCHITECTURE.md의 3.1 섹션 준수
 - Annotated를 활용한 State Reducer 적용
+- Checkpointer를 통한 대화 기록 자동 관리
 """
 
 import operator
 from typing import Annotated, Any, Literal, TypedDict
+
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 
 from src.domain.types import GraphSchema, ResolvedEntity
 
@@ -32,6 +36,7 @@ class GraphRAGState(TypedDict, total=False):
     """
 
     # 1. 입력 (Input)
+    messages: Annotated[list[BaseMessage], add_messages]  # LangGraph Native History
     question: str
     session_id: str
 

@@ -5,7 +5,10 @@ Domain Types
 dict[str, Any] 대신 명확한 타입을 사용하여 타입 안전성 확보
 """
 
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
+
+if TYPE_CHECKING:
+    from langchain_core.messages import BaseMessage
 
 # =============================================================================
 # Graph Schema Types
@@ -243,6 +246,7 @@ class ResponseGeneratorUpdate(TypedDict, total=False):
     """ResponseGenerator 노드 반환 타입"""
 
     response: str
+    messages: list["BaseMessage"]
     execution_path: list[str]
     error: str | None
 
