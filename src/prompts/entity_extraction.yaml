@@ -12,4 +12,7 @@ system: |
   If no entities found, return {{"entities": []}}
 
 user: |
-  {question}
+  Previous conversation:
+  {chat_history}
+
+  Current question: {question}

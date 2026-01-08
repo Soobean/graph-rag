@@ -7,8 +7,11 @@ Response Generator Node
 import logging
 from typing import Any
 
+from langchain_core.messages import AIMessage
+
 from src.domain.types import ResponseGeneratorUpdate
 from src.graph.state import GraphRAGState
+from src.graph.utils import format_chat_history
 from src.repositories.llm_repository import LLMRepository
 
 logger = logging.getLogger(__name__)
@@ -34,20 +37,32 @@ class ResponseGeneratorNode:
         graph_results = state.get("graph_results", [])
         cypher_query = state.get("cypher_query", "")
         error_msg = state.get("error")
+        messages = state.get("messages", [])
 
-        logger.info(f"Generating response for {len(graph_results)} results...")
+        # 이전 대화 기록 포맷팅
+        chat_history = format_chat_history(messages)
+        prev_msg_count = max(0, len(messages) - 1)
+
+        logger.info(
+            f"Generating response for {len(graph_results)} results "
+            f"(chat_history: {prev_msg_count} previous messages)..."
+        )
 
         # 에러가 있는 경우 에러 메시지 생성
         if error_msg:
+            error_response = f"죄송합니다. 질문을 처리하는 중 오류가 발생했습니다: {error_msg}"
             return {
-                "response": f"죄송합니다. 질문을 처리하는 중 오류가 발생했습니다: {error_msg}",
+                "response": error_response,
+                "messages": [AIMessage(content=error_response)],
                 "execution_path": ["response_generator_error_handler"],
             }
 
         # 결과가 없는 경우
         if not graph_results:
+            empty_response = "죄송합니다. 질문에 해당하는 정보를 찾을 수 없습니다. 다른 방식으로 질문해 주시거나, 검색 조건을 확인해 주세요."
             return {
-                "response": "죄송합니다. 질문에 해당하는 정보를 찾을 수 없습니다. 다른 방식으로 질문해 주시거나, 검색 조건을 확인해 주세요.",
+                "response": empty_response,
+                "messages": [AIMessage(content=empty_response)],
                 "execution_path": ["response_generator_empty"],
             }
 
@@ -56,12 +71,14 @@ class ResponseGeneratorNode:
                 question=question,
                 query_results=graph_results,
                 cypher_query=cypher_query,
+                chat_history=chat_history,
             )
 
             logger.info(f"Generated response: {response[:100]}...")
 
             return {
                 "response": response,
+                "messages": [AIMessage(content=response)],
                 "execution_path": ["response_generator"],
             }
 
@@ -73,6 +90,7 @@ class ResponseGeneratorNode:
 
             return {
                 "response": fallback_response,
+                "messages": [AIMessage(content=fallback_response)],
                 "execution_path": ["response_generator_fallback"],
             }
 

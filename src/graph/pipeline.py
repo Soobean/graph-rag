@@ -4,11 +4,14 @@ Graph RAG Pipeline
 LangGraph를 사용한 RAG 파이프라인 정의
 - 병렬 실행: entity_extractor + schema_fetcher (Send API 사용)
 - Vector Search 기반 캐싱: cache_checker 노드로 유사 질문 캐시 활용
+- MemorySaver Checkpointer로 대화 기록 자동 관리
 """
 
 import logging
 from typing import Literal
 
+from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
@@ -87,12 +90,16 @@ class GraphRAGPipeline:
             )
             logger.info("Cache checker node initialized")
 
+        # MemorySaver Checkpointer (대화 기록 자동 관리)
+        self._checkpointer = MemorySaver()
+
         # 그래프 빌드
         self._graph = self._build_graph()
 
         logger.info(
             "GraphRAGPipeline initialized "
-            f"(parallel execution: ON, vector cache: {settings.vector_search_enabled})"
+            f"(parallel execution: ON, vector cache: {settings.vector_search_enabled}, "
+            "checkpointer: MemorySaver)"
         )
 
     def _build_graph(self) -> StateGraph:
@@ -254,7 +261,8 @@ class GraphRAGPipeline:
         # 7. Response Generator -> END
         workflow.add_edge("response_generator", END)
 
-        return workflow.compile()
+        # Checkpointer와 함께 컴파일 (세션별 대화 기록 자동 관리)
+        return workflow.compile(checkpointer=self._checkpointer)
 
     async def run(
         self,
@@ -266,22 +274,31 @@ class GraphRAGPipeline:
 
         Args:
             question: 사용자 질문
-            session_id: 세션 ID (선택)
+            session_id: 세션 ID (대화 기록 유지를 위해 필요)
 
         Returns:
             파이프라인 실행 결과
         """
         logger.info(f"Running pipeline for: {question[:50]}...")
 
+        # thread_id로 세션 구분 (Checkpointer가 대화 기록 자동 관리)
+        thread_id = session_id or "default"
+        config = {"configurable": {"thread_id": thread_id}}
+
+        # 사용자 메시지를 포함한 초기 상태
         initial_state: GraphRAGState = {
             "question": question,
             "session_id": session_id or "",
+            "messages": [HumanMessage(content=question)],
             "execution_path": [],
         }
 
         try:
             # 파이프라인 실행
-            final_state = await self._graph.ainvoke(initial_state)
+            # (AIMessage는 ResponseGenerator/ClarificationHandler 노드에서 직접 추가됨)
+            final_state = await self._graph.ainvoke(initial_state, config=config)
+
+            response_text = final_state.get("response", "")
 
             metadata: PipelineMetadata = {
                 "intent": final_state.get("intent", "unknown"),
@@ -298,7 +315,7 @@ class GraphRAGPipeline:
             return {
                 "success": True,
                 "question": question,
-                "response": final_state.get("response", ""),
+                "response": response_text,
                 "metadata": metadata,
                 "error": final_state.get("error"),
             }
@@ -332,14 +349,22 @@ class GraphRAGPipeline:
         """
         logger.info(f"Running pipeline (streaming) for: {question[:50]}...")
 
+        # thread_id로 세션 구분 (Checkpointer가 대화 기록 자동 관리)
+        thread_id = session_id or "default"
+        config = {"configurable": {"thread_id": thread_id}}
+
+        # 사용자 메시지를 포함한 초기 상태
         initial_state: GraphRAGState = {
             "question": question,
             "session_id": session_id or "",
+            "messages": [HumanMessage(content=question)],
             "execution_path": [],
         }
 
         try:
-            async for event in self._graph.astream(initial_state):
+            # 파이프라인 스트리밍 실행
+            # (AIMessage는 ResponseGenerator/ClarificationHandler 노드에서 직접 추가됨)
+            async for event in self._graph.astream(initial_state, config=config):
                 # 각 노드의 출력을 yield
                 for node_name, node_output in event.items():
                     yield {

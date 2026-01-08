@@ -85,6 +85,20 @@ class LLMRepository:
         # GPT-5 이상 모델은 temperature를 지원하지 않음
         return not deployment.lower().startswith("gpt-5")
 
+    def _format_chat_history_for_prompt(self, chat_history: str) -> str:
+        """
+        프롬프트용 chat_history 포맷팅
+
+        빈 문자열이나 공백만 있는 경우 기본 메시지로 대체합니다.
+
+        Args:
+            chat_history: format_chat_history()의 반환값
+
+        Returns:
+            프롬프트에 삽입할 chat_history 문자열
+        """
+        return chat_history.strip() or "(No previous conversation)"
+
     async def generate(
         self,
         system_prompt: str,
@@ -117,7 +131,9 @@ class LLMRepository:
             # GPT-5 이상 모델은 temperature 미지원
             if self._supports_temperature(deployment):
                 api_params["temperature"] = (
-                    temperature if temperature is not None else self._settings.llm_temperature
+                    temperature
+                    if temperature is not None
+                    else self._settings.llm_temperature
                 )
 
             response = await client.chat.completions.create(**api_params)
@@ -174,7 +190,9 @@ class LLMRepository:
             # GPT-5 이상 모델은 temperature 미지원
             if self._supports_temperature(deployment):
                 api_params["temperature"] = (
-                    temperature if temperature is not None else self._settings.llm_temperature
+                    temperature
+                    if temperature is not None
+                    else self._settings.llm_temperature
                 )
 
             response = await client.chat.completions.create(**api_params)
@@ -207,6 +225,7 @@ class LLMRepository:
         self,
         question: str,
         available_intents: list[str],
+        chat_history: str = "",
     ) -> IntentClassificationResult:
         """
         질문 의도 분류
@@ -219,7 +238,10 @@ class LLMRepository:
         system_prompt = prompt["system"].format(
             available_intents=", ".join(available_intents)
         )
-        user_prompt = prompt["user"].format(question=question)
+        user_prompt = prompt["user"].format(
+            question=question,
+            chat_history=self._format_chat_history_for_prompt(chat_history),
+        )
 
         result = await self.generate_json(
             system_prompt=system_prompt,
@@ -235,6 +257,7 @@ class LLMRepository:
         self,
         question: str,
         entity_types: list[str],
+        chat_history: str = "",
     ) -> EntityExtractionResult:
         """
         질문에서 엔티티 추출
@@ -245,7 +268,10 @@ class LLMRepository:
         prompt = self._prompt_manager.load_prompt("entity_extraction")
 
         system_prompt = prompt["system"].format(entity_types=", ".join(entity_types))
-        user_prompt = prompt["user"].format(question=question)
+        user_prompt = prompt["user"].format(
+            question=question,
+            chat_history=self._format_chat_history_for_prompt(chat_history),
+        )
 
         result = await self.generate_json(
             system_prompt=system_prompt,
@@ -288,16 +314,27 @@ class LLMRepository:
         question: str,
         query_results: list[dict[str, Any]],
         cypher_query: str,
+        chat_history: str = "",
     ) -> str:
         """
         최종 응답 생성
+
+        Args:
+            question: 사용자 질문
+            query_results: Neo4j 쿼리 결과
+            cypher_query: 실행된 Cypher 쿼리
+            chat_history: 이전 대화 기록 (포맷된 문자열)
         """
         prompt = self._prompt_manager.load_prompt("response_generation")
 
         results_str = self._format_results(query_results)
 
-        system_prompt = prompt["system"]  # 인자 없음
-        user_prompt = prompt["user"].format(question=question, results_str=results_str)
+        system_prompt = prompt["system"]
+        user_prompt = prompt["user"].format(
+            question=question,
+            results_str=results_str,
+            chat_history=self._format_chat_history_for_prompt(chat_history),
+        )
 
         return await self.generate(
             system_prompt=system_prompt,
@@ -378,7 +415,9 @@ class LLMRepository:
             raise LLMConnectionError(str(e)) from e
         except APIStatusError as e:
             logger.error(f"Embedding API status error: {e}")
-            raise LLMResponseError(f"Embedding API error: {e.status_code} - {e.message}") from e
+            raise LLMResponseError(
+                f"Embedding API error: {e.status_code} - {e.message}"
+            ) from e
         except Exception as e:
             logger.error(f"Embedding generation failed: {e}")
             raise LLMResponseError(f"Failed to generate embedding: {e}") from e
@@ -434,7 +473,9 @@ class LLMRepository:
             raise LLMConnectionError(str(e)) from e
         except APIStatusError as e:
             logger.error(f"Batch embedding API status error: {e}")
-            raise LLMResponseError(f"Embedding API error: {e.status_code} - {e.message}") from e
+            raise LLMResponseError(
+                f"Embedding API error: {e.status_code} - {e.message}"
+            ) from e
         except Exception as e:
             logger.error(f"Batch embedding generation failed: {e}")
             raise LLMResponseError(f"Failed to generate batch embeddings: {e}") from e

@@ -5,7 +5,8 @@ Clarification Handler Node
 """
 
 import logging
-from typing import Any
+
+from langchain_core.messages import AIMessage
 
 from src.domain.types import ExtractedEntity, ResolvedEntity, ResponseGeneratorUpdate
 from src.graph.state import GraphRAGState
@@ -55,13 +56,16 @@ class ClarificationHandlerNode:
 
             return {
                 "response": response,
+                "messages": [AIMessage(content=response)],
                 "execution_path": ["clarification_handler"],
             }
 
         except Exception as e:
             logger.error(f"Clarification generation failed: {e}")
+            fallback_response = self._generate_fallback_clarification(entities)
             return {
-                "response": self._generate_fallback_clarification(entities),
+                "response": fallback_response,
+                "messages": [AIMessage(content=fallback_response)],
                 "execution_path": ["clarification_handler_fallback"],
             }
 

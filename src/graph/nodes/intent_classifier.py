@@ -9,6 +9,7 @@ from typing import cast
 
 from src.domain.types import IntentClassifierUpdate
 from src.graph.state import GraphRAGState, IntentType
+from src.graph.utils import format_chat_history
 from src.repositories.llm_repository import LLMRepository
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,14 @@ class IntentClassifierNode:
                 "path_analysis",
             ]
 
+            # 대화 기록 포맷팅 (현재 질문 제외)
+            messages = state.get("messages", [])
+            chat_history = format_chat_history(messages)
+
             result = await self._llm.classify_intent(
                 question=question,
                 available_intents=available_intents,
+                chat_history=chat_history,
             )
 
             intent_str = result.get("intent", "unknown")
