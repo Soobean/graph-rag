@@ -207,14 +207,6 @@ class EntityExtractorUpdate(TypedDict, total=False):
     error: str | None
 
 
-class SchemaFetcherUpdate(TypedDict, total=False):
-    """SchemaFetcher 노드 반환 타입"""
-
-    schema: GraphSchema
-    execution_path: list[str]
-    error: str | None
-
-
 class EntityResolverUpdate(TypedDict, total=False):
     """EntityResolver 노드 반환 타입"""
 
@@ -272,7 +264,6 @@ class CacheCheckerUpdate(TypedDict, total=False):
 NodeUpdate = (
     IntentClassifierUpdate
     | EntityExtractorUpdate
-    | SchemaFetcherUpdate
     | EntityResolverUpdate
     | CypherGeneratorUpdate
     | GraphExecutorUpdate

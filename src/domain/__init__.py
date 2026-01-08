@@ -25,7 +25,6 @@ from src.domain.types import (
     PipelineResult,
     ResolvedEntity,
     ResponseGeneratorUpdate,
-    SchemaFetcherUpdate,
 )
 
 __all__ = [
@@ -49,7 +48,6 @@ __all__ = [
     # Node Update Types
     "IntentClassifierUpdate",
     "EntityExtractorUpdate",
-    "SchemaFetcherUpdate",
     "EntityResolverUpdate",
     "CypherGeneratorUpdate",
     "GraphExecutorUpdate",

@@ -25,11 +25,6 @@ NODE_INFO = {
         "icon": "🔍",
         "type": "llm",
     },
-    "schema_fetcher": {
-        "name": "Schema Fetch",
-        "icon": "📊",
-        "type": "retrieval",
-    },
     "entity_resolver": {
         "name": "Entity Resolution",
         "icon": "🔗",
@@ -73,12 +68,6 @@ def format_step_output(node_name: str, output: dict) -> str:
         for category, items in entities.items():
             lines.append(f"- **{category}:** {', '.join(items)}")
         return "\n".join(lines)
-
-    elif node_name == "schema_fetcher":
-        schema = output.get("schema", {})
-        labels = schema.get("node_labels", [])[:10]
-        rels = schema.get("relationship_types", [])[:10]
-        return f"**Labels:** {', '.join(labels)}\n**Relationships:** {', '.join(rels)}"
 
     elif node_name == "entity_resolver":
         resolved = output.get("resolved_entities", [])
@@ -141,12 +130,22 @@ async def on_chat_start():
     neo4j_repo = Neo4jRepository(neo4j_client)
     llm_repo = LLMRepository(settings)
 
-    # Pipeline 초기화
-    pipeline = GraphRAGPipeline(settings, neo4j_repo, llm_repo)
+    # 스키마 사전 로드 (파이프라인에 주입)
+    graph_schema = await neo4j_repo.get_schema()
+
+    # Pipeline 초기화 (스키마 주입)
+    pipeline = GraphRAGPipeline(
+        settings=settings,
+        neo4j_repository=neo4j_repo,
+        llm_repository=llm_repo,
+        neo4j_client=neo4j_client,
+        graph_schema=graph_schema,
+    )
 
     # 세션에 저장
     cl.user_session.set("pipeline", pipeline)
     cl.user_session.set("neo4j_client", neo4j_client)
+    cl.user_session.set("llm_repo", llm_repo)
 
     await cl.Message(
         content="**Graph RAG System Ready**\n\n"
@@ -158,6 +157,10 @@ async def on_chat_start():
 @cl.on_chat_end
 async def on_chat_end():
     """채팅 세션 종료 시 리소스 정리"""
+    llm_repo = cl.user_session.get("llm_repo")
+    if llm_repo:
+        await llm_repo.close()
+
     neo4j_client = cl.user_session.get("neo4j_client")
     if neo4j_client:
         await neo4j_client.close()
