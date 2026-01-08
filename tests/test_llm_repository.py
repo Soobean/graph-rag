@@ -530,3 +530,149 @@ class TestClientLifecycle:
         # 에러 없이 종료되어야 함
         await repo.close()
         assert repo._client is None
+
+
+class TestFallbackMethods:
+    """Fallback 메서드 테스트 (HEAVY → LIGHT → Error)"""
+
+    @pytest.fixture
+    def mock_settings(self):
+        settings = MagicMock()
+        settings.azure_openai_endpoint = "https://test.openai.azure.com"
+        settings.azure_openai_api_key = "test-key"
+        settings.azure_openai_api_version = "2024-10-21"
+        settings.light_model_deployment = "gpt-4o-mini"
+        settings.heavy_model_deployment = "gpt-4o"
+        settings.llm_temperature = 0.0
+        settings.llm_max_tokens = 2000
+        return settings
+
+    @pytest.mark.asyncio
+    async def test_fallback_success_on_first_try(self, mock_settings):
+        """HEAVY 티어 성공 시 fallback 불필요"""
+        repo = LLMRepository(mock_settings)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Success response"
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        repo._client = mock_client
+
+        result = await repo._generate_with_fallback(
+            system_prompt="Test",
+            user_prompt="Test",
+        )
+
+        assert result == "Success response"
+        # 한 번만 호출되어야 함 (HEAVY만 성공)
+        assert mock_client.chat.completions.create.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_light_on_rate_limit(self, mock_settings):
+        """HEAVY Rate Limit 시 LIGHT로 fallback"""
+        from openai import RateLimitError
+
+        repo = LLMRepository(mock_settings)
+
+        # HEAVY 실패, LIGHT 성공
+        heavy_error = RateLimitError(
+            message="Rate limit exceeded",
+            response=MagicMock(status_code=429),
+            body=None,
+        )
+        light_response = MagicMock()
+        light_response.choices = [MagicMock()]
+        light_response.choices[0].message.content = "Fallback response"
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=[heavy_error, light_response]
+        )
+        repo._client = mock_client
+
+        result = await repo._generate_with_fallback(
+            system_prompt="Test",
+            user_prompt="Test",
+        )
+
+        assert result == "Fallback response"
+        # 두 번 호출되어야 함 (HEAVY 실패 + LIGHT 성공)
+        assert mock_client.chat.completions.create.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_fallback_all_tiers_fail(self, mock_settings):
+        """모든 티어 실패 시 에러 발생"""
+        from openai import APIConnectionError
+
+        repo = LLMRepository(mock_settings)
+
+        connection_error = APIConnectionError(request=MagicMock())
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=connection_error)
+        repo._client = mock_client
+
+        with pytest.raises(LLMResponseError) as exc_info:
+            await repo._generate_with_fallback(
+                system_prompt="Test",
+                user_prompt="Test",
+            )
+
+        assert "All model tiers failed" in str(exc_info.value)
+        # 두 번 호출되어야 함 (HEAVY 실패 + LIGHT 실패)
+        assert mock_client.chat.completions.create.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_json_fallback_success_on_first_try(self, mock_settings):
+        """JSON 생성 HEAVY 티어 성공 시 fallback 불필요"""
+        repo = LLMRepository(mock_settings)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"key": "value"}'
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        repo._client = mock_client
+
+        result = await repo._generate_json_with_fallback(
+            system_prompt="Test",
+            user_prompt="Test",
+        )
+
+        assert result == {"key": "value"}
+        assert mock_client.chat.completions.create.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_json_fallback_to_light(self, mock_settings):
+        """JSON 생성 HEAVY 실패 시 LIGHT로 fallback"""
+        repo = LLMRepository(mock_settings)
+
+        # HEAVY에서 LLMResponseError 발생 시 fallback
+        heavy_error = LLMResponseError("HEAVY failed")
+        light_response = MagicMock()
+        light_response.choices = [MagicMock()]
+        light_response.choices[0].message.content = '{"fallback": true}'
+
+        # generate_json을 직접 mock
+        original_generate_json = repo.generate_json
+        call_count = 0
+
+        async def mock_generate_json(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if kwargs.get("model_tier") == ModelTier.HEAVY:
+                raise heavy_error
+            return {"fallback": True}
+
+        repo.generate_json = mock_generate_json
+
+        result = await repo._generate_json_with_fallback(
+            system_prompt="Test",
+            user_prompt="Test",
+        )
+
+        assert result == {"fallback": True}
+        assert call_count == 2  # HEAVY 실패 + LIGHT 성공
