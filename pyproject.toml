@@ -23,6 +23,7 @@ dependencies = [
     # Utilities
     "python-dotenv>=1.0.0",
     "httpx>=0.26.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]

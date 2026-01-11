@@ -1,0 +1,189 @@
+# =============================================================================
+# Synonym Dictionary (동의어 사전)
+# =============================================================================
+# 이 파일은 동일한 개념을 나타내는 다양한 표현을 정의합니다.
+# ConceptExpanderNode가 사용자 입력을 정규화하고 확장하는 데 사용합니다.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 메타데이터
+# -----------------------------------------------------------------------------
+_meta:
+  version: "1.0.0"
+  description: "동의어 사전 - 양방향 조회 지원"
+  bidirectional: true   # "파이썬" 검색 시 → "Python" 및 모든 별칭 반환
+  case_insensitive: true  # 대소문자 무시
+
+# -----------------------------------------------------------------------------
+# 스킬 동의어
+# -----------------------------------------------------------------------------
+skills:
+  # 프로그래밍 언어
+  Python:
+    canonical: "Python"  # 정규화된 이름 (DB에 저장된 값)
+    aliases:
+      - "파이썬"
+      - "Python3"
+      - "Py"
+      - "python"
+
+  Java:
+    canonical: "Java"
+    aliases:
+      - "자바"
+      - "JDK"
+      - "java"
+
+  JavaScript:
+    canonical: "JavaScript"
+    aliases:
+      - "JS"
+      - "자바스크립트"
+      - "ECMAScript"
+      - "ES6"
+      - "javascript"
+
+  TypeScript:
+    canonical: "TypeScript"
+    aliases:
+      - "TS"
+      - "타입스크립트"
+
+  Go:
+    canonical: "Go"
+    aliases:
+      - "Golang"
+      - "고랭"
+
+  # AI/ML
+  "Machine Learning":
+    canonical: "ML"
+    aliases:
+      - "ML"
+      - "머신러닝"
+      - "기계학습"
+      - "machine learning"
+
+  "Deep Learning":
+    canonical: "Deep Learning"
+    aliases:
+      - "DL"
+      - "딥러닝"
+      - "심층학습"
+
+  NLP:
+    canonical: "NLP"
+    aliases:
+      - "자연어처리"
+      - "Natural Language Processing"
+      - "자연어 처리"
+
+  # 프레임워크
+  React:
+    canonical: "React"
+    aliases:
+      - "리액트"
+      - "React.js"
+      - "ReactJS"
+
+  Vue:
+    canonical: "Vue"
+    aliases:
+      - "뷰"
+      - "Vue.js"
+      - "VueJS"
+
+  Spring:
+    canonical: "Spring"
+    aliases:
+      - "스프링"
+      - "Spring Boot"
+      - "SpringBoot"
+
+  # 클라우드
+  AWS:
+    canonical: "AWS"
+    aliases:
+      - "Amazon Web Services"
+      - "아마존 웹 서비스"
+
+  GCP:
+    canonical: "GCP"
+    aliases:
+      - "Google Cloud Platform"
+      - "Google Cloud"
+      - "구글 클라우드"
+
+  Azure:
+    canonical: "Azure"
+    aliases:
+      - "Microsoft Azure"
+      - "애저"
+      - "MS Azure"
+
+# -----------------------------------------------------------------------------
+# 직급/역할 동의어
+# -----------------------------------------------------------------------------
+positions:
+  "백엔드 개발자":
+    canonical: "Backend Developer"
+    aliases:
+      - "Backend Developer"
+      - "Backend Engineer"
+      - "서버 개발자"
+      - "Server Developer"
+      - "백엔드 엔지니어"
+
+  "프론트엔드 개발자":
+    canonical: "Frontend Developer"
+    aliases:
+      - "Frontend Developer"
+      - "Frontend Engineer"
+      - "웹 개발자"
+      - "Web Developer"
+      - "프론트엔드 엔지니어"
+      - "UI 개발자"
+
+  "풀스택 개발자":
+    canonical: "Fullstack Developer"
+    aliases:
+      - "Fullstack Developer"
+      - "Full Stack Developer"
+      - "Fullstack Engineer"
+      - "풀스택 엔지니어"
+
+  "데이터 엔지니어":
+    canonical: "Data Engineer"
+    aliases:
+      - "Data Engineer"
+      - "데이터 엔지니어"
+      - "DE"
+
+  "ML 엔지니어":
+    canonical: "ML Engineer"
+    aliases:
+      - "ML Engineer"
+      - "Machine Learning Engineer"
+      - "머신러닝 엔지니어"
+      - "AI Engineer"
+      - "AI 엔지니어"
+
+# -----------------------------------------------------------------------------
+# 부서 동의어
+# -----------------------------------------------------------------------------
+departments:
+  "개발팀":
+    canonical: "Engineering"
+    aliases:
+      - "Engineering"
+      - "개발부"
+      - "엔지니어링"
+      - "R&D"
+
+  "데이터팀":
+    canonical: "Data Team"
+    aliases:
+      - "Data Team"
+      - "데이터팀"
+      - "Analytics"
+      - "분석팀"

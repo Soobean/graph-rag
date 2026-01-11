@@ -2,7 +2,7 @@
 
 ## 1.1 시스템 목적
 
-Neo4j에 적재된 기업/조직 도메인 그래프 데이터(850개 노드, 5000개 엣지)를 활용하여 자연어 질문에 대해 그래프 기반 지식을 검색하고 LLM을 통해 자연스러운 답변을 생성하는 Graph RAG 시스템 구축
+Neo4j에 적재된 기업/조직 도메인 그래프 데이터(850개 노드, 5000개 엣지)를 활용하여 자연어 질문에 대해 **온톨로지 기반 지식 확장(Reasoning)**과 그래프 탐색을 결합한 Graph RAG 시스템 구축
 
 ## 1.2 설계 원칙
 
@@ -49,6 +49,7 @@ graph-rag/
 │   │   └── nodes/                       # 노드 구현체
 │   │       ├── intent_classifier.py     # 의도 분류
 │   │       ├── entity_extractor.py      # 엔티티 추출
+│   │       ├── concept_expander.py      # [New] 온톨로지 기반 개념 확장
 │   │       ├── schema_fetcher.py        # 스키마 조회 (병렬 실행)
 │   │       ├── entity_resolver.py       # DB 엔티티 매칭
 │   │       ├── clarification_handler.py # 명확화 요청 (동명이인 등)
@@ -75,9 +76,14 @@ graph-rag/
 │   ├── utils/                           # [Utilities]
 │   │   └── prompt_manager.py            # YAML 프롬프트 로더 + 캐싱
 │   │
-│   └── domain/                          # [Domain Models]
+│   └── domain/                          # [Domain Models & Ontology]
 │       ├── types.py                     # TypedDict 정의 (노드 입출력)
-│       └── exceptions.py                # 도메인 예외
+│       ├── exceptions.py                # 도메인 예외
+│       └── ontology/                    # [New] 온톨로지 정의
+│           ├── __init__.py
+│           ├── loader.py                # YAML 로더
+│           ├── schema.yaml              # 개념 계층 정의 (Concept Hierarchy)
+│           └── synonyms.yaml            # 동의어 사전 (Synonyms)
 │
 ├── tests/                               # 테스트 (167개)
 │   ├── test_config.py
