@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from src.domain.ontology.loader import OntologyLoader
+from src.domain.ontology.loader import (
+    DEFAULT_EXPANSION_CONFIG,
+    ExpansionConfig,
+    OntologyLoader,
+)
 
 
 class TestOntologyLoader:
@@ -216,3 +220,132 @@ class TestOntologyLoader:
         synonyms2 = loader.load_synonyms()
 
         assert synonyms1 is synonyms2  # 같은 객체
+
+
+class TestExpansionConfig:
+    """ExpansionConfig 테스트"""
+
+    def test_default_config(self):
+        """기본 설정값 확인"""
+        config = ExpansionConfig()
+
+        assert config.max_synonyms == 5
+        assert config.max_children == 10
+        assert config.max_total == 15
+        assert config.include_synonyms is True
+        assert config.include_children is True
+
+    def test_custom_config(self):
+        """사용자 정의 설정"""
+        config = ExpansionConfig(
+            max_synonyms=3,
+            max_children=5,
+            max_total=8,
+        )
+
+        assert config.max_synonyms == 3
+        assert config.max_children == 5
+        assert config.max_total == 8
+
+    def test_invalid_max_synonyms(self):
+        """잘못된 max_synonyms 값"""
+        with pytest.raises(ValueError, match="max_synonyms must be non-negative"):
+            ExpansionConfig(max_synonyms=-1)
+
+    def test_invalid_max_children(self):
+        """잘못된 max_children 값"""
+        with pytest.raises(ValueError, match="max_children must be non-negative"):
+            ExpansionConfig(max_children=-1)
+
+    def test_invalid_max_total(self):
+        """잘못된 max_total 값"""
+        with pytest.raises(ValueError, match="max_total must be at least 1"):
+            ExpansionConfig(max_total=0)
+
+    def test_default_expansion_config_singleton(self):
+        """전역 기본 설정 확인"""
+        assert DEFAULT_EXPANSION_CONFIG.max_synonyms == 5
+        assert DEFAULT_EXPANSION_CONFIG.max_total == 15
+
+
+class TestExpansionLimit:
+    """확장 제한 테스트"""
+
+    @pytest.fixture
+    def loader(self) -> OntologyLoader:
+        """기본 로더 인스턴스"""
+        return OntologyLoader()
+
+    def test_expand_with_config(self, loader: OntologyLoader):
+        """config 파라미터 사용"""
+        config = ExpansionConfig(max_total=3)
+        expanded = loader.expand_concept("Backend", "skills", config=config)
+
+        assert len(expanded) <= 3
+
+    def test_expand_with_strict_limit(self, loader: OntologyLoader):
+        """매우 제한적인 설정"""
+        config = ExpansionConfig(
+            max_synonyms=1,
+            max_children=2,
+            max_total=3,
+        )
+        expanded = loader.expand_concept("Backend", "skills", config=config)
+
+        assert len(expanded) <= 3
+
+    def test_expand_unlimited(self, loader: OntologyLoader):
+        """높은 제한값 (사실상 무제한)"""
+        config = ExpansionConfig(
+            max_synonyms=100,
+            max_children=100,
+            max_total=200,
+        )
+        expanded = loader.expand_concept("Backend", "skills", config=config)
+
+        # Backend 하위에 Python, Java, Node.js, Go, Kotlin, Spring 등이 있음
+        assert "Backend" in expanded
+        assert "Python" in expanded
+        assert "Java" in expanded
+
+    def test_expand_default_config(self, loader: OntologyLoader):
+        """기본 설정 (max_total=15) 적용"""
+        # Backend 카테고리는 하위 스킬이 많음
+        expanded = loader.expand_concept("Backend", "skills")
+
+        # 기본 max_total=15 적용
+        assert len(expanded) <= 15
+
+    def test_expand_synonyms_only(self, loader: OntologyLoader):
+        """동의어만 확장 (하위 개념 제외)"""
+        config = ExpansionConfig(
+            include_synonyms=True,
+            include_children=False,
+            max_synonyms=10,
+        )
+        expanded = loader.expand_concept("파이썬", "skills", config=config)
+
+        # 동의어만 포함
+        assert "Python" in expanded
+        assert "파이썬" in expanded
+        # Backend 같은 하위 개념은 없어야 함 (Python은 하위 개념이 없음)
+
+    def test_expand_preserves_original_term(self, loader: OntologyLoader):
+        """원본 용어는 항상 포함"""
+        config = ExpansionConfig(max_total=1)
+        expanded = loader.expand_concept("SomeUnknownTerm", "skills", config=config)
+
+        assert "SomeUnknownTerm" in expanded
+
+    def test_backward_compatibility_params(self, loader: OntologyLoader):
+        """하위 호환성: include_synonyms, include_children 파라미터"""
+        # 기존 방식으로 호출
+        expanded = loader.expand_concept(
+            "파이썬",
+            "skills",
+            include_synonyms=True,
+            include_children=False,
+        )
+
+        assert "Python" in expanded
+        assert "파이썬" in expanded

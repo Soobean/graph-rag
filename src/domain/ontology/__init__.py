@@ -7,6 +7,16 @@ Ontology Module
 - loader.py: YAML 로더 및 조회 API
 """
 
-from src.domain.ontology.loader import OntologyLoader, get_ontology_loader
+from src.domain.ontology.loader import (
+    DEFAULT_EXPANSION_CONFIG,
+    ExpansionConfig,
+    OntologyLoader,
+    get_ontology_loader,
+)
 
-__all__ = ["OntologyLoader", "get_ontology_loader"]
+__all__ = [
+    "OntologyLoader",
+    "get_ontology_loader",
+    "ExpansionConfig",
+    "DEFAULT_EXPANSION_CONFIG",
+]

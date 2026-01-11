@@ -3,14 +3,19 @@ Concept Expander Node
 
 온톨로지 기반 개념 확장 노드
 - EntityExtractor의 출력을 받아 동의어/하위 개념으로 확장
+- 확장 제한을 통해 오버 확장 방지
 - 예: {"Skill": ["파이썬"]} → {"Skill": ["Python", "파이썬", "Python3", "Py"]}
 """
 
-from src.domain.ontology.loader import OntologyLoader
+import warnings
+
+from src.domain.ontology.loader import (
+    ExpansionConfig,
+    OntologyLoader,
+)
 from src.domain.types import ConceptExpanderUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
-
 
 # 엔티티 타입 → 온톨로지 카테고리 매핑
 ENTITY_TO_CATEGORY: dict[str, str] = {
@@ -28,6 +33,11 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
     추출된 엔티티를 동의어 및 하위 개념으로 확장하여
     검색 범위를 넓힙니다.
 
+    확장 제한:
+        - max_synonyms: 동의어 최대 5개
+        - max_children: 하위 개념 최대 10개
+        - max_total: 전체 최대 15개
+
     Example:
         Input:  {"Skill": ["파이썬"], "Position": ["백엔드 개발자"]}
         Output: {"Skill": ["Python", "파이썬", "Python3", "Py"],
@@ -39,17 +49,38 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
         ontology_loader: OntologyLoader,
         include_synonyms: bool = True,
         include_children: bool = True,
+        expansion_config: ExpansionConfig | None = None,
     ):
         """
         Args:
             ontology_loader: 온톨로지 로더 인스턴스
-            include_synonyms: 동의어 포함 여부
-            include_children: 하위 개념 포함 여부
+            include_synonyms: 동의어 포함 여부 (deprecated, expansion_config 사용 권장)
+            include_children: 하위 개념 포함 여부 (deprecated, expansion_config 사용 권장)
+            expansion_config: 확장 설정 (None이면 기본값 사용)
         """
         super().__init__()
         self._ontology = ontology_loader
-        self._include_synonyms = include_synonyms
-        self._include_children = include_children
+
+        # expansion_config 우선, 없으면 개별 파라미터로 생성
+        if expansion_config is not None:
+            self._config = expansion_config
+        else:
+            # deprecated 파라미터가 기본값이 아닌 경우 경고
+            if not include_synonyms or not include_children:
+                warnings.warn(
+                    "include_synonyms/include_children parameters are deprecated. "
+                    "Use expansion_config=ExpansionConfig(...) instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            self._config = ExpansionConfig(
+                include_synonyms=include_synonyms,
+                include_children=include_children,
+            )
+
+        # 하위 호환성을 위해 유지
+        self._include_synonyms = self._config.include_synonyms
+        self._include_children = self._config.include_children
 
     @property
     def name(self) -> str:
@@ -98,15 +129,14 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
                 )
                 continue
 
-            # 각 값을 확장
+            # 각 값을 확장 (config 전달로 제한 적용)
             expanded_values: set[str] = set()
 
             for value in values:
                 expanded = self._ontology.expand_concept(
                     term=value,
                     category=category,
-                    include_synonyms=self._include_synonyms,
-                    include_children=self._include_children,
+                    config=self._config,
                 )
                 expanded_values.update(expanded)
 

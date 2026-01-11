@@ -5,9 +5,12 @@ YAML 기반 온톨로지 스키마 및 동의어 사전 로더
 - 개념 계층 조회 (IS_A 관계)
 - 동의어 조회 (SAME_AS 관계, 양방향)
 - 개념 확장 (동의어 + 하위 개념)
+- 확장 제한 (오버 확장 방지)
 """
 
 import logging
+import warnings
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -15,6 +18,42 @@ from typing import Any
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ExpansionConfig:
+    """
+    개념 확장 설정
+
+    오버 확장을 방지하기 위한 제한값 정의.
+    "Backend" 검색 시 7개 이상의 스킬이 확장되는 것을 방지합니다.
+
+    Attributes:
+        max_synonyms: 동의어 최대 개수 (기본 5)
+        max_children: 하위 개념 최대 개수 (기본 10)
+        max_total: 전체 확장 최대 개수 (기본 15)
+        include_synonyms: 동의어 포함 여부 (기본 True)
+        include_children: 하위 개념 포함 여부 (기본 True)
+    """
+
+    max_synonyms: int = 5
+    max_children: int = 10
+    max_total: int = 15
+    include_synonyms: bool = True
+    include_children: bool = True
+
+    def __post_init__(self) -> None:
+        """유효성 검사"""
+        if self.max_synonyms < 0:
+            raise ValueError("max_synonyms must be non-negative")
+        if self.max_children < 0:
+            raise ValueError("max_children must be non-negative")
+        if self.max_total < 1:
+            raise ValueError("max_total must be at least 1")
+
+
+# 기본 확장 설정 (전역)
+DEFAULT_EXPANSION_CONFIG = ExpansionConfig()
 
 
 class OntologyLoader:
@@ -68,6 +107,12 @@ class OntologyLoader:
                 except yaml.YAMLError as e:
                     logger.error(f"Failed to parse schema YAML: {e}")
                     self._schema = {}
+                except UnicodeDecodeError as e:
+                    logger.error(f"Encoding error in schema file (expected UTF-8): {e}")
+                    self._schema = {}
+                except OSError as e:
+                    logger.error(f"Failed to read schema file: {e}")
+                    self._schema = {}
         return self._schema
 
     def load_synonyms(self) -> dict[str, Any]:
@@ -84,6 +129,12 @@ class OntologyLoader:
                     logger.info(f"Synonyms loaded: {synonyms_path}")
                 except yaml.YAMLError as e:
                     logger.error(f"Failed to parse synonyms YAML: {e}")
+                    self._synonyms = {}
+                except UnicodeDecodeError as e:
+                    logger.error(f"Encoding error in synonyms file (expected UTF-8): {e}")
+                    self._synonyms = {}
+                except OSError as e:
+                    logger.error(f"Failed to read synonyms file: {e}")
                     self._synonyms = {}
 
             # 역방향 인덱스 빌드
@@ -265,49 +316,62 @@ class OntologyLoader:
         self,
         term: str,
         category: str = "skills",
-        include_synonyms: bool = True,
-        include_children: bool = True,
+        include_synonyms: bool | None = None,
+        include_children: bool | None = None,
+        config: ExpansionConfig | None = None,
     ) -> list[str]:
         """
-        개념 확장 (동의어 + 하위 개념)
+        개념 확장 (동의어 + 하위 개념) - 제한 적용
 
         Args:
             term: 검색어
             category: 카테고리
-            include_synonyms: 동의어 포함 여부
-            include_children: 하위 개념 포함 여부
+            include_synonyms: 동의어 포함 여부 (deprecated, config 사용 권장)
+            include_children: 하위 개념 포함 여부 (deprecated, config 사용 권장)
+            config: 확장 설정 (None이면 기본값 사용)
 
         Returns:
-            확장된 개념 목록 (중복 제거)
+            확장된 개념 목록 (중복 제거, 최대 max_total개)
 
         Example:
             expand_concept("파이썬", "skills")
             → ["Python", "파이썬", "Python3", "Py"]
 
             expand_concept("Backend", "skills")
-            → ["Backend", "Python", "Java", "Node.js", "Go", ...]
+            → ["Backend", "Python", "Java", ...] (최대 15개)
+
+            expand_concept("Backend", "skills", config=ExpansionConfig(max_total=5))
+            → ["Backend", "Python", "Java", "Node.js", "Go"]
         """
+        # config 우선, 없으면 개별 파라미터 사용 (하위 호환성)
+        if config is None:
+            if include_synonyms is not None or include_children is not None:
+                warnings.warn(
+                    "include_synonyms/include_children parameters are deprecated. "
+                    "Use config=ExpansionConfig(...) instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            config = ExpansionConfig(
+                include_synonyms=include_synonyms if include_synonyms is not None else True,
+                include_children=include_children if include_children is not None else True,
+            )
+
         result: set[str] = {term}
 
         # 1. 동의어 추가
-        if include_synonyms:
+        if config.include_synonyms:
             synonyms = self.get_synonyms(term, category)
-            result.update(synonyms)
+            result.update(synonyms[:config.max_synonyms])
 
         # 2. 하위 개념 추가
-        if include_children:
-            # 먼저 canonical로 변환
+        if config.include_children:
             canonical = self.get_canonical(term, category)
             children = self.get_children(canonical, category)
-            result.update(children)
+            result.update(children[:config.max_children])
 
-            # 각 하위 개념의 동의어도 추가
-            if include_synonyms:
-                for child in children:
-                    child_synonyms = self.get_synonyms(child, category)
-                    result.update(child_synonyms)
-
-        return list(result)
+        # 최종 제한
+        return list(result)[:config.max_total]
 
     def get_expansion_rules(self) -> dict[str, Any]:
         """확장 규칙 반환"""
