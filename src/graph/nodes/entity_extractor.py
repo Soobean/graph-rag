@@ -4,17 +4,14 @@ Entity Extractor Node
 질문에서 엔티티(사람, 조직, 날짜 등)를 추출합니다.
 """
 
-import logging
-
 from src.domain.types import EntityExtractorUpdate
+from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
 from src.graph.utils import format_chat_history
 from src.repositories.llm_repository import LLMRepository
 
-logger = logging.getLogger(__name__)
 
-
-class EntityExtractorNode:
+class EntityExtractorNode(BaseNode[EntityExtractorUpdate]):
     """엔티티 추출 노드"""
 
     # 기본 엔티티 타입
@@ -34,10 +31,20 @@ class EntityExtractorNode:
         llm_repository: LLMRepository,
         entity_types: list[str] | None = None,
     ):
+        super().__init__()
         self._llm = llm_repository
         self._entity_types = entity_types or self.DEFAULT_ENTITY_TYPES
 
-    async def __call__(self, state: GraphRAGState) -> EntityExtractorUpdate:
+    @property
+    def name(self) -> str:
+        return "entity_extractor"
+
+    @property
+    def input_keys(self) -> list[str]:
+        return ["question"]
+
+
+    async def _process(self, state: GraphRAGState) -> EntityExtractorUpdate:
         """
         엔티티 추출
 
@@ -47,8 +54,8 @@ class EntityExtractorNode:
         Returns:
             업데이트할 상태 딕셔너리
         """
-        question = state["question"]
-        logger.info(f"Extracting entities from: {question[:50]}...")
+        question = state.get("question", "")
+        self._logger.info(f"Extracting entities from: {question[:50]}...")
 
         try:
             # 대화 기록 포맷팅 (현재 질문 제외)
@@ -78,19 +85,19 @@ class EntityExtractorNode:
                     structured_entities[entity_type].append(str(value))
                     count += 1
 
-            logger.info(
+            self._logger.info(
                 f"Extracted {count} entities in {len(structured_entities)} categories"
             )
 
-            return {
-                "entities": structured_entities,
-                "execution_path": ["entity_extractor"],
-            }
+            return EntityExtractorUpdate(
+                entities=structured_entities,
+                execution_path=[self.name],
+            )
 
         except Exception as e:
-            logger.error(f"Entity extraction failed: {e}")
-            return {
-                "entities": {},
-                "error": f"Entity extraction failed: {e}",
-                "execution_path": ["entity_extractor_error"],
-            }
+            self._logger.error(f"Entity extraction failed: {e}")
+            return EntityExtractorUpdate(
+                entities={},
+                error=f"Entity extraction failed: {e}",
+                execution_path=[f"{self.name}_error"],
+            )

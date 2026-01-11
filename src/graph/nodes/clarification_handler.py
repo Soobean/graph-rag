@@ -4,24 +4,31 @@ Clarification Handler Node
 동명이인, 모호한 엔티티에 대해 사용자에게 확인을 요청합니다.
 """
 
-import logging
-
 from langchain_core.messages import AIMessage
 
-from src.domain.types import ExtractedEntity, ResolvedEntity, ResponseGeneratorUpdate
+from src.domain.types import ResolvedEntity, ResponseGeneratorUpdate
+from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
 from src.repositories.llm_repository import LLMRepository
 
-logger = logging.getLogger(__name__)
 
-
-class ClarificationHandlerNode:
+class ClarificationHandlerNode(BaseNode[ResponseGeneratorUpdate]):
     """명확화 요청 노드"""
 
     def __init__(self, llm_repository: LLMRepository):
+        super().__init__()
         self._llm = llm_repository
 
-    async def __call__(self, state: GraphRAGState) -> ResponseGeneratorUpdate:
+    @property
+    def name(self) -> str:
+        return "clarification_handler"
+
+    @property
+    def input_keys(self) -> list[str]:
+        return ["question", "resolved_entities", "entities"]
+
+
+    async def _process(self, state: GraphRAGState) -> ResponseGeneratorUpdate:
         """
         명확화 요청 응답 생성
 
@@ -33,11 +40,11 @@ class ClarificationHandlerNode:
         Returns:
             업데이트할 상태 딕셔너리
         """
-        question = state["question"]
+        question = state.get("question", "")
         resolved_entities = state.get("resolved_entities", [])
         entities = state.get("entities", {})
 
-        logger.info("Generating clarification request...")
+        self._logger.info("Generating clarification request...")
 
         try:
             # 미해결 엔티티 추출
@@ -52,28 +59,28 @@ class ClarificationHandlerNode:
                     question, unresolved
                 )
 
-            logger.info(f"Clarification response: {response[:100]}...")
+            self._logger.info(f"Clarification response: {response[:100]}...")
 
-            return {
-                "response": response,
-                "messages": [AIMessage(content=response)],
-                "execution_path": ["clarification_handler"],
-            }
+            return ResponseGeneratorUpdate(
+                response=response,
+                messages=[AIMessage(content=response)],
+                execution_path=[self.name],
+            )
 
         except Exception as e:
-            logger.error(f"Clarification generation failed: {e}")
+            self._logger.error(f"Clarification generation failed: {e}")
             fallback_response = self._generate_fallback_clarification(entities)
-            return {
-                "response": fallback_response,
-                "messages": [AIMessage(content=fallback_response)],
-                "execution_path": ["clarification_handler_fallback"],
-            }
+            return ResponseGeneratorUpdate(
+                response=fallback_response,
+                messages=[AIMessage(content=fallback_response)],
+                execution_path=[f"{self.name}_fallback"],
+            )
 
     def _extract_unresolved_entities(
         self,
         resolved_entities: list[ResolvedEntity],
         entities: dict[str, list[str]],
-    ) -> list[ExtractedEntity]:
+    ) -> list[dict[str, str]]:
         """
         미해결 엔티티 추출
 
@@ -82,9 +89,9 @@ class ClarificationHandlerNode:
             entities: 추출된 원본 엔티티 맵
 
         Returns:
-            list[ExtractedEntity]: 미해결된(매칭되지 않은) 엔티티 리스트
+            list[dict]: 미해결된(매칭되지 않은) 엔티티 리스트
         """
-        unresolved: list[ExtractedEntity] = []
+        unresolved: list[dict[str, str]] = []
 
         # 1. resolved_entities에서 id=None인 항목 찾기 (매칭 실패)
         for entity in resolved_entities:
@@ -115,7 +122,7 @@ class ClarificationHandlerNode:
     async def _generate_entity_clarification(
         self,
         question: str,
-        unresolved: list[ExtractedEntity],
+        unresolved: list[dict[str, str]],
     ) -> str:
         """엔티티 관련 명확화 요청 생성"""
         unresolved_str = ", ".join(f"{e['type']}: {e['value']}" for e in unresolved)
@@ -141,7 +148,7 @@ class ClarificationHandlerNode:
             )
 
         entity_mentions = []
-        for entity_type, values in entities.items():
+        for _, values in entities.items():
             for value in values:
                 entity_mentions.append(f"'{value}'")
 
