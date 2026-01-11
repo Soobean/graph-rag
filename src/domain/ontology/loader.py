@@ -9,8 +9,8 @@ YAML 기반 온톨로지 스키마 및 동의어 사전 로더
 """
 
 import logging
-import warnings
 from dataclasses import dataclass
+from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,127 @@ from typing import Any
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# 확장 전략 (Phase 3: 컨텍스트 기반 확장)
+# =============================================================================
+
+
+class ExpansionStrategy(Enum):
+    """
+    개념 확장 전략
+
+    질문의 의도(Intent)에 따라 확장 범위를 조절합니다.
+
+    Examples:
+        - STRICT: "Python 시니어 찾아줘" → 정확한 매칭 필요
+        - NORMAL: "Python 개발자 찾아줘" → 동의어 + 1단계 계층
+        - BROAD: "Backend 관련 인력" → 넓은 확장 필요
+    """
+
+    STRICT = "strict"  # 동의어만 (정확한 검색)
+    NORMAL = "normal"  # 동의어 + 1단계 하위 개념 (기본값)
+    BROAD = "broad"    # 동의어 + 전체 하위 개념 (넓은 검색)
+
+
+# Intent → Strategy 매핑 (기본값)
+INTENT_STRATEGY_MAP: dict[str, ExpansionStrategy] = {
+    # 인원 검색: 일반적인 확장
+    "personnel_search": ExpansionStrategy.NORMAL,
+
+    # 프로젝트 매칭: 정확한 스킬 필요
+    "project_matching": ExpansionStrategy.STRICT,
+
+    # 관계 검색: 넓은 확장 (팀 구성, 협업 관계 등)
+    "relationship_search": ExpansionStrategy.BROAD,
+
+    # 조직 정보: 정확한 매칭
+    "org_info": ExpansionStrategy.STRICT,
+
+    # 스킬 검색: 넓은 확장
+    "skill_search": ExpansionStrategy.BROAD,
+
+    # 카운트 쿼리: 일반 확장
+    "count_query": ExpansionStrategy.NORMAL,
+
+    # 알 수 없는 의도: 일반 확장
+    "unknown": ExpansionStrategy.NORMAL,
+}
+
+
+def get_strategy_for_intent(
+    intent: str,
+    confidence: float = 1.0,
+) -> ExpansionStrategy:
+    """
+    Intent와 신뢰도에 따른 확장 전략 결정
+
+    Args:
+        intent: 질문 의도 (예: "personnel_search", "project_matching")
+        confidence: 의도 분류 신뢰도 (0.0 ~ 1.0)
+
+    Returns:
+        적절한 ExpansionStrategy
+
+    Examples:
+        >>> get_strategy_for_intent("personnel_search", 0.95)
+        ExpansionStrategy.NORMAL
+
+        >>> get_strategy_for_intent("unknown", 0.3)
+        ExpansionStrategy.BROAD  # 신뢰도 낮으면 넓게 확장
+    """
+    # 신뢰도 기반 조정
+    if confidence < 0.5:
+        # 신뢰도 낮으면 넓게 확장 (불확실성 대응)
+        return ExpansionStrategy.BROAD
+
+    if confidence > 0.9:
+        # 신뢰도 높으면 좁게 확장 (정확한 의도 파악)
+        base_strategy = INTENT_STRATEGY_MAP.get(intent, ExpansionStrategy.NORMAL)
+        # BROAD → NORMAL로 한 단계 좁힘 (NORMAL, STRICT는 유지)
+        if base_strategy == ExpansionStrategy.BROAD:
+            return ExpansionStrategy.NORMAL
+        return base_strategy
+
+    # 일반적인 경우: Intent 매핑 사용
+    return INTENT_STRATEGY_MAP.get(intent, ExpansionStrategy.NORMAL)
+
+
+def get_config_for_strategy(strategy: ExpansionStrategy) -> "ExpansionConfig":
+    """
+    확장 전략에 따른 ExpansionConfig 반환
+
+    Args:
+        strategy: 확장 전략
+
+    Returns:
+        해당 전략에 맞는 ExpansionConfig
+    """
+    if strategy == ExpansionStrategy.STRICT:
+        return ExpansionConfig(
+            max_synonyms=5,
+            max_children=0,  # 하위 개념 제외
+            max_total=5,
+            include_synonyms=True,
+            include_children=False,
+        )
+    elif strategy == ExpansionStrategy.BROAD:
+        return ExpansionConfig(
+            max_synonyms=10,
+            max_children=20,
+            max_total=30,
+            include_synonyms=True,
+            include_children=True,
+        )
+    else:  # NORMAL
+        return ExpansionConfig(
+            max_synonyms=5,
+            max_children=10,
+            max_total=15,
+            include_synonyms=True,
+            include_children=True,
+        )
 
 
 @dataclass
@@ -144,6 +265,10 @@ class OntologyLoader:
 
     def _build_reverse_index(self) -> None:
         """역방향 조회 인덱스 빌드 (alias → canonical)"""
+        # 중복 빌드 방지
+        if self._reverse_index is not None:
+            return
+
         self._reverse_index = {}
 
         if self._synonyms is None:
@@ -316,62 +441,39 @@ class OntologyLoader:
         self,
         term: str,
         category: str = "skills",
-        include_synonyms: bool | None = None,
-        include_children: bool | None = None,
         config: ExpansionConfig | None = None,
     ) -> list[str]:
         """
-        개념 확장 (동의어 + 하위 개념) - 제한 적용
+        개념 확장 (동의어 + 하위 개념)
 
         Args:
             term: 검색어
             category: 카테고리
-            include_synonyms: 동의어 포함 여부 (deprecated, config 사용 권장)
-            include_children: 하위 개념 포함 여부 (deprecated, config 사용 권장)
-            config: 확장 설정 (None이면 기본값 사용)
+            config: 확장 설정 (None이면 DEFAULT_EXPANSION_CONFIG 사용)
 
         Returns:
             확장된 개념 목록 (중복 제거, 최대 max_total개)
-
-        Example:
-            expand_concept("파이썬", "skills")
-            → ["Python", "파이썬", "Python3", "Py"]
-
-            expand_concept("Backend", "skills")
-            → ["Backend", "Python", "Java", ...] (최대 15개)
-
-            expand_concept("Backend", "skills", config=ExpansionConfig(max_total=5))
-            → ["Backend", "Python", "Java", "Node.js", "Go"]
         """
-        # config 우선, 없으면 개별 파라미터 사용 (하위 호환성)
         if config is None:
-            if include_synonyms is not None or include_children is not None:
-                warnings.warn(
-                    "include_synonyms/include_children parameters are deprecated. "
-                    "Use config=ExpansionConfig(...) instead.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            config = ExpansionConfig(
-                include_synonyms=include_synonyms if include_synonyms is not None else True,
-                include_children=include_children if include_children is not None else True,
-            )
+            config = DEFAULT_EXPANSION_CONFIG
 
-        result: set[str] = {term}
+        result: list[str] = [term]
+        seen: set[str] = {term}
 
-        # 1. 동의어 추가
         if config.include_synonyms:
-            synonyms = self.get_synonyms(term, category)
-            result.update(synonyms[:config.max_synonyms])
+            for syn in self.get_synonyms(term, category)[:config.max_synonyms]:
+                if syn not in seen:
+                    result.append(syn)
+                    seen.add(syn)
 
-        # 2. 하위 개념 추가
         if config.include_children:
             canonical = self.get_canonical(term, category)
-            children = self.get_children(canonical, category)
-            result.update(children[:config.max_children])
+            for child in self.get_children(canonical, category)[:config.max_children]:
+                if child not in seen:
+                    result.append(child)
+                    seen.add(child)
 
-        # 최종 제한
-        return list(result)[:config.max_total]
+        return result[:config.max_total]
 
     def get_expansion_rules(self) -> dict[str, Any]:
         """확장 규칙 반환"""

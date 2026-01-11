@@ -3,15 +3,16 @@ Concept Expander Node
 
 온톨로지 기반 개념 확장 노드
 - EntityExtractor의 출력을 받아 동의어/하위 개념으로 확장
-- 확장 제한을 통해 오버 확장 방지
+- Intent 기반 컨텍스트 확장 전략 적용
 - 예: {"Skill": ["파이썬"]} → {"Skill": ["Python", "파이썬", "Python3", "Py"]}
 """
 
-import warnings
-
 from src.domain.ontology.loader import (
     ExpansionConfig,
+    ExpansionStrategy,
     OntologyLoader,
+    get_config_for_strategy,
+    get_strategy_for_intent,
 )
 from src.domain.types import ConceptExpanderUpdate
 from src.graph.nodes.base import BaseNode
@@ -29,58 +30,26 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
     """
     온톨로지 기반 개념 확장 노드
 
-    EntityExtractor 이후, EntityResolver 이전에 실행됩니다.
-    추출된 엔티티를 동의어 및 하위 개념으로 확장하여
-    검색 범위를 넓힙니다.
-
-    확장 제한:
-        - max_synonyms: 동의어 최대 5개
-        - max_children: 하위 개념 최대 10개
-        - max_total: 전체 최대 15개
-
-    Example:
-        Input:  {"Skill": ["파이썬"], "Position": ["백엔드 개발자"]}
-        Output: {"Skill": ["Python", "파이썬", "Python3", "Py"],
-                 "Position": ["Backend Developer", "서버 개발자", ...]}
+    EntityExtractor → ConceptExpander → EntityResolver 순서로 실행.
+    Intent/신뢰도 기반으로 STRICT/NORMAL/BROAD 전략 자동 선택.
     """
 
     def __init__(
         self,
         ontology_loader: OntologyLoader,
-        include_synonyms: bool = True,
-        include_children: bool = True,
         expansion_config: ExpansionConfig | None = None,
+        default_strategy: ExpansionStrategy = ExpansionStrategy.NORMAL,
     ):
         """
         Args:
             ontology_loader: 온톨로지 로더 인스턴스
-            include_synonyms: 동의어 포함 여부 (deprecated, expansion_config 사용 권장)
-            include_children: 하위 개념 포함 여부 (deprecated, expansion_config 사용 권장)
-            expansion_config: 확장 설정 (None이면 기본값 사용)
+            expansion_config: 고정 확장 설정 (None이면 동적 전략 사용)
+            default_strategy: Intent 없을 때 기본 전략
         """
         super().__init__()
         self._ontology = ontology_loader
-
-        # expansion_config 우선, 없으면 개별 파라미터로 생성
-        if expansion_config is not None:
-            self._config = expansion_config
-        else:
-            # deprecated 파라미터가 기본값이 아닌 경우 경고
-            if not include_synonyms or not include_children:
-                warnings.warn(
-                    "include_synonyms/include_children parameters are deprecated. "
-                    "Use expansion_config=ExpansionConfig(...) instead.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            self._config = ExpansionConfig(
-                include_synonyms=include_synonyms,
-                include_children=include_children,
-            )
-
-        # 하위 호환성을 위해 유지
-        self._include_synonyms = self._config.include_synonyms
-        self._include_children = self._config.include_children
+        self._default_strategy = default_strategy
+        self._static_config = expansion_config
 
     @property
     def name(self) -> str:
@@ -90,17 +59,19 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
     def input_keys(self) -> list[str]:
         return ["entities"]
 
+    def _get_expansion_config(self, state: GraphRAGState) -> tuple[ExpansionConfig, ExpansionStrategy]:
+        """상태 기반으로 확장 설정 결정"""
+        if self._static_config is not None:
+            return self._static_config, self._default_strategy
+
+        intent = state.get("intent", "unknown")
+        confidence = state.get("intent_confidence", 0.7)
+        strategy = get_strategy_for_intent(intent, confidence)
+
+        return get_config_for_strategy(strategy), strategy
+
     async def _process(self, state: GraphRAGState) -> ConceptExpanderUpdate:
-        """
-        엔티티 확장
-
-        Args:
-            state: 현재 파이프라인 상태
-
-        Returns:
-            확장된 엔티티와 메타데이터
-        """
-        # 원본 엔티티 가져오기
+        """엔티티를 온톨로지 기반으로 확장"""
         original_entities = state.get("entities", {})
 
         if not original_entities:
@@ -109,57 +80,36 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
                 expanded_entities={},
                 original_entities={},
                 expansion_count=0,
+                expansion_strategy="normal",
                 execution_path=[self.name],
             )
 
-        self._logger.info(f"Expanding entities: {original_entities}")
+        config, strategy = self._get_expansion_config(state)
+        self._logger.info(f"Expanding with strategy={strategy.value}")
 
         expanded_entities: dict[str, list[str]] = {}
         total_expansion_count = 0
 
         for entity_type, values in original_entities.items():
-            # 온톨로지 카테고리 매핑 (없으면 스킵)
             category = ENTITY_TO_CATEGORY.get(entity_type)
 
             if category is None:
-                # 매핑되지 않은 엔티티 타입은 그대로 전달
                 expanded_entities[entity_type] = list(values)
-                self._logger.debug(
-                    f"No ontology mapping for '{entity_type}', passing through"
-                )
                 continue
 
-            # 각 값을 확장 (config 전달로 제한 적용)
             expanded_values: set[str] = set()
-
             for value in values:
-                expanded = self._ontology.expand_concept(
-                    term=value,
-                    category=category,
-                    config=self._config,
+                expanded_values.update(
+                    self._ontology.expand_concept(value, category, config)
                 )
-                expanded_values.update(expanded)
 
             expanded_entities[entity_type] = list(expanded_values)
-            # 원본도 set으로 변환하여 중복 제거 후 비교 (정확한 확장 수 계산)
-            original_unique_count = len(set(values))
-            expansion_count = len(expanded_values) - original_unique_count
-            total_expansion_count += max(0, expansion_count)
-
-            self._logger.debug(
-                f"{entity_type}: {values} → {len(expanded_values)} terms "
-                f"(+{expansion_count})"
-            )
-
-        self._logger.info(
-            f"Expansion complete: {sum(len(v) for v in original_entities.values())} "
-            f"→ {sum(len(v) for v in expanded_entities.values())} terms "
-            f"(+{total_expansion_count})"
-        )
+            total_expansion_count += max(0, len(expanded_values) - len(set(values)))
 
         return ConceptExpanderUpdate(
             expanded_entities=expanded_entities,
-            original_entities=dict(original_entities),  # 원본 보존
+            original_entities=dict(original_entities),
             expansion_count=total_expansion_count,
+            expansion_strategy=strategy.value,
             execution_path=[self.name],
         )

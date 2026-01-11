@@ -5,7 +5,7 @@ Domain Types
 dict[str, Any] 대신 명확한 타입을 사용하여 타입 안전성 확보
 """
 
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 if TYPE_CHECKING:
     from langchain_core.messages import BaseMessage
@@ -213,6 +213,7 @@ class ConceptExpanderUpdate(TypedDict, total=False):
     expanded_entities: dict[str, list[str]]  # 확장된 엔티티 (원본 + 동의어 + 하위개념)
     original_entities: dict[str, list[str]]  # 원본 엔티티 (확장 전)
     expansion_count: int  # 확장된 개념 수
+    expansion_strategy: Literal["strict", "normal", "broad"]  # 사용된 확장 전략
     execution_path: list[str]
     error: str | None
 
