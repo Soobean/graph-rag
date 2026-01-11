@@ -207,6 +207,16 @@ class EntityExtractorUpdate(TypedDict, total=False):
     error: str | None
 
 
+class ConceptExpanderUpdate(TypedDict, total=False):
+    """ConceptExpander 노드 반환 타입 (온톨로지 기반 개념 확장)"""
+
+    expanded_entities: dict[str, list[str]]  # 확장된 엔티티 (원본 + 동의어 + 하위개념)
+    original_entities: dict[str, list[str]]  # 원본 엔티티 (확장 전)
+    expansion_count: int  # 확장된 개념 수
+    execution_path: list[str]
+    error: str | None
+
+
 class EntityResolverUpdate(TypedDict, total=False):
     """EntityResolver 노드 반환 타입"""
 
@@ -264,6 +274,7 @@ class CacheCheckerUpdate(TypedDict, total=False):
 NodeUpdate = (
     IntentClassifierUpdate
     | EntityExtractorUpdate
+    | ConceptExpanderUpdate
     | EntityResolverUpdate
     | CypherGeneratorUpdate
     | GraphExecutorUpdate

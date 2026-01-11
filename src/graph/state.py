@@ -44,6 +44,7 @@ class GraphRAGState(TypedDict, total=False):
     intent: IntentType
     intent_confidence: float
     entities: dict[str, list[str]]  # 예: {'skills': ['Python'], 'names': ['김철수']}
+    expanded_entities: dict[str, list[str]]  # 온톨로지 확장된 엔티티
     resolved_entities: list[ResolvedEntity]  # Neo4j에서 매칭된 엔티티 정보
 
     # 3. Graph Retrieval (검색 단계)

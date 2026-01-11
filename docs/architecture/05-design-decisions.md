@@ -224,12 +224,7 @@ class BaseNode(Protocol[StateT]):
 
     @property
     def input_keys(self) -> list[str]:
-        """필요한 State 필드 목록"""
-        ...
-
-    @property
-    def output_keys(self) -> list[str]:
-        """출력하는 State 필드 목록"""
+        """필요한 State 필드 목록 (입력 검증용)"""
         ...
 
     def __call__(self, state: StateT) -> dict[str, Any]:
@@ -238,7 +233,7 @@ class BaseNode(Protocol[StateT]):
         Args:
             state: 현재 그래프 상태
         Returns:
-            업데이트할 State 필드들
+            업데이트할 State 필드들 (TypedDict로 타입 정의)
         """
         ...
 
@@ -338,3 +333,34 @@ class TestIntentClassifier:
 - 벡터 검색 통합 노드
 - Human-in-the-loop (LangGraph interrupt)
 - 권한 기반 데이터 필터링
+
+---
+
+## 5.7 아키텍처 진화 전략 (Architecture Evolution)
+
+### 결정: 기존 아키텍처 진화 (Evolution) vs 재작성 (Rewrite)
+
+**결정: Path A - 기존 아키텍처 진화 (Ontology-Enhanced Graph RAG)**
+
+| 항목 | Path A (진화) | Path B (RDF/SPARQL 재작성) |
+|---|---|---|
+| **핵심 철학** | **Pragmatism**: Graph RAG의 유연성에 온톨로지 추론(Reasoning)을 Layer로 추가 | **Purity**: RDF/OWL 표준 준수, 엄격한 논리적 무결성 |
+| **데이터 모델** | **LPG (Labeled Property Graph)** + `IS_A`, `SAME_AS` 엣지 직접 구현 | RDF Triple Store (`Subject-Predicate-Object`) |
+| **추론 방식** | Python 코드 레벨 (`ConceptExpanderNode`) + Neo4j Cypher | SPARQL Reasoner / Inference Engine |
+| **장점** | 학습 곡선 낮음, 기존 코드 100% 재활용, 유연한 확장 | 표준 준수, 복잡한 논리 추론 강력 |
+| **단점** | 표준 온톨로지(OWL) 호환성 낮음 | 개발 난이도 높음, LLM의 SPARQL 생성 능력 저조 |
+
+### 구현 방안
+
+1.  **YAML 기반 온톨로지 관리**:
+    *   `src/domain/ontology/schema.yaml`: 개념 계층 (`IS_A`) 정의
+    *   `src/domain/ontology/synonyms.yaml`: 동의어 (`SAME_AS`) 정의
+
+2.  **Pipeline 변경**:
+    *   **[AS-IS]** `EntityExtractor` → `EntityResolver` → `CypherGenerator`
+    *   **[TO-BE]** `EntityExtractor` → **`ConceptExpander`** → `EntityResolver` → `CypherGenerator`
+
+3.  **ConceptExpander 역할**:
+    *   "백엔드 개발자" 입력 시 → 온톨로지 로더를 통해 "Python", "Java", "Node.js" 등 하위 개념 및 동의어 확장
+    *   확장된 키워드들을 `CypherGenerator`에 전달하여 `WHERE n.skill IN ['Backend', 'Python', ...]` 형태로 쿼리 생성 지원
+

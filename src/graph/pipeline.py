@@ -19,10 +19,12 @@ if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
 
 from src.config import Settings
+from src.domain.ontology.loader import OntologyLoader
 from src.domain.types import GraphSchema, PipelineMetadata, PipelineResult
 from src.graph.nodes import (
     CacheCheckerNode,
     ClarificationHandlerNode,
+    ConceptExpanderNode,
     CypherGeneratorNode,
     EntityExtractorNode,
     EntityResolverNode,
@@ -43,7 +45,7 @@ class GraphRAGPipeline:
     """
     Graph RAG 파이프라인
 
-    질문 → 의도분류 → 엔티티추출 → 엔티티해석 → Cypher생성 → 쿼리실행 → 응답생성
+    질문 → 의도분류 → 엔티티추출 → 개념확장 → 엔티티해석 → Cypher생성 → 쿼리실행 → 응답생성
 
     Note:
         - graph_schema는 앱 시작 시 한 번 로드하여 주입 (성능 최적화)
@@ -85,9 +87,13 @@ class GraphRAGPipeline:
             self._cache_repository = QueryCacheRepository(neo4j_client, settings)
             logger.info("Query cache repository initialized")
 
+        # 온톨로지 로더 초기화 (개념 확장용)
+        self._ontology_loader = OntologyLoader()
+
         # 노드 초기화
         self._intent_classifier = IntentClassifierNode(llm_repository)
         self._entity_extractor = EntityExtractorNode(llm_repository)
+        self._concept_expander = ConceptExpanderNode(self._ontology_loader)
         self._entity_resolver = EntityResolverNode(neo4j_repository)
         self._clarification_handler = ClarificationHandlerNode(llm_repository)
         self._cypher_generator = CypherGeneratorNode(
@@ -128,6 +134,7 @@ class GraphRAGPipeline:
         # 노드 추가 (schema_fetcher 제거됨 - 스키마는 초기화 시 주입)
         workflow.add_node("intent_classifier", self._intent_classifier)
         workflow.add_node("entity_extractor", self._entity_extractor)
+        workflow.add_node("concept_expander", self._concept_expander)
         workflow.add_node("entity_resolver", self._entity_resolver)
         workflow.add_node("clarification_handler", self._clarification_handler)
         workflow.add_node("cypher_generator", self._cypher_generator)
@@ -207,8 +214,9 @@ class GraphRAGPipeline:
                 ["entity_extractor", "response_generator"],
             )
 
-        # 2. Entity Extractor -> Entity Resolver (순차 실행)
-        workflow.add_edge("entity_extractor", "entity_resolver")
+        # 2. Entity Extractor -> Concept Expander -> Entity Resolver (순차 실행)
+        workflow.add_edge("entity_extractor", "concept_expander")
+        workflow.add_edge("concept_expander", "entity_resolver")
 
         # 3. Entity Resolver -> Cypher Generator 또는 Clarification Handler
         def route_after_resolver(
@@ -308,10 +316,15 @@ class GraphRAGPipeline:
 
             response_text = final_state.get("response", "")
 
+            # expanded_entities 우선 사용 (명시적 None 체크)
+            entities_for_metadata = final_state.get("expanded_entities")
+            if entities_for_metadata is None:
+                entities_for_metadata = final_state.get("entities", {})
+
             metadata: PipelineMetadata = {
                 "intent": final_state.get("intent", "unknown"),
                 "intent_confidence": final_state.get("intent_confidence", 0.0),
-                "entities": final_state.get("entities", {}),
+                "entities": entities_for_metadata,
                 "resolved_entities": final_state.get("resolved_entities", []),
                 "cypher_query": final_state.get("cypher_query", ""),
                 "cypher_parameters": final_state.get("cypher_parameters", {}),

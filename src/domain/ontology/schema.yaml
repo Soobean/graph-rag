@@ -1,0 +1,100 @@
+# =============================================================================
+# Ontology Schema Definition
+# =============================================================================
+# 이 파일은 온톨로지의 개념 계층과 관계 타입을 정의합니다.
+# ConceptExpanderNode가 이 정의를 기반으로 개념을 확장합니다.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 메타데이터
+# -----------------------------------------------------------------------------
+_meta:
+  version: "1.0.0"
+  description: "기업/조직 도메인 온톨로지 스키마"
+  last_updated: "2025-01-11"
+
+# -----------------------------------------------------------------------------
+# 관계 타입 정의 (Neo4j에 저장되는 관계)
+# -----------------------------------------------------------------------------
+relations:
+  IS_A:
+    description: "하위 개념 → 상위 개념 (계층 관계)"
+    direction: "child_to_parent"
+    transitive: true  # A IS_A B, B IS_A C → A IS_A C
+    examples:
+      - ["Python", "Backend"]
+      - ["Backend", "Programming"]
+      - ["ML", "AI/ML"]
+
+  SAME_AS:
+    description: "동의어 관계 (양방향)"
+    direction: "bidirectional"
+    source: "synonyms.yaml 참조"
+
+  REQUIRES:
+    description: "직급/프로젝트가 요구하는 스킬 카테고리"
+    examples:
+      - ["Senior Engineer", "Architecture"]
+      - ["ML Project", "AI/ML"]
+
+  PART_OF:
+    description: "부분-전체 관계"
+    examples:
+      - ["Backend Team", "Engineering"]
+
+# -----------------------------------------------------------------------------
+# 개념 계층 정의
+# -----------------------------------------------------------------------------
+concepts:
+  SkillCategory:
+    - name: "Programming"
+      description: "프로그래밍 관련 스킬"
+      subcategories:
+        - name: "Backend"
+          description: "서버/백엔드 개발"
+          skills: ["Python", "Java", "Node.js", "Go", "Kotlin", "Spring"]
+        - name: "Frontend"
+          description: "클라이언트/프론트엔드 개발"
+          skills: ["React", "Vue", "Angular", "TypeScript", "JavaScript"]
+        - name: "AI/ML"
+          description: "인공지능/머신러닝"
+          skills: ["ML", "Deep Learning", "NLP", "Computer Vision", "TensorFlow", "PyTorch"]
+        - name: "Data"
+          description: "데이터 엔지니어링/분석"
+          skills: ["SQL", "Spark", "Pandas", "Airflow", "ETL"]
+
+    - name: "Cloud"
+      description: "클라우드 플랫폼"
+      skills: ["AWS", "GCP", "Azure", "Kubernetes", "Docker"]
+
+    - name: "DevOps"
+      description: "개발 운영"
+      skills: ["CI/CD", "Jenkins", "GitHub Actions", "Terraform", "Ansible"]
+
+  PositionLevel:
+    description: "직급 계층 (상위 레벨은 하위 레벨 역량 포함)"
+    hierarchy:
+      - name: "Executive"
+        level: 4
+        includes: ["CTO", "VP", "Director"]
+      - name: "Senior"
+        level: 3
+        includes: ["Senior Engineer", "Tech Lead", "Staff Engineer"]
+      - name: "Mid"
+        level: 2
+        includes: ["Engineer", "Developer"]
+      - name: "Junior"
+        level: 1
+        includes: ["Junior Engineer", "Associate", "Intern"]
+
+    # 확장 규칙: "시니어 이상" 검색 시 level >= 3인 모든 직급 포함
+    expansion_rule: "level_based"
+
+# -----------------------------------------------------------------------------
+# 확장 규칙 (ConceptExpander 동작 정의)
+# -----------------------------------------------------------------------------
+expansion_rules:
+  default_depth: 2  # IS_A 관계 탐색 최대 깊이
+  include_synonyms: true  # 동의어 자동 포함
+  include_children: true  # 하위 개념 포함 여부
+  include_parents: false  # 상위 개념 포함 여부 (기본값: false)
