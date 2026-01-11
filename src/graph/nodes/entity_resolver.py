@@ -4,22 +4,29 @@ Entity Resolver Node
 추출된 엔티티를 Neo4j 그래프의 실제 노드와 매칭합니다.
 """
 
-import logging
-
 from src.domain.types import EntityResolverUpdate
+from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
 from src.repositories.neo4j_repository import Neo4jRepository
 
-logger = logging.getLogger(__name__)
 
-
-class EntityResolverNode:
+class EntityResolverNode(BaseNode[EntityResolverUpdate]):
     """엔티티 해석 노드"""
 
     def __init__(self, neo4j_repository: Neo4jRepository):
+        super().__init__()
         self._neo4j = neo4j_repository
 
-    async def __call__(self, state: GraphRAGState) -> EntityResolverUpdate:
+    @property
+    def name(self) -> str:
+        return "entity_resolver"
+
+    @property
+    def input_keys(self) -> list[str]:
+        return ["entities"]
+
+
+    async def _process(self, state: GraphRAGState) -> EntityResolverUpdate:
         """
         엔티티 해석 (그래프 노드 매칭)
 
@@ -33,14 +40,14 @@ class EntityResolverNode:
         entities_map = state.get("entities", {})
 
         if not entities_map:
-            logger.info("No entities to resolve")
-            return {
-                "resolved_entities": [],
-                "execution_path": ["entity_resolver_skipped"],
-            }
+            self._logger.info("No entities to resolve")
+            return EntityResolverUpdate(
+                resolved_entities=[],
+                execution_path=[f"{self.name}_skipped"],
+            )
 
         total_entities_count = sum(len(values) for values in entities_map.values())
-        logger.info(f"Resolving {total_entities_count} entities...")
+        self._logger.info(f"Resolving {total_entities_count} entities...")
 
         resolved = []
 
@@ -74,17 +81,19 @@ class EntityResolverNode:
                                 "original_value": value,
                             }
                         )
-                        logger.debug(f"Resolved '{value}' to node {best_match.id}")
+                        self._logger.debug(
+                            f"Resolved '{value}' to node {best_match.id}"
+                        )
                     else:
-                        logger.debug(f"Could not resolve '{value}'")
+                        self._logger.debug(f"Could not resolve '{value}'")
 
                 except Exception as e:
-                    logger.warning(f"Failed to resolve entity '{value}': {e}")
+                    self._logger.warning(f"Failed to resolve entity '{value}': {e}")
                     # 에러 발생 시 건너뜀
 
-        logger.info(f"Resolved {len(resolved)} entities")
+        self._logger.info(f"Resolved {len(resolved)} entities")
 
-        return {
-            "resolved_entities": resolved,
-            "execution_path": ["entity_resolver"],
-        }
+        return EntityResolverUpdate(
+            resolved_entities=resolved,
+            execution_path=[self.name],
+        )

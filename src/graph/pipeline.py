@@ -8,11 +8,15 @@ LangGraph를 사용한 RAG 파이프라인 정의
 """
 
 import logging
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+
+if TYPE_CHECKING:
+    from langgraph.graph.state import CompiledStateGraph
 
 from src.config import Settings
 from src.domain.types import GraphSchema, PipelineMetadata, PipelineResult
@@ -117,7 +121,7 @@ class GraphRAGPipeline:
             f"schema injected: {graph_schema is not None}, checkpointer: MemorySaver)"
         )
 
-    def _build_graph(self) -> StateGraph:
+    def _build_graph(self) -> CompiledStateGraph:
         """LangGraph 워크플로우 구성 (Vector Cache + Checkpointer)"""
         workflow = StateGraph(GraphRAGState)
 
