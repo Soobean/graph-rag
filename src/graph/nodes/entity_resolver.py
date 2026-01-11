@@ -23,7 +23,8 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
 
     @property
     def input_keys(self) -> list[str]:
-        return ["entities"]
+        # expanded_entities가 있으면 우선 사용, 없으면 entities 사용
+        return ["entities"]  # 최소 필수 키
 
 
     async def _process(self, state: GraphRAGState) -> EntityResolverUpdate:
@@ -36,8 +37,12 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
         Returns:
             업데이트할 상태 딕셔너리
         """
-        # entities는 dict[str, list[str]] 구조 (e.g., {'Person': ['김철수']})
-        entities_map = state.get("entities", {})
+        # expanded_entities가 있으면 우선 사용 (온톨로지 확장된 엔티티)
+        # 없으면 entities 사용 (원본 엔티티)
+        # 주의: or 연산자는 빈 dict {}를 False로 평가하므로 명시적 None 체크
+        entities_map = state.get("expanded_entities")
+        if entities_map is None:
+            entities_map = state.get("entities", {})
 
         if not entities_map:
             self._logger.info("No entities to resolve")
