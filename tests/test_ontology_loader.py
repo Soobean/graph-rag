@@ -167,20 +167,17 @@ class TestOntologyLoader:
 
     def test_expand_concept_no_synonyms(self, loader: OntologyLoader):
         """동의어 없이 확장"""
-        expanded = loader.expand_concept(
-            "Backend", "skills", include_synonyms=False
-        )
+        config = ExpansionConfig(include_synonyms=False, include_children=True)
+        expanded = loader.expand_concept("Backend", "skills", config=config)
 
         assert "Backend" in expanded
         assert "Python" in expanded
 
     def test_expand_concept_no_children(self, loader: OntologyLoader):
         """하위 개념 없이 확장"""
-        expanded = loader.expand_concept(
-            "파이썬", "skills", include_children=False
-        )
+        config = ExpansionConfig(include_synonyms=True, include_children=False)
+        expanded = loader.expand_concept("파이썬", "skills", config=config)
 
-        # 동의어만 포함
         assert "Python" in expanded
         assert "파이썬" in expanded
 
@@ -337,15 +334,141 @@ class TestExpansionLimit:
 
         assert "SomeUnknownTerm" in expanded
 
-    def test_backward_compatibility_params(self, loader: OntologyLoader):
-        """하위 호환성: include_synonyms, include_children 파라미터"""
-        # 기존 방식으로 호출
-        expanded = loader.expand_concept(
-            "파이썬",
-            "skills",
-            include_synonyms=True,
-            include_children=False,
-        )
+    def test_expand_with_config_no_children(self, loader: OntologyLoader):
+        """config로 하위 개념 제외"""
+        config = ExpansionConfig(include_synonyms=True, include_children=False)
+        expanded = loader.expand_concept("파이썬", "skills", config=config)
 
         assert "Python" in expanded
         assert "파이썬" in expanded
+
+
+class TestExpansionStrategy:
+    """ExpansionStrategy 테스트 (Phase 3)"""
+
+    def test_strategy_enum_values(self):
+        """전략 enum 값 확인"""
+        from src.domain.ontology.loader import ExpansionStrategy
+
+        assert ExpansionStrategy.STRICT.value == "strict"
+        assert ExpansionStrategy.NORMAL.value == "normal"
+        assert ExpansionStrategy.BROAD.value == "broad"
+
+    def test_get_strategy_for_intent_normal(self):
+        """일반 의도에 대한 전략"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_strategy_for_intent,
+        )
+
+        # personnel_search → NORMAL
+        strategy = get_strategy_for_intent("personnel_search", 0.7)
+        assert strategy == ExpansionStrategy.NORMAL
+
+    def test_get_strategy_for_intent_strict(self):
+        """정확한 매칭이 필요한 의도"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_strategy_for_intent,
+        )
+
+        # project_matching → STRICT
+        strategy = get_strategy_for_intent("project_matching", 0.8)
+        assert strategy == ExpansionStrategy.STRICT
+
+    def test_get_strategy_for_intent_broad(self):
+        """넓은 검색이 필요한 의도"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_strategy_for_intent,
+        )
+
+        # relationship_search → BROAD
+        strategy = get_strategy_for_intent("relationship_search", 0.7)
+        assert strategy == ExpansionStrategy.BROAD
+
+    def test_get_strategy_low_confidence(self):
+        """신뢰도 낮으면 BROAD"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_strategy_for_intent,
+        )
+
+        # 신뢰도 < 0.5 → BROAD
+        strategy = get_strategy_for_intent("personnel_search", 0.3)
+        assert strategy == ExpansionStrategy.BROAD
+
+    def test_get_strategy_high_confidence(self):
+        """신뢰도 높으면 좁게"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_strategy_for_intent,
+        )
+
+        # 신뢰도 > 0.9 + BROAD → NORMAL
+        strategy = get_strategy_for_intent("relationship_search", 0.95)
+        assert strategy == ExpansionStrategy.NORMAL
+
+        # 신뢰도 > 0.9 + NORMAL → NORMAL (유지)
+        strategy = get_strategy_for_intent("personnel_search", 0.95)
+        assert strategy == ExpansionStrategy.NORMAL
+
+    def test_get_strategy_unknown_intent(self):
+        """알 수 없는 의도는 NORMAL"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_strategy_for_intent,
+        )
+
+        strategy = get_strategy_for_intent("unknown", 0.7)
+        assert strategy == ExpansionStrategy.NORMAL
+
+    def test_get_config_for_strategy_strict(self):
+        """STRICT 전략 config"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_config_for_strategy,
+        )
+
+        config = get_config_for_strategy(ExpansionStrategy.STRICT)
+        assert config.include_children is False
+        assert config.max_total == 5
+
+    def test_get_config_for_strategy_normal(self):
+        """NORMAL 전략 config"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_config_for_strategy,
+        )
+
+        config = get_config_for_strategy(ExpansionStrategy.NORMAL)
+        assert config.include_children is True
+        assert config.max_total == 15
+
+    def test_get_config_for_strategy_broad(self):
+        """BROAD 전략 config"""
+        from src.domain.ontology.loader import (
+            ExpansionStrategy,
+            get_config_for_strategy,
+        )
+
+        config = get_config_for_strategy(ExpansionStrategy.BROAD)
+        assert config.include_children is True
+        assert config.max_total == 30
+
+    def test_intent_strategy_map_completeness(self):
+        """모든 IntentType에 대한 매핑 존재"""
+        from src.domain.ontology.loader import INTENT_STRATEGY_MAP
+
+        expected_intents = [
+            "personnel_search",
+            "project_matching",
+            "relationship_search",
+            "org_info",
+            "skill_search",
+            "count_query",
+            "unknown",
+        ]
+
+        for intent in expected_intents:
+            assert intent in INTENT_STRATEGY_MAP, f"Missing mapping for {intent}"

@@ -262,7 +262,7 @@ class OntologyValidator:
     ) -> None:
         """깨진 참조 검사: 존재하지 않는 스킬 참조"""
         # 모든 정의된 스킬/개념 수집
-        all_defined = self._extract_all_skills(schema)
+        all_defined = self._extract_all_concepts(schema)
         all_synonyms = self._extract_all_synonym_terms(synonyms, "skills")
         all_known = all_defined | all_synonyms
 
@@ -325,6 +325,37 @@ class OntologyValidator:
 
         return skills
 
+    def _extract_all_concepts(self, schema: dict) -> set[str]:
+        """스키마에서 모든 개념 추출 (스킬 + 카테고리명 + 직급명 등)"""
+        concepts_set = set()
+        concepts = schema.get("concepts", {})
+
+        # SkillCategory에서 추출 (스킬 + 카테고리/서브카테고리 이름)
+        for category in concepts.get("SkillCategory", []):
+            if isinstance(category, dict):
+                # 카테고리 이름
+                if "name" in category:
+                    concepts_set.add(category["name"])
+                # 카테고리 내 스킬
+                concepts_set.update(category.get("skills", []))
+                # 서브카테고리
+                for sub in category.get("subcategories", []):
+                    if isinstance(sub, dict):
+                        if "name" in sub:
+                            concepts_set.add(sub["name"])
+                        concepts_set.update(sub.get("skills", []))
+
+        # PositionLevel에서 추출 (레벨명 + includes 내 직급명)
+        position_level = concepts.get("PositionLevel", {})
+        if isinstance(position_level, dict):
+            for level_info in position_level.get("hierarchy", []):
+                if isinstance(level_info, dict):
+                    if "name" in level_info:
+                        concepts_set.add(level_info["name"])
+                    concepts_set.update(level_info.get("includes", []))
+
+        return concepts_set
+
     def _extract_all_synonym_terms(
         self,
         synonyms: dict,
@@ -349,7 +380,8 @@ class OntologyValidator:
 def main() -> int:
     parser = argparse.ArgumentParser(description="온톨로지 YAML 검증")
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="상세 로그 출력",
     )

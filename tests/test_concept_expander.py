@@ -6,7 +6,7 @@ Neo4j 의존성 없이 독립적으로 테스트 가능하도록 설계
 
 import pytest
 
-from src.domain.ontology.loader import OntologyLoader
+from src.domain.ontology.loader import ExpansionConfig, OntologyLoader
 
 
 # ConceptExpanderNode의 ENTITY_TO_CATEGORY 매핑 (직접 정의)
@@ -153,22 +153,18 @@ class TestConceptExpander:
     def test_no_synonyms(self, loader: OntologyLoader):
         """동의어 없이 확장"""
         entities = {"Skill": ["Backend"]}
-        expanded = self._expand_entities(
-            entities, loader, include_synonyms=False, include_children=True
-        )
+        config = ExpansionConfig(include_synonyms=False, include_children=True)
+        expanded = self._expand_entities(entities, loader, config)
 
-        # 하위 개념만 포함 (Python, Java 등)
         assert "Python" in expanded["Skill"]
         assert "Java" in expanded["Skill"]
 
     def test_no_children(self, loader: OntologyLoader):
         """하위 개념 없이 확장"""
         entities = {"Skill": ["파이썬"]}
-        expanded = self._expand_entities(
-            entities, loader, include_synonyms=True, include_children=False
-        )
+        config = ExpansionConfig(include_synonyms=True, include_children=False)
+        expanded = self._expand_entities(entities, loader, config)
 
-        # 동의어만 포함
         assert "Python" in expanded["Skill"]
         assert "Python3" in expanded["Skill"]
 
@@ -180,35 +176,23 @@ class TestConceptExpander:
         self,
         entities: dict[str, list[str]],
         loader: OntologyLoader,
-        include_synonyms: bool = True,
-        include_children: bool = True,
+        config: ExpansionConfig | None = None,
     ) -> dict[str, list[str]]:
-        """
-        ConceptExpanderNode._process() 로직 재현
-
-        실제 노드를 인스턴스화하면 Neo4j 의존성 문제가 발생하므로
-        핵심 로직만 추출하여 테스트합니다.
-        """
+        """ConceptExpanderNode._process() 로직 재현"""
         expanded_entities: dict[str, list[str]] = {}
 
         for entity_type, values in entities.items():
             category = ENTITY_TO_CATEGORY.get(entity_type)
 
             if category is None:
-                # 매핑되지 않은 타입은 그대로 전달
                 expanded_entities[entity_type] = list(values)
                 continue
 
             expanded_values: set[str] = set()
-
             for value in values:
-                expanded = loader.expand_concept(
-                    term=value,
-                    category=category,
-                    include_synonyms=include_synonyms,
-                    include_children=include_children,
+                expanded_values.update(
+                    loader.expand_concept(value, category, config)
                 )
-                expanded_values.update(expanded)
 
             expanded_entities[entity_type] = list(expanded_values)
 

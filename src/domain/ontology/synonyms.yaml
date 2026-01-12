@@ -121,6 +121,142 @@ skills:
       - "애저"
       - "MS Azure"
 
+  # 컨테이너/오케스트레이션
+  Docker:
+    canonical: "Docker"
+    aliases:
+      - "도커"
+      - "docker"
+      - "Container"
+
+  Kubernetes:
+    canonical: "Kubernetes"
+    aliases:
+      - "K8s"
+      - "쿠버네티스"
+      - "k8s"
+      - "kube"
+
+  # 프로그래밍 언어 (추가)
+  Kotlin:
+    canonical: "Kotlin"
+    aliases:
+      - "코틀린"
+      - "kotlin"
+
+  "Node.js":
+    canonical: "Node.js"
+    aliases:
+      - "Node"
+      - "노드"
+      - "NodeJS"
+      - "node.js"
+
+  # 프레임워크 (추가)
+  Angular:
+    canonical: "Angular"
+    aliases:
+      - "앵귤러"
+      - "AngularJS"
+      - "angular"
+
+  # AI/ML (추가)
+  TensorFlow:
+    canonical: "TensorFlow"
+    aliases:
+      - "텐서플로우"
+      - "텐서플로"
+      - "TF"
+      - "tensorflow"
+
+  PyTorch:
+    canonical: "PyTorch"
+    aliases:
+      - "파이토치"
+      - "Torch"
+      - "pytorch"
+
+  "Computer Vision":
+    canonical: "Computer Vision"
+    aliases:
+      - "CV"
+      - "컴퓨터 비전"
+      - "컴퓨터비전"
+      - "영상처리"
+
+  # 데이터
+  SQL:
+    canonical: "SQL"
+    aliases:
+      - "sql"
+      - "에스큐엘"
+      - "Structured Query Language"
+
+  Spark:
+    canonical: "Spark"
+    aliases:
+      - "Apache Spark"
+      - "스파크"
+      - "PySpark"
+
+  Pandas:
+    canonical: "Pandas"
+    aliases:
+      - "판다스"
+      - "pandas"
+      - "pd"
+
+  ETL:
+    canonical: "ETL"
+    aliases:
+      - "이티엘"
+      - "Extract Transform Load"
+      - "데이터 파이프라인"
+
+  Airflow:
+    canonical: "Airflow"
+    aliases:
+      - "Apache Airflow"
+      - "에어플로우"
+      - "airflow"
+
+  # DevOps/CI-CD
+  "CI/CD":
+    canonical: "CI/CD"
+    aliases:
+      - "CICD"
+      - "CI CD"
+      - "Continuous Integration"
+      - "지속적 통합"
+
+  Jenkins:
+    canonical: "Jenkins"
+    aliases:
+      - "젠킨스"
+      - "jenkins"
+
+  "GitHub Actions":
+    canonical: "GitHub Actions"
+    aliases:
+      - "GHA"
+      - "깃허브 액션"
+      - "Github Actions"
+      - "github actions"
+
+  # IaC (Infrastructure as Code)
+  Terraform:
+    canonical: "Terraform"
+    aliases:
+      - "테라폼"
+      - "TF"
+      - "terraform"
+
+  Ansible:
+    canonical: "Ansible"
+    aliases:
+      - "앤서블"
+      - "ansible"
+
 # -----------------------------------------------------------------------------
 # 직급/역할 동의어
 # -----------------------------------------------------------------------------
