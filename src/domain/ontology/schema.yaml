@@ -34,13 +34,13 @@ relations:
   REQUIRES:
     description: "직급/프로젝트가 요구하는 스킬 카테고리"
     examples:
-      - ["Senior Engineer", "Architecture"]
-      - ["ML Project", "AI/ML"]
+      - ["Senior Engineer", "Backend"]
+      - ["Tech Lead", "AI/ML"]
 
   PART_OF:
     description: "부분-전체 관계"
     examples:
-      - ["Backend Team", "Engineering"]
+      - ["Backend", "Programming"]
 
 # -----------------------------------------------------------------------------
 # 개념 계층 정의
