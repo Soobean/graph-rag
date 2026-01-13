@@ -9,6 +9,7 @@ Pydantic Settings를 활용한 환경변수 기반 설정 관리
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -144,6 +145,24 @@ class Settings(BaseSettings):
         default=True,
         description="Vector Search 기능 활성화 여부",
     )
+
+    # ============================================
+    # 온톨로지 설정
+    # ============================================
+    ontology_mode: Literal["yaml", "neo4j", "hybrid"] = Field(
+        default="yaml",
+        description="온톨로지 로더 모드 (yaml: YAML 파일, neo4j: Neo4j DB, hybrid: Neo4j 우선 + YAML 폴백)",
+    )
+
+    @field_validator("ontology_mode")
+    @classmethod
+    def validate_ontology_mode(cls, v: str) -> str:
+        """온톨로지 모드 유효성 검사"""
+        valid_modes = {"yaml", "neo4j", "hybrid"}
+        lower_v = v.lower()
+        if lower_v not in valid_modes:
+            raise ValueError(f"ontology_mode must be one of {valid_modes}")
+        return lower_v
 
     # ============================================
     # 캐시 설정

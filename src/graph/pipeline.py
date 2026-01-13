@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
 
 from src.config import Settings
+from src.domain.ontology.hybrid_loader import HybridOntologyLoader
 from src.domain.ontology.loader import OntologyLoader
 from src.domain.types import GraphSchema, PipelineMetadata, PipelineResult
 from src.graph.nodes import (
@@ -88,7 +89,24 @@ class GraphRAGPipeline:
             logger.info("Query cache repository initialized")
 
         # 온톨로지 로더 초기화 (개념 확장용)
-        self._ontology_loader = OntologyLoader()
+        self._ontology_loader: OntologyLoader | HybridOntologyLoader
+        if settings.ontology_mode in ("neo4j", "hybrid"):
+            if neo4j_client is None:
+                logger.warning(
+                    f"ontology_mode={settings.ontology_mode} but neo4j_client is None. "
+                    "Falling back to YAML mode."
+                )
+                self._ontology_loader = OntologyLoader()
+            else:
+                self._ontology_loader = HybridOntologyLoader(
+                    neo4j_client=neo4j_client, mode=settings.ontology_mode
+                )
+                logger.info(
+                    f"HybridOntologyLoader initialized (mode={settings.ontology_mode})"
+                )
+        else:
+            self._ontology_loader = OntologyLoader()
+            logger.info("OntologyLoader initialized (YAML mode)")
 
         # 노드 초기화
         self._intent_classifier = IntentClassifierNode(llm_repository)
