@@ -25,6 +25,7 @@ from src.domain.ontology.loader import (
     INTENT_STRATEGY_MAP,
     ExpansionConfig,
     ExpansionStrategy,
+    OntologyCategory,
     OntologyLoader,
     get_config_for_strategy,
     get_ontology_loader,
@@ -39,6 +40,8 @@ __all__ = [
     # Core (YAML)
     "OntologyLoader",
     "get_ontology_loader",
+    # Category
+    "OntologyCategory",
     # Expansion Config
     "ExpansionConfig",
     "DEFAULT_EXPANSION_CONFIG",

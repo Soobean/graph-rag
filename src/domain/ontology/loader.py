@@ -9,7 +9,6 @@ YAML 기반 온톨로지 스키마 및 동의어 사전 로더
 """
 
 import logging
-import threading
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
@@ -17,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
 
 # YAML 보안 설정: 중첩 깊이 제한 (YAML Bomb 방지)
 # compose_node 레벨에서 체크하여 모든 재귀 호출에서 깊이 검증
@@ -46,7 +46,23 @@ class SafeLineLoader(yaml.SafeLoader):
         finally:
             self._depth -= 1
 
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# 온톨로지 카테고리
+# =============================================================================
+
+
+class OntologyCategory(str, Enum):
+    """
+    온톨로지 카테고리
+    """
+
+    SKILLS = "skills"
+    POSITIONS = "positions"
+    DEPARTMENTS = "departments"
 
 
 # =============================================================================
@@ -68,29 +84,23 @@ class ExpansionStrategy(Enum):
 
     STRICT = "strict"  # 동의어만 (정확한 검색)
     NORMAL = "normal"  # 동의어 + 1단계 하위 개념 (기본값)
-    BROAD = "broad"    # 동의어 + 전체 하위 개념 (넓은 검색)
+    BROAD = "broad"  # 동의어 + 전체 하위 개념 (넓은 검색)
 
 
 # Intent → Strategy 매핑 (기본값)
 INTENT_STRATEGY_MAP: dict[str, ExpansionStrategy] = {
     # 인원 검색: 일반적인 확장
     "personnel_search": ExpansionStrategy.NORMAL,
-
     # 프로젝트 매칭: 정확한 스킬 필요
     "project_matching": ExpansionStrategy.STRICT,
-
     # 관계 검색: 넓은 확장 (팀 구성, 협업 관계 등)
     "relationship_search": ExpansionStrategy.BROAD,
-
     # 조직 정보: 정확한 매칭
     "org_info": ExpansionStrategy.STRICT,
-
     # 스킬 검색: 넓은 확장
     "skill_search": ExpansionStrategy.BROAD,
-
     # 카운트 쿼리: 일반 확장
     "count_query": ExpansionStrategy.NORMAL,
-
     # 알 수 없는 의도: 일반 확장
     "unknown": ExpansionStrategy.NORMAL,
 }
@@ -180,6 +190,8 @@ class ExpansionConfig:
         max_total: 전체 확장 최대 개수 (기본 15)
         include_synonyms: 동의어 포함 여부 (기본 True)
         include_children: 하위 개념 포함 여부 (기본 True)
+        min_weight: 최소 가중치 임계값 (기본 0.0 = 필터링 없음)
+        sort_by_weight: 가중치 기준 정렬 여부 (기본 True)
     """
 
     max_synonyms: int = 5
@@ -187,22 +199,19 @@ class ExpansionConfig:
     max_total: int = 15
     include_synonyms: bool = True
     include_children: bool = True
+    min_weight: float = 0.0
+    sort_by_weight: bool = True
 
     def __post_init__(self) -> None:
-        """유효성 검사"""
+        """기본 유효성 검사 (음수 방지)"""
         if self.max_synonyms < 0:
             raise ValueError("max_synonyms must be non-negative")
         if self.max_children < 0:
             raise ValueError("max_children must be non-negative")
         if self.max_total < 1:
             raise ValueError("max_total must be at least 1")
-
-        # max_total은 개별 제한보다 크거나 같아야 함
-        min_required = max(self.max_synonyms, self.max_children, 1)
-        if self.max_total < min_required:
-            raise ValueError(
-                f"max_total ({self.max_total}) must be >= {min_required}"
-            )
+        if not 0.0 <= self.min_weight <= 1.0:
+            raise ValueError("min_weight must be between 0.0 and 1.0")
 
 
 # 기본 확장 설정 (전역)
@@ -243,9 +252,6 @@ class OntologyLoader:
         # 역방향 조회용 인덱스 (alias → canonical)
         self._reverse_index: dict[str, dict[str, str]] | None = None
 
-        # Thread safety를 위한 lock
-        self._lock = threading.Lock()
-
         logger.info(f"OntologyLoader initialized: {self._dir}")
 
     # =========================================================================
@@ -272,24 +278,16 @@ class OntologyLoader:
         return data
 
     def load_schema(self) -> dict[str, Any]:
-        """schema.yaml 로드 (캐싱, Thread-safe)"""
+        """schema.yaml 로드 (캐싱)"""
         if self._schema is None:
-            with self._lock:
-                # Double-checked locking
-                if self._schema is None:
-                    self._schema = self._load_yaml_file("schema.yaml")
+            self._schema = self._load_yaml_file("schema.yaml")
         return self._schema
 
     def load_synonyms(self) -> dict[str, Any]:
-        """synonyms.yaml 로드 (캐싱, Thread-safe)"""
-        if self._synonyms is None or self._reverse_index is None:
-            with self._lock:
-                # Double-checked locking
-                if self._synonyms is None:
-                    self._synonyms = self._load_yaml_file("synonyms.yaml")
-                # _reverse_index는 synonyms 로드 후 빌드
-                if self._reverse_index is None:
-                    self._build_reverse_index()
+        """synonyms.yaml 로드 (캐싱)"""
+        if self._synonyms is None:
+            self._synonyms = self._load_yaml_file("synonyms.yaml")
+            self._build_reverse_index()
         return self._synonyms
 
     def _build_reverse_index(self) -> None:
@@ -321,11 +319,27 @@ class OntologyLoader:
                 # main_term → canonical
                 self._reverse_index[category][main_term.lower()] = canonical
 
-                # 각 alias → canonical
+                # 각 alias → canonical (하위호환: str 또는 dict 형식 지원)
                 for alias in aliases:
-                    self._reverse_index[category][alias.lower()] = canonical
+                    alias_name, _ = self._parse_alias(alias)
+                    self._reverse_index[category][alias_name.lower()] = canonical
 
         logger.debug(f"Reverse index built: {len(self._reverse_index)} categories")
+
+    @staticmethod
+    def _parse_alias(alias_entry: str | dict[str, Any]) -> tuple[str, float]:
+        """
+        alias 엔트리에서 이름과 가중치 추출 (하위호환)
+
+        Args:
+            alias_entry: 문자열 또는 {name, weight} 형식의 딕셔너리
+
+        Returns:
+            (이름, 가중치) 튜플. 문자열이면 가중치는 1.0
+        """
+        if isinstance(alias_entry, dict):
+            return alias_entry.get("name", ""), float(alias_entry.get("weight", 1.0))
+        return alias_entry, 1.0
 
     # =========================================================================
     # 동의어 조회
@@ -363,6 +377,23 @@ class OntologyLoader:
             동의어 목록 (canonical 포함)
             찾지 못하면 [term] 반환
         """
+        synonyms_with_weights = self.get_synonyms_with_weights(term, category)
+        return [name for name, _ in synonyms_with_weights]
+
+    def get_synonyms_with_weights(
+        self, term: str, category: str = "skills"
+    ) -> list[tuple[str, float]]:
+        """
+        동의어와 가중치 목록 반환 (양방향 조회)
+
+        Args:
+            term: 검색어
+            category: 카테고리
+
+        Returns:
+            (동의어, 가중치) 튜플 목록
+            찾지 못하면 [(term, 1.0)] 반환
+        """
         synonyms_data = self.load_synonyms()
 
         # 먼저 canonical 이름 찾기
@@ -377,13 +408,20 @@ class OntologyLoader:
 
             entry_canonical = info.get("canonical", main_term)
             if entry_canonical == canonical:
-                # canonical + 모든 aliases 반환
-                result = [canonical]
-                result.extend(info.get("aliases", []))
-                return list(set(result))  # 중복 제거
+                # canonical (weight=1.0) + 모든 aliases (with weights)
+                result: list[tuple[str, float]] = [(canonical, 1.0)]
+                seen = {canonical}
+
+                for alias in info.get("aliases", []):
+                    alias_name, alias_weight = self._parse_alias(alias)
+                    if alias_name and alias_name not in seen:
+                        result.append((alias_name, alias_weight))
+                        seen.add(alias_name)
+
+                return result
 
         # 찾지 못한 경우 원본 반환
-        return [term]
+        return [(term, 1.0)]
 
     # =========================================================================
     # 개념 계층 조회
@@ -403,16 +441,14 @@ class OntologyLoader:
         schema = self.load_schema()
         concepts = schema.get("concepts", {})
 
-        if category == "skills":
+        if category == OntologyCategory.SKILLS:
             return self._get_skill_children(concept, concepts)
-        elif category == "positions":
+        elif category == OntologyCategory.POSITIONS:
             return self._get_position_children(concept, concepts)
 
         return []
 
-    def _get_skill_children(
-        self, concept: str, concepts: dict[str, Any]
-    ) -> list[str]:
+    def _get_skill_children(self, concept: str, concepts: dict[str, Any]) -> list[str]:
         """스킬 카테고리에서 하위 개념 조회"""
         result: list[str] = []
 
@@ -491,7 +527,7 @@ class OntologyLoader:
             >>> loader.get_position_level_and_above("Senior")
             ["Senior Engineer", "Tech Lead", "Staff Engineer", "CTO", "VP", "Director"]
         """
-        if category != "positions":
+        if category != OntologyCategory.POSITIONS:
             return []
 
         schema = self.load_schema()
@@ -509,9 +545,7 @@ class OntologyLoader:
                 break
 
         if target_level is None:
-            logger.warning(
-                f"Position level '{concept}' not found in hierarchy"
-            )
+            logger.warning(f"Position level '{concept}' not found in hierarchy")
             return []
 
         # 타겟 레벨 이상 수집 (level >= target)
@@ -541,6 +575,10 @@ class OntologyLoader:
 
         Returns:
             확장된 개념 목록 (중복 제거, 최대 max_total개)
+
+        Note:
+            - min_weight > 0: 해당 가중치 이상인 동의어만 포함
+            - sort_by_weight=True: 가중치 내림차순 정렬
         """
         if config is None:
             config = DEFAULT_EXPANSION_CONFIG
@@ -549,34 +587,52 @@ class OntologyLoader:
         seen: set[str] = {term}
 
         if config.include_synonyms:
-            for syn in self.get_synonyms(term, category)[:config.max_synonyms]:
+            # 가중치와 함께 동의어 조회
+            synonyms_with_weights = self.get_synonyms_with_weights(term, category)
+
+            # 임계값 필터링
+            if config.min_weight > 0:
+                synonyms_with_weights = [
+                    (s, w) for s, w in synonyms_with_weights if w >= config.min_weight
+                ]
+
+            # 가중치 기준 정렬
+            if config.sort_by_weight:
+                synonyms_with_weights.sort(key=lambda x: x[1], reverse=True)
+
+            # 결과 추가
+            for syn, _ in synonyms_with_weights[: config.max_synonyms]:
                 if syn not in seen:
                     result.append(syn)
                     seen.add(syn)
 
         if config.include_children:
             canonical = self.get_canonical(term, category)
-            for child in self.get_children(canonical, category)[:config.max_children]:
+            for child in self.get_children(canonical, category)[: config.max_children]:
                 if child not in seen:
                     result.append(child)
                     seen.add(child)
 
-        return result[:config.max_total]
+        return result[: config.max_total]
 
     def get_expansion_rules(self) -> dict[str, Any]:
         """확장 규칙 반환"""
         schema = self.load_schema()
-        return schema.get("expansion_rules", {
-            "default_depth": 2,
-            "include_synonyms": True,
-            "include_children": True,
-            "include_parents": False,
-        })
+        return schema.get(
+            "expansion_rules",
+            {
+                "default_depth": 2,
+                "include_synonyms": True,
+                "include_children": True,
+                "include_parents": False,
+            },
+        )
 
 
 # =========================================================================
 # 싱글톤 인스턴스 (전역 사용)
 # =========================================================================
+
 
 @lru_cache(maxsize=1)
 def get_ontology_loader() -> OntologyLoader:

@@ -165,17 +165,21 @@ class OntologyMigrator:
                 "is_canonical": True,
             })
 
-            # Alias concepts + SAME_AS relations
-            for alias in aliases:
+            # Alias concepts + SAME_AS relations (가중치 지원)
+            for alias_entry in aliases:
+                # 하위호환: 문자열 또는 {name, weight} 형식 지원
+                alias_name, alias_weight = OntologyLoader._parse_alias(alias_entry)
+
                 concepts_to_create.append({
-                    "name": alias,
+                    "name": alias_name,
                     "type": "skill",
                     "description": f"Alias of {canonical}",
                     "is_canonical": False,
                 })
                 same_as_relations.append({
-                    "from_name": alias,
+                    "from_name": alias_name,
                     "to_name": canonical,
+                    "weight": alias_weight,
                 })
 
         # Concept 노드 일괄 생성
@@ -289,9 +293,9 @@ class OntologyMigrator:
         logger.debug(f"  Concepts 생성/업데이트: {created}")
 
     async def _batch_create_same_as(
-        self, relations: list[dict[str, str]]
+        self, relations: list[dict[str, Any]]
     ) -> None:
-        """SAME_AS 관계 일괄 생성"""
+        """SAME_AS 관계 일괄 생성 (가중치 지원)"""
         if not relations:
             return
 
@@ -301,9 +305,12 @@ class OntologyMigrator:
         MATCH (to:Concept {name: r.to_name, type: 'skill'})
         MERGE (from)-[rel:SAME_AS]->(to)
         ON CREATE SET
-            rel.weight = 1.0,
+            rel.weight = r.weight,
             rel.source = 'synonyms.yaml',
             rel.created_at = datetime()
+        ON MATCH SET
+            rel.weight = r.weight,
+            rel.updated_at = datetime()
         RETURN count(rel) as created
         """
 

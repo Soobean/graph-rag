@@ -19,6 +19,7 @@ from typing import Any
 from src.domain.ontology.loader import (
     DEFAULT_EXPANSION_CONFIG,
     ExpansionConfig,
+    OntologyCategory,
 )
 from src.infrastructure.neo4j_client import Neo4jClient
 
@@ -64,7 +65,7 @@ class Neo4jOntologyLoader:
             정규화된 이름 (예: "Python")
             찾지 못하면 원본 term 반환
         """
-        if category != "skills":
+        if category != OntologyCategory.SKILLS:
             return term
 
         # Case-insensitive 검색
@@ -115,7 +116,7 @@ class Neo4jOntologyLoader:
             동의어 목록 (canonical 포함)
             찾지 못하면 [term] 반환
         """
-        if category != "skills":
+        if category != OntologyCategory.SKILLS:
             return [term]
 
         # 먼저 canonical 찾기
@@ -165,7 +166,7 @@ class Neo4jOntologyLoader:
         Returns:
             하위 개념 목록 (스킬만, 카테고리 제외)
         """
-        if category != "skills":
+        if category != OntologyCategory.SKILLS:
             return []
 
         # 재귀적 IS_A 탐색 (최대 3단계)
@@ -188,6 +189,55 @@ class Neo4jOntologyLoader:
 
         return []
 
+    async def get_synonyms_with_weights(
+        self,
+        term: str,
+        category: str = "skills",
+        min_weight: float = 0.0,
+    ) -> list[tuple[str, float]]:
+        """
+        동의어와 가중치 목록 반환
+
+        Args:
+            term: 검색어 (canonical 권장)
+            category: 카테고리
+            min_weight: 최소 가중치 임계값
+
+        Returns:
+            (동의어, 가중치) 튜플 목록 (가중치 내림차순)
+        """
+        if category != OntologyCategory.SKILLS:
+            return [(term, 1.0)]
+
+        query = """
+        MATCH (c:Concept {type: 'skill'})
+        WHERE toLower(c.name) = toLower($term)
+
+        OPTIONAL MATCH (c)-[r:SAME_AS]-(syn:Concept {type: 'skill'})
+        WHERE r.weight >= $min_weight
+
+        WITH c, syn, r.weight as weight
+        ORDER BY weight DESC
+
+        RETURN c.name as canonical,
+               collect({name: syn.name, weight: weight}) as synonyms
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query, {"term": term, "min_weight": min_weight}
+            )
+            if results and results[0]["canonical"]:
+                result: list[tuple[str, float]] = [(results[0]["canonical"], 1.0)]
+                for syn in results[0]["synonyms"]:
+                    if syn["name"] and syn["name"] != results[0]["canonical"]:
+                        result.append((syn["name"], syn["weight"] or 1.0))
+                return result
+        except Exception as e:
+            logger.warning(f"get_synonyms_with_weights query failed: {e}")
+
+        return [(term, 1.0)]
+
     async def expand_concept(
         self,
         term: str,
@@ -197,8 +247,7 @@ class Neo4jOntologyLoader:
         """
         개념 확장 (동의어 + 하위 개념)
 
-        YAML OntologyLoader.expand_concept()과 동일한 결과를 반환합니다.
-        단일 Cypher 쿼리로 효율적으로 처리합니다.
+        기존 메서드들을 조합하여 확장 결과를 반환합니다.
 
         Args:
             term: 검색어
@@ -211,79 +260,41 @@ class Neo4jOntologyLoader:
         if config is None:
             config = DEFAULT_EXPANSION_CONFIG
 
-        if category != "skills":
+        if category != OntologyCategory.SKILLS:
             return [term]
 
-        # 단일 쿼리로 동의어 + 하위 개념 동시 조회
-        query = """
-        // 1. 입력 term에서 canonical 찾기
-        OPTIONAL MATCH (input:Concept {type: 'skill'})
-        WHERE toLower(input.name) = toLower($term)
-        OPTIONAL MATCH (input)-[:SAME_AS]->(canonical:Concept {is_canonical: true})
-
-        WITH COALESCE(
-            CASE WHEN input.is_canonical = true THEN input ELSE null END,
-            canonical,
-            input
-        ) as main_concept, $term as original_term
-
-        // main_concept이 null이면 원본 term만 반환
-        WITH
-            CASE WHEN main_concept IS NULL THEN [original_term] ELSE [] END as fallback,
-            main_concept,
-            original_term
-
-        // 2. 동의어 조회 (SAME_AS 양방향)
-        OPTIONAL MATCH (main_concept)-[:SAME_AS]-(synonym:Concept {type: 'skill'})
-
-        WITH fallback, main_concept, original_term,
-             collect(DISTINCT synonym.name)[0..$max_synonyms] as synonyms
-
-        // 3. 하위 개념 조회 (IS_A 재귀)
-        OPTIONAL MATCH (child:Concept {type: 'skill'})-[:IS_A*1..3]->(main_concept)
-
-        WITH fallback, main_concept, original_term, synonyms,
-             collect(DISTINCT child.name)[0..$max_children] as children
-
-        // 4. 결과 조합
-        RETURN
-            CASE
-                WHEN main_concept IS NULL THEN fallback
-                ELSE
-                    // term → canonical → synonyms → children 순서 (우선순위 유지)
-                    [original_term] +
-                    CASE WHEN main_concept.name <> original_term
-                         THEN [main_concept.name]
-                         ELSE [] END +
-                    [s IN synonyms WHERE s <> original_term AND s <> main_concept.name] +
-                    [c IN children WHERE NOT c IN synonyms AND c <> original_term AND c <> main_concept.name]
-            END as expanded
-        """
-
-        params = {
-            "term": term,
-            "max_synonyms": config.max_synonyms if config.include_synonyms else 0,
-            "max_children": config.max_children if config.include_children else 0,
-        }
+        result: list[str] = [term]
+        seen: set[str] = {term}
 
         try:
-            results = await self._client.execute_query(query, params)
-            if results and results[0]["expanded"]:
-                expanded = results[0]["expanded"]
-                # 중복 제거 및 제한 적용
-                seen: set[str] = set()
-                result: list[str] = []
-                for item in expanded:
-                    if item and item not in seen:
-                        seen.add(item)
-                        result.append(item)
-                        if len(result) >= config.max_total:
-                            break
-                return result
-        except Exception as e:
-            logger.warning(f"expand_concept query failed: {e}")
+            # 1. canonical 찾기
+            canonical = await self.get_canonical(term, category)
+            if canonical != term and canonical not in seen:
+                result.append(canonical)
+                seen.add(canonical)
 
-        return [term]
+            # 2. 동의어 조회 (가중치 필터링 적용)
+            if config.include_synonyms:
+                synonyms = await self.get_synonyms_with_weights(
+                    canonical, category, config.min_weight
+                )
+                for syn, _ in synonyms[:config.max_synonyms]:
+                    if syn not in seen:
+                        result.append(syn)
+                        seen.add(syn)
+
+            # 3. 하위 개념 조회
+            if config.include_children:
+                children = await self.get_children(canonical, category)
+                for child in children[:config.max_children]:
+                    if child not in seen:
+                        result.append(child)
+                        seen.add(child)
+
+        except Exception as e:
+            logger.warning(f"expand_concept failed: {e}")
+
+        return result[:config.max_total]
 
     async def get_all_skills(self) -> list[str]:
         """
