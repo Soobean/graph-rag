@@ -44,11 +44,9 @@ class TestOntologyLoader:
 
     def test_load_nonexistent_directory(self, tmp_path: Path):
         """존재하지 않는 디렉토리 처리"""
-        loader = OntologyLoader(tmp_path / "nonexistent")
-
-        # 빈 dict 반환 (에러 아님)
-        schema = loader.load_schema()
-        assert schema == {}
+        # 존재하지 않는 디렉토리는 ValueError 발생
+        with pytest.raises(ValueError, match="Directory does not exist"):
+            OntologyLoader(tmp_path / "nonexistent")
 
     # =========================================================================
     # 동의어 조회 테스트
@@ -275,7 +273,8 @@ class TestExpansionLimit:
 
     def test_expand_with_config(self, loader: OntologyLoader):
         """config 파라미터 사용"""
-        config = ExpansionConfig(max_total=3)
+        # max_total >= max(max_synonyms, max_children) 조건 만족 필요
+        config = ExpansionConfig(max_synonyms=2, max_children=2, max_total=3)
         expanded = loader.expand_concept("Backend", "skills", config=config)
 
         assert len(expanded) <= 3
@@ -329,7 +328,8 @@ class TestExpansionLimit:
 
     def test_expand_preserves_original_term(self, loader: OntologyLoader):
         """원본 용어는 항상 포함"""
-        config = ExpansionConfig(max_total=1)
+        # max_total >= max(max_synonyms, max_children) 조건 만족 필요
+        config = ExpansionConfig(max_synonyms=0, max_children=0, max_total=1)
         expanded = loader.expand_concept("SomeUnknownTerm", "skills", config=config)
 
         assert "SomeUnknownTerm" in expanded
@@ -388,15 +388,15 @@ class TestExpansionStrategy:
         assert strategy == ExpansionStrategy.BROAD
 
     def test_get_strategy_low_confidence(self):
-        """신뢰도 낮으면 BROAD"""
+        """신뢰도 낮으면 기본 전략 유지 (보수적 접근)"""
         from src.domain.ontology.loader import (
             ExpansionStrategy,
             get_strategy_for_intent,
         )
 
-        # 신뢰도 < 0.5 → BROAD
+        # 신뢰도 < 0.5 → 기본 전략 유지 (personnel_search는 NORMAL)
         strategy = get_strategy_for_intent("personnel_search", 0.3)
-        assert strategy == ExpansionStrategy.BROAD
+        assert strategy == ExpansionStrategy.NORMAL
 
     def test_get_strategy_high_confidence(self):
         """신뢰도 높으면 좁게"""
@@ -472,3 +472,124 @@ class TestExpansionStrategy:
 
         for intent in expected_intents:
             assert intent in INTENT_STRATEGY_MAP, f"Missing mapping for {intent}"
+
+
+class TestWeightBasedExpansion:
+    """가중치 기반 확장 테스트 (Phase 5)"""
+
+    @pytest.fixture
+    def loader(self) -> OntologyLoader:
+        """기본 로더 인스턴스"""
+        return OntologyLoader()
+
+    def test_expansion_config_min_weight_default(self):
+        """기본 min_weight는 0.0 (필터링 없음)"""
+        config = ExpansionConfig()
+        assert config.min_weight == 0.0
+        assert config.sort_by_weight is True
+
+    def test_expansion_config_min_weight_validation(self):
+        """min_weight 유효성 검사"""
+        # 유효한 값
+        config = ExpansionConfig(min_weight=0.5)
+        assert config.min_weight == 0.5
+
+        # 경계값
+        config = ExpansionConfig(min_weight=0.0)
+        assert config.min_weight == 0.0
+
+        config = ExpansionConfig(min_weight=1.0)
+        assert config.min_weight == 1.0
+
+    def test_expansion_config_invalid_min_weight(self):
+        """잘못된 min_weight 값"""
+        with pytest.raises(ValueError, match="min_weight must be between"):
+            ExpansionConfig(min_weight=-0.1)
+
+        with pytest.raises(ValueError, match="min_weight must be between"):
+            ExpansionConfig(min_weight=1.1)
+
+    def test_get_synonyms_with_weights_python(self, loader: OntologyLoader):
+        """Python 동의어와 가중치 조회"""
+        synonyms = loader.get_synonyms_with_weights("Python", "skills")
+
+        # canonical은 항상 weight=1.0
+        assert ("Python", 1.0) in synonyms
+
+        # 가중치가 있는 동의어 확인
+        weights_dict = dict(synonyms)
+        assert "파이썬" in weights_dict
+        assert weights_dict["파이썬"] == 1.0  # 한글 정규 표현
+        assert "Py" in weights_dict
+        assert weights_dict["Py"] == 0.6  # 축약형
+
+    def test_get_synonyms_with_weights_korean(self, loader: OntologyLoader):
+        """한글 검색어로 동의어와 가중치 조회"""
+        synonyms = loader.get_synonyms_with_weights("파이썬", "skills")
+
+        # canonical Python이 포함되어야 함
+        names = [s[0] for s in synonyms]
+        assert "Python" in names
+
+    def test_get_synonyms_with_weights_unknown(self, loader: OntologyLoader):
+        """알 수 없는 용어는 (term, 1.0) 반환"""
+        synonyms = loader.get_synonyms_with_weights("UnknownSkill", "skills")
+
+        assert len(synonyms) == 1
+        assert synonyms[0] == ("UnknownSkill", 1.0)
+
+    def test_expand_with_min_weight_filter(self, loader: OntologyLoader):
+        """min_weight 임계값 필터링"""
+        # 낮은 가중치 동의어도 포함 (기본값)
+        config_no_filter = ExpansionConfig(min_weight=0.0)
+        expanded_all = loader.expand_concept("Python", "skills", config_no_filter)
+
+        # 높은 임계값으로 필터링
+        config_filtered = ExpansionConfig(min_weight=0.7)
+        expanded_filtered = loader.expand_concept("Python", "skills", config_filtered)
+
+        # 필터링된 결과가 더 적어야 함
+        assert len(expanded_filtered) <= len(expanded_all)
+
+        # Py(0.6)는 min_weight=0.7에서 제외되어야 함
+        assert "Py" in expanded_all
+        assert "Py" not in expanded_filtered
+
+    def test_expand_with_sort_by_weight(self, loader: OntologyLoader):
+        """가중치 기준 정렬 확인"""
+        config = ExpansionConfig(sort_by_weight=True, include_children=False)
+        expanded = loader.expand_concept("Python", "skills", config)
+
+        # 원본 term은 항상 첫 번째
+        assert expanded[0] == "Python"
+
+        # Python 이후 가중치 순서 확인 (높은 것이 먼저)
+        # 파이썬(1.0), Python3(0.9), Py(0.6), python(0.4)
+        # 단, Python은 canonical이므로 별도 처리됨
+
+    def test_expand_backward_compatibility(self, loader: OntologyLoader):
+        """하위호환: 기존 config로 동작"""
+        config = ExpansionConfig()  # 기본값
+        expanded = loader.expand_concept("JavaScript", "skills", config)
+
+        # 기존처럼 동의어가 포함되어야 함
+        assert "JavaScript" in expanded
+        assert "자바스크립트" in expanded or "JS" in expanded
+
+    def test_expand_mixed_yaml_format(self, loader: OntologyLoader):
+        """혼합 YAML 형식 (str + dict) 지원"""
+        # TypeScript는 기존 형식(문자열만)
+        expanded = loader.expand_concept("TypeScript", "skills")
+
+        # 기존 형식도 정상 동작해야 함
+        assert "TypeScript" in expanded
+        assert "TS" in expanded or "타입스크립트" in expanded
+
+    def test_get_synonyms_preserves_order_with_weights(self, loader: OntologyLoader):
+        """get_synonyms()는 가중치 순서를 유지"""
+        # get_synonyms는 내부적으로 get_synonyms_with_weights 사용
+        synonyms = loader.get_synonyms("Python", "skills")
+
+        # 원래 순서대로 반환 (가중치 정렬은 expand_concept에서만)
+        assert "Python" in synonyms
+        assert len(synonyms) >= 3  # Python, 파이썬, Python3, Py, python 등

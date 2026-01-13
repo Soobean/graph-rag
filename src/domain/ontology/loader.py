@@ -17,7 +17,52 @@ from typing import Any
 
 import yaml
 
+
+# YAML 보안 설정: 중첩 깊이 제한 (YAML Bomb 방지)
+# compose_node 레벨에서 체크하여 모든 재귀 호출에서 깊이 검증
+class SafeLineLoader(yaml.SafeLoader):
+    """
+    중첩 깊이 제한이 있는 SafeLoader (YAML Bomb 방지)
+
+    compose_node()를 오버라이드하여 모든 노드 구성 시 깊이를 체크합니다.
+    이 방식은 내부 재귀 호출에서도 정확하게 깊이를 추적합니다.
+    """
+
+    MAX_DEPTH = 20  # 최대 중첩 깊이
+
+    def __init__(self, stream):
+        super().__init__(stream)
+        self._depth = 0
+
+    def compose_node(self, parent, index):
+        """노드 구성 시 깊이 체크 (모든 재귀 호출에서 실행됨)"""
+        self._depth += 1
+        if self._depth > self.MAX_DEPTH:
+            raise yaml.YAMLError(
+                f"YAML nesting depth exceeds maximum ({self.MAX_DEPTH})"
+            )
+        try:
+            return super().compose_node(parent, index)
+        finally:
+            self._depth -= 1
+
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# 온톨로지 카테고리
+# =============================================================================
+
+
+class OntologyCategory(str, Enum):
+    """
+    온톨로지 카테고리
+    """
+
+    SKILLS = "skills"
+    POSITIONS = "positions"
+    DEPARTMENTS = "departments"
 
 
 # =============================================================================
@@ -39,29 +84,23 @@ class ExpansionStrategy(Enum):
 
     STRICT = "strict"  # 동의어만 (정확한 검색)
     NORMAL = "normal"  # 동의어 + 1단계 하위 개념 (기본값)
-    BROAD = "broad"    # 동의어 + 전체 하위 개념 (넓은 검색)
+    BROAD = "broad"  # 동의어 + 전체 하위 개념 (넓은 검색)
 
 
 # Intent → Strategy 매핑 (기본값)
 INTENT_STRATEGY_MAP: dict[str, ExpansionStrategy] = {
     # 인원 검색: 일반적인 확장
     "personnel_search": ExpansionStrategy.NORMAL,
-
     # 프로젝트 매칭: 정확한 스킬 필요
     "project_matching": ExpansionStrategy.STRICT,
-
     # 관계 검색: 넓은 확장 (팀 구성, 협업 관계 등)
     "relationship_search": ExpansionStrategy.BROAD,
-
     # 조직 정보: 정확한 매칭
     "org_info": ExpansionStrategy.STRICT,
-
     # 스킬 검색: 넓은 확장
     "skill_search": ExpansionStrategy.BROAD,
-
     # 카운트 쿼리: 일반 확장
     "count_query": ExpansionStrategy.NORMAL,
-
     # 알 수 없는 의도: 일반 확장
     "unknown": ExpansionStrategy.NORMAL,
 }
@@ -85,24 +124,20 @@ def get_strategy_for_intent(
         >>> get_strategy_for_intent("personnel_search", 0.95)
         ExpansionStrategy.NORMAL
 
-        >>> get_strategy_for_intent("unknown", 0.3)
-        ExpansionStrategy.BROAD  # 신뢰도 낮으면 넓게 확장
+        >>> get_strategy_for_intent("skill_search", 0.3)
+        ExpansionStrategy.BROAD  # 신뢰도 낮아도 기본 전략 유지
     """
-    # 신뢰도 기반 조정
-    if confidence < 0.5:
-        # 신뢰도 낮으면 넓게 확장 (불확실성 대응)
-        return ExpansionStrategy.BROAD
+    base_strategy = INTENT_STRATEGY_MAP.get(intent, ExpansionStrategy.NORMAL)
 
-    if confidence > 0.9:
-        # 신뢰도 높으면 좁게 확장 (정확한 의도 파악)
-        base_strategy = INTENT_STRATEGY_MAP.get(intent, ExpansionStrategy.NORMAL)
-        # BROAD → NORMAL로 한 단계 좁힘 (NORMAL, STRICT는 유지)
-        if base_strategy == ExpansionStrategy.BROAD:
-            return ExpansionStrategy.NORMAL
+    # 신뢰도가 낮으면 기본 전략 유지 (보수적 접근)
+    if confidence < 0.5:
         return base_strategy
 
-    # 일반적인 경우: Intent 매핑 사용
-    return INTENT_STRATEGY_MAP.get(intent, ExpansionStrategy.NORMAL)
+    # 신뢰도가 높고 BROAD 전략이면 NORMAL로 좁힘
+    if confidence > 0.9 and base_strategy == ExpansionStrategy.BROAD:
+        return ExpansionStrategy.NORMAL
+
+    return base_strategy
 
 
 def get_config_for_strategy(strategy: ExpansionStrategy) -> "ExpansionConfig":
@@ -155,6 +190,8 @@ class ExpansionConfig:
         max_total: 전체 확장 최대 개수 (기본 15)
         include_synonyms: 동의어 포함 여부 (기본 True)
         include_children: 하위 개념 포함 여부 (기본 True)
+        min_weight: 최소 가중치 임계값 (기본 0.0 = 필터링 없음)
+        sort_by_weight: 가중치 기준 정렬 여부 (기본 True)
     """
 
     max_synonyms: int = 5
@@ -162,15 +199,19 @@ class ExpansionConfig:
     max_total: int = 15
     include_synonyms: bool = True
     include_children: bool = True
+    min_weight: float = 0.0
+    sort_by_weight: bool = True
 
     def __post_init__(self) -> None:
-        """유효성 검사"""
+        """기본 유효성 검사 (음수 방지)"""
         if self.max_synonyms < 0:
             raise ValueError("max_synonyms must be non-negative")
         if self.max_children < 0:
             raise ValueError("max_children must be non-negative")
         if self.max_total < 1:
             raise ValueError("max_total must be at least 1")
+        if not 0.0 <= self.min_weight <= 1.0:
+            raise ValueError("min_weight must be between 0.0 and 1.0")
 
 
 # 기본 확장 설정 (전역)
@@ -196,10 +237,14 @@ class OntologyLoader:
                           None이면 기본 경로 사용
         """
         if ontology_dir is None:
-            # 기본 경로: src/domain/ontology/
             self._dir = Path(__file__).parent
         else:
-            self._dir = Path(ontology_dir)
+            dir_path = Path(ontology_dir).resolve()
+            if not dir_path.exists():
+                raise ValueError(f"Directory does not exist: {dir_path}")
+            if not dir_path.is_dir():
+                raise ValueError(f"Path is not a directory: {dir_path}")
+            self._dir = dir_path
 
         self._schema: dict[str, Any] | None = None
         self._synonyms: dict[str, Any] | None = None
@@ -213,62 +258,45 @@ class OntologyLoader:
     # YAML 로드
     # =========================================================================
 
+    # 파일 크기 제한 (10MB)
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+
+    def _load_yaml_file(self, filename: str) -> dict[str, Any]:
+        """YAML 파일 로드 (공통 로직)"""
+        file_path = self._dir / filename
+        if not file_path.exists():
+            raise FileNotFoundError(f"Required file not found: {file_path}")
+
+        file_size = file_path.stat().st_size
+        if file_size > self.MAX_FILE_SIZE:
+            raise ValueError(f"File too large: {file_path} ({file_size} bytes)")
+
+        with open(file_path, encoding="utf-8") as f:
+            data = yaml.load(f, Loader=SafeLineLoader) or {}
+
+        logger.info(f"Loaded: {file_path}")
+        return data
+
     def load_schema(self) -> dict[str, Any]:
         """schema.yaml 로드 (캐싱)"""
         if self._schema is None:
-            schema_path = self._dir / "schema.yaml"
-            if not schema_path.exists():
-                logger.warning(f"Schema file not found: {schema_path}")
-                self._schema = {}
-            else:
-                try:
-                    with open(schema_path, encoding="utf-8") as f:
-                        self._schema = yaml.safe_load(f) or {}
-                    logger.info(f"Schema loaded: {schema_path}")
-                except yaml.YAMLError as e:
-                    logger.error(f"Failed to parse schema YAML: {e}")
-                    self._schema = {}
-                except UnicodeDecodeError as e:
-                    logger.error(f"Encoding error in schema file (expected UTF-8): {e}")
-                    self._schema = {}
-                except OSError as e:
-                    logger.error(f"Failed to read schema file: {e}")
-                    self._schema = {}
+            self._schema = self._load_yaml_file("schema.yaml")
         return self._schema
 
     def load_synonyms(self) -> dict[str, Any]:
         """synonyms.yaml 로드 (캐싱)"""
         if self._synonyms is None:
-            synonyms_path = self._dir / "synonyms.yaml"
-            if not synonyms_path.exists():
-                logger.warning(f"Synonyms file not found: {synonyms_path}")
-                self._synonyms = {}
-            else:
-                try:
-                    with open(synonyms_path, encoding="utf-8") as f:
-                        self._synonyms = yaml.safe_load(f) or {}
-                    logger.info(f"Synonyms loaded: {synonyms_path}")
-                except yaml.YAMLError as e:
-                    logger.error(f"Failed to parse synonyms YAML: {e}")
-                    self._synonyms = {}
-                except UnicodeDecodeError as e:
-                    logger.error(f"Encoding error in synonyms file (expected UTF-8): {e}")
-                    self._synonyms = {}
-                except OSError as e:
-                    logger.error(f"Failed to read synonyms file: {e}")
-                    self._synonyms = {}
-
-            # 역방향 인덱스 빌드
+            self._synonyms = self._load_yaml_file("synonyms.yaml")
             self._build_reverse_index()
-
         return self._synonyms
 
     def _build_reverse_index(self) -> None:
-        """역방향 조회 인덱스 빌드 (alias → canonical)"""
-        # 중복 빌드 방지
-        if self._reverse_index is not None:
-            return
+        """
+        역방향 조회 인덱스 빌드 (alias → canonical)
 
+        Note: 이 메서드는 load_synonyms()의 lock 내부에서 호출됩니다.
+              호출 전에 _reverse_index is None 체크가 완료되었다고 가정합니다.
+        """
         self._reverse_index = {}
 
         if self._synonyms is None:
@@ -291,11 +319,27 @@ class OntologyLoader:
                 # main_term → canonical
                 self._reverse_index[category][main_term.lower()] = canonical
 
-                # 각 alias → canonical
+                # 각 alias → canonical (하위호환: str 또는 dict 형식 지원)
                 for alias in aliases:
-                    self._reverse_index[category][alias.lower()] = canonical
+                    alias_name, _ = self._parse_alias(alias)
+                    self._reverse_index[category][alias_name.lower()] = canonical
 
         logger.debug(f"Reverse index built: {len(self._reverse_index)} categories")
+
+    @staticmethod
+    def _parse_alias(alias_entry: str | dict[str, Any]) -> tuple[str, float]:
+        """
+        alias 엔트리에서 이름과 가중치 추출 (하위호환)
+
+        Args:
+            alias_entry: 문자열 또는 {name, weight} 형식의 딕셔너리
+
+        Returns:
+            (이름, 가중치) 튜플. 문자열이면 가중치는 1.0
+        """
+        if isinstance(alias_entry, dict):
+            return alias_entry.get("name", ""), float(alias_entry.get("weight", 1.0))
+        return alias_entry, 1.0
 
     # =========================================================================
     # 동의어 조회
@@ -333,6 +377,23 @@ class OntologyLoader:
             동의어 목록 (canonical 포함)
             찾지 못하면 [term] 반환
         """
+        synonyms_with_weights = self.get_synonyms_with_weights(term, category)
+        return [name for name, _ in synonyms_with_weights]
+
+    def get_synonyms_with_weights(
+        self, term: str, category: str = "skills"
+    ) -> list[tuple[str, float]]:
+        """
+        동의어와 가중치 목록 반환 (양방향 조회)
+
+        Args:
+            term: 검색어
+            category: 카테고리
+
+        Returns:
+            (동의어, 가중치) 튜플 목록
+            찾지 못하면 [(term, 1.0)] 반환
+        """
         synonyms_data = self.load_synonyms()
 
         # 먼저 canonical 이름 찾기
@@ -347,13 +408,20 @@ class OntologyLoader:
 
             entry_canonical = info.get("canonical", main_term)
             if entry_canonical == canonical:
-                # canonical + 모든 aliases 반환
-                result = [canonical]
-                result.extend(info.get("aliases", []))
-                return list(set(result))  # 중복 제거
+                # canonical (weight=1.0) + 모든 aliases (with weights)
+                result: list[tuple[str, float]] = [(canonical, 1.0)]
+                seen = {canonical}
+
+                for alias in info.get("aliases", []):
+                    alias_name, alias_weight = self._parse_alias(alias)
+                    if alias_name and alias_name not in seen:
+                        result.append((alias_name, alias_weight))
+                        seen.add(alias_name)
+
+                return result
 
         # 찾지 못한 경우 원본 반환
-        return [term]
+        return [(term, 1.0)]
 
     # =========================================================================
     # 개념 계층 조회
@@ -373,16 +441,14 @@ class OntologyLoader:
         schema = self.load_schema()
         concepts = schema.get("concepts", {})
 
-        if category == "skills":
+        if category == OntologyCategory.SKILLS:
             return self._get_skill_children(concept, concepts)
-        elif category == "positions":
+        elif category == OntologyCategory.POSITIONS:
             return self._get_position_children(concept, concepts)
 
         return []
 
-    def _get_skill_children(
-        self, concept: str, concepts: dict[str, Any]
-    ) -> list[str]:
+    def _get_skill_children(self, concept: str, concepts: dict[str, Any]) -> list[str]:
         """스킬 카테고리에서 하위 개념 조회"""
         result: list[str] = []
 
@@ -411,7 +477,16 @@ class OntologyLoader:
     def _get_position_children(
         self, concept: str, concepts: dict[str, Any]
     ) -> list[str]:
-        """직급 레벨에서 하위 직급 조회"""
+        """
+        직급 레벨에서 하위 직급 조회 (level < target)
+
+        예시:
+            - get_children("Senior") → Mid, Junior 레벨 직급들
+            - "시니어 이상" 검색에는 get_position_level_and_above() 사용
+
+        Note:
+            IS_A 관계상 하위 개념을 반환 (Senior IS_A Executive 아님)
+        """
         result: list[str] = []
 
         position_level = concepts.get("PositionLevel", {})
@@ -430,6 +505,53 @@ class OntologyLoader:
             for level_info in hierarchy:
                 if level_info.get("level", 0) < target_level:
                     result.extend(level_info.get("includes", []))
+
+        return result
+
+    def get_position_level_and_above(
+        self, concept: str, category: str = "positions"
+    ) -> list[str]:
+        """
+        지정 레벨 이상의 직급 조회 (level >= target)
+
+        "시니어 이상" 검색 시 사용.
+
+        Args:
+            concept: 기준 레벨명 (예: "Senior")
+            category: 카테고리 (positions만 지원)
+
+        Returns:
+            해당 레벨 이상의 모든 직급명
+
+        Examples:
+            >>> loader.get_position_level_and_above("Senior")
+            ["Senior Engineer", "Tech Lead", "Staff Engineer", "CTO", "VP", "Director"]
+        """
+        if category != OntologyCategory.POSITIONS:
+            return []
+
+        schema = self.load_schema()
+        concepts = schema.get("concepts", {})
+        position_level = concepts.get("PositionLevel", {})
+        hierarchy = position_level.get("hierarchy", [])
+
+        result: list[str] = []
+
+        # 타겟 레벨 찾기
+        target_level = None
+        for level_info in hierarchy:
+            if level_info.get("name") == concept:
+                target_level = level_info.get("level", 0)
+                break
+
+        if target_level is None:
+            logger.warning(f"Position level '{concept}' not found in hierarchy")
+            return []
+
+        # 타겟 레벨 이상 수집 (level >= target)
+        for level_info in hierarchy:
+            if level_info.get("level", 0) >= target_level:
+                result.extend(level_info.get("includes", []))
 
         return result
 
@@ -453,6 +575,10 @@ class OntologyLoader:
 
         Returns:
             확장된 개념 목록 (중복 제거, 최대 max_total개)
+
+        Note:
+            - min_weight > 0: 해당 가중치 이상인 동의어만 포함
+            - sort_by_weight=True: 가중치 내림차순 정렬
         """
         if config is None:
             config = DEFAULT_EXPANSION_CONFIG
@@ -461,34 +587,52 @@ class OntologyLoader:
         seen: set[str] = {term}
 
         if config.include_synonyms:
-            for syn in self.get_synonyms(term, category)[:config.max_synonyms]:
+            # 가중치와 함께 동의어 조회
+            synonyms_with_weights = self.get_synonyms_with_weights(term, category)
+
+            # 임계값 필터링
+            if config.min_weight > 0:
+                synonyms_with_weights = [
+                    (s, w) for s, w in synonyms_with_weights if w >= config.min_weight
+                ]
+
+            # 가중치 기준 정렬
+            if config.sort_by_weight:
+                synonyms_with_weights.sort(key=lambda x: x[1], reverse=True)
+
+            # 결과 추가
+            for syn, _ in synonyms_with_weights[: config.max_synonyms]:
                 if syn not in seen:
                     result.append(syn)
                     seen.add(syn)
 
         if config.include_children:
             canonical = self.get_canonical(term, category)
-            for child in self.get_children(canonical, category)[:config.max_children]:
+            for child in self.get_children(canonical, category)[: config.max_children]:
                 if child not in seen:
                     result.append(child)
                     seen.add(child)
 
-        return result[:config.max_total]
+        return result[: config.max_total]
 
     def get_expansion_rules(self) -> dict[str, Any]:
         """확장 규칙 반환"""
         schema = self.load_schema()
-        return schema.get("expansion_rules", {
-            "default_depth": 2,
-            "include_synonyms": True,
-            "include_children": True,
-            "include_parents": False,
-        })
+        return schema.get(
+            "expansion_rules",
+            {
+                "default_depth": 2,
+                "include_synonyms": True,
+                "include_children": True,
+                "include_parents": False,
+            },
+        )
 
 
 # =========================================================================
 # 싱글톤 인스턴스 (전역 사용)
 # =========================================================================
+
 
 @lru_cache(maxsize=1)
 def get_ontology_loader() -> OntologyLoader:
