@@ -44,11 +44,9 @@ class TestOntologyLoader:
 
     def test_load_nonexistent_directory(self, tmp_path: Path):
         """존재하지 않는 디렉토리 처리"""
-        loader = OntologyLoader(tmp_path / "nonexistent")
-
-        # 빈 dict 반환 (에러 아님)
-        schema = loader.load_schema()
-        assert schema == {}
+        # 존재하지 않는 디렉토리는 ValueError 발생
+        with pytest.raises(ValueError, match="Directory does not exist"):
+            OntologyLoader(tmp_path / "nonexistent")
 
     # =========================================================================
     # 동의어 조회 테스트
@@ -275,7 +273,8 @@ class TestExpansionLimit:
 
     def test_expand_with_config(self, loader: OntologyLoader):
         """config 파라미터 사용"""
-        config = ExpansionConfig(max_total=3)
+        # max_total >= max(max_synonyms, max_children) 조건 만족 필요
+        config = ExpansionConfig(max_synonyms=2, max_children=2, max_total=3)
         expanded = loader.expand_concept("Backend", "skills", config=config)
 
         assert len(expanded) <= 3
@@ -329,7 +328,8 @@ class TestExpansionLimit:
 
     def test_expand_preserves_original_term(self, loader: OntologyLoader):
         """원본 용어는 항상 포함"""
-        config = ExpansionConfig(max_total=1)
+        # max_total >= max(max_synonyms, max_children) 조건 만족 필요
+        config = ExpansionConfig(max_synonyms=0, max_children=0, max_total=1)
         expanded = loader.expand_concept("SomeUnknownTerm", "skills", config=config)
 
         assert "SomeUnknownTerm" in expanded
@@ -388,15 +388,15 @@ class TestExpansionStrategy:
         assert strategy == ExpansionStrategy.BROAD
 
     def test_get_strategy_low_confidence(self):
-        """신뢰도 낮으면 BROAD"""
+        """신뢰도 낮으면 기본 전략 유지 (보수적 접근)"""
         from src.domain.ontology.loader import (
             ExpansionStrategy,
             get_strategy_for_intent,
         )
 
-        # 신뢰도 < 0.5 → BROAD
+        # 신뢰도 < 0.5 → 기본 전략 유지 (personnel_search는 NORMAL)
         strategy = get_strategy_for_intent("personnel_search", 0.3)
-        assert strategy == ExpansionStrategy.BROAD
+        assert strategy == ExpansionStrategy.NORMAL
 
     def test_get_strategy_high_confidence(self):
         """신뢰도 높으면 좁게"""
