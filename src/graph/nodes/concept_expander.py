@@ -7,6 +7,11 @@ Concept Expander Node
 - 예: {"Skill": ["파이썬"]} → {"Skill": ["Python", "파이썬", "Python3", "Py"]}
 """
 
+from __future__ import annotations
+
+import inspect
+from typing import TYPE_CHECKING
+
 from src.domain.ontology.loader import (
     ExpansionConfig,
     ExpansionStrategy,
@@ -17,6 +22,9 @@ from src.domain.ontology.loader import (
 from src.domain.types import ConceptExpanderUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
+
+if TYPE_CHECKING:
+    from src.domain.ontology.hybrid_loader import HybridOntologyLoader
 
 # 엔티티 타입 → 온톨로지 카테고리 매핑
 ENTITY_TO_CATEGORY: dict[str, str] = {
@@ -36,13 +44,13 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
 
     def __init__(
         self,
-        ontology_loader: OntologyLoader,
+        ontology_loader: OntologyLoader | HybridOntologyLoader,
         expansion_config: ExpansionConfig | None = None,
         default_strategy: ExpansionStrategy = ExpansionStrategy.NORMAL,
     ):
         """
         Args:
-            ontology_loader: 온톨로지 로더 인스턴스
+            ontology_loader: 온톨로지 로더 인스턴스 (동기 또는 비동기)
             expansion_config: 고정 확장 설정 (None이면 동적 전략 사용)
             default_strategy: Intent 없을 때 기본 전략
         """
@@ -50,6 +58,11 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
         self._ontology = ontology_loader
         self._default_strategy = default_strategy
         self._static_config = expansion_config
+
+        # Duck typing: expand_concept이 코루틴 함수인지 체크
+        self._is_async_loader = inspect.iscoroutinefunction(
+            getattr(ontology_loader, "expand_concept", None)
+        )
 
     @property
     def name(self) -> str:
@@ -69,6 +82,17 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
         strategy = get_strategy_for_intent(intent, confidence)
 
         return get_config_for_strategy(strategy), strategy
+
+    async def _expand_concept(
+        self,
+        value: str,
+        category: str,
+        config: ExpansionConfig,
+    ) -> list[str]:
+        """동기/비동기 로더 모두 지원 (duck typing)"""
+        if self._is_async_loader:
+            return await self._ontology.expand_concept(value, category, config)
+        return self._ontology.expand_concept(value, category, config)
 
     async def _process(self, state: GraphRAGState) -> ConceptExpanderUpdate:
         """엔티티를 온톨로지 기반으로 확장"""
@@ -99,9 +123,8 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
 
             expanded_values: set[str] = set()
             for value in values:
-                expanded_values.update(
-                    self._ontology.expand_concept(value, category, config)
-                )
+                expanded = await self._expand_concept(value, category, config)
+                expanded_values.update(expanded)
 
             expanded_entities[entity_type] = list(expanded_values)
             total_expansion_count += max(0, len(expanded_values) - len(set(values)))
