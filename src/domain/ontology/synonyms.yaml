@@ -56,10 +56,10 @@ skills:
       - "고랭"
 
   # AI/ML
-  "Machine Learning":
+  ML:
     canonical: "ML"
     aliases:
-      - "ML"
+      - "Machine Learning"
       - "머신러닝"
       - "기계학습"
       - "machine learning"
