@@ -16,7 +16,6 @@ from src.api.schemas.visualization import (
     CommunityGraphRequest,
     GraphEdge,
     GraphNode,
-    NodeStyle,
     QueryPathVisualizationRequest,
     QueryPathVisualizationResponse,
     QueryResultVisualizationRequest,
@@ -25,6 +24,7 @@ from src.api.schemas.visualization import (
     SubgraphRequest,
     SubgraphResponse,
 )
+from src.api.utils.graph_utils import NODE_STYLES, get_node_style, sanitize_props
 from src.dependencies import get_graph_pipeline, get_neo4j_repository
 from src.graph.pipeline import GraphRAGPipeline
 from src.repositories.neo4j_repository import Neo4jRepository
@@ -32,43 +32,6 @@ from src.repositories.neo4j_repository import Neo4jRepository
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/visualization", tags=["visualization"])
-
-
-# ============================================
-# 노드 스타일 정의 (Palantir-style)
-# ============================================
-
-# 노드 타입별 스타일 정의
-NODE_STYLES: dict[str, dict[str, str | float]] = {
-    "Employee": {"color": "#4A90D9", "icon": "person", "size": 1.2},
-    "Skill": {"color": "#7CB342", "icon": "code", "size": 1.0},
-    "Department": {"color": "#FF7043", "icon": "business", "size": 1.3},
-    "Project": {"color": "#AB47BC", "icon": "folder", "size": 1.1},
-    "Position": {"color": "#26A69A", "icon": "work", "size": 1.0},
-    "Certificate": {"color": "#FFA726", "icon": "verified", "size": 0.9},
-    "Location": {"color": "#78909C", "icon": "place", "size": 0.9},
-    "NodeType": {"color": "#9E9E9E", "icon": "category", "size": 1.0},
-    "default": {"color": "#BDBDBD", "icon": "circle", "size": 1.0},
-}
-
-
-def _get_node_style(label: str, name: str = "") -> NodeStyle:
-    """
-    노드 라벨에 따른 스타일 반환
-
-    Args:
-        label: 노드 라벨 (Employee, Skill, etc.)
-        name: 노드 이름 (향후 특수 노드 스타일링에 사용 가능)
-
-    Returns:
-        NodeStyle 객체
-    """
-    style_data = NODE_STYLES.get(label, NODE_STYLES["default"])
-    return NodeStyle(
-        color=str(style_data["color"]),
-        icon=str(style_data["icon"]),
-        size=float(style_data["size"]),
-    )
 
 
 # ============================================
@@ -155,7 +118,7 @@ async def get_subgraph(
         edges_map: dict[str, GraphEdge] = {}
 
         # 중심 노드 추가
-        center_style = _get_node_style(
+        center_style = get_node_style(
             center_labels[0] if center_labels else "", center_props.get("name", "")
         )
         nodes_map[center_id] = GraphNode(
@@ -175,7 +138,7 @@ async def get_subgraph(
             # 노드 추가
             if node_id not in nodes_map:
                 # 스타일 조회
-                node_style = _get_node_style(
+                node_style = get_node_style(
                     labels[0] if labels else "", props.get("name", "")
                 )
 
@@ -282,7 +245,7 @@ async def get_community_graph(
 
             # 직원 노드 추가
             if emp_id not in nodes_map:
-                emp_style = _get_node_style("Employee", emp_props.get("name", ""))
+                emp_style = get_node_style("Employee")
                 nodes_map[emp_id] = GraphNode(
                     id=emp_id,
                     label="Employee",
@@ -300,7 +263,7 @@ async def get_community_graph(
 
                 if skill_id and skill_props and rel_id:
                     if skill_id not in nodes_map:
-                        skill_style = _get_node_style(
+                        skill_style = get_node_style(
                             "Skill", skill_props.get("name", "")
                         )
                         nodes_map[skill_id] = GraphNode(
@@ -379,7 +342,7 @@ async def visualize_query_result(
                         if node_id not in nodes_map:
                             node_label = labels[0] if labels else "Node"
                             node_name = props.get("name", key)
-                            node_style = _get_node_style(node_label, node_name)
+                            node_style = get_node_style(node_label)
 
                             nodes_map[node_id] = GraphNode(
                                 id=node_id,
@@ -693,27 +656,6 @@ def _build_path_visualization_query(
     return {"query": query, "params": {"start_names": start_entities}}
 
 
-def _sanitize_props(props: dict) -> dict:
-    """Neo4j 속성을 JSON 직렬화 가능한 형태로 변환"""
-    sanitized = {}
-    for key, value in props.items():
-        # embedding 같은 큰 리스트는 제외
-        if "embedding" in key.lower():
-            continue
-        # Neo4j DateTime, Duration 등은 문자열로 변환
-        if hasattr(value, "isoformat"):
-            sanitized[key] = value.isoformat()
-        elif hasattr(value, "__str__") and not isinstance(
-            value, (str, int, float, bool, list, dict, type(None))
-        ):
-            sanitized[key] = str(value)
-        elif isinstance(value, (str, int, float, bool, type(None))):
-            sanitized[key] = value
-        elif isinstance(value, list):
-            sanitized[key] = [str(v) if hasattr(v, "isoformat") else v for v in value]
-    return sanitized
-
-
 def _extract_path_graph(
     results: list[dict],
     start_names: list[str] | None = None,
@@ -728,7 +670,7 @@ def _extract_path_graph(
         # 노드 추출
         node_id = row.get("node_id")
         labels = row.get("labels", [])
-        props = _sanitize_props(row.get("props", {}))
+        props = sanitize_props(row.get("props", {}))
         node_name = props.get("name", "Unknown")
         node_label = labels[0] if labels else "Node"
 
@@ -740,7 +682,7 @@ def _extract_path_graph(
             role = "end"
 
         if node_id and node_id not in nodes_map:
-            node_style = _get_node_style(node_label, node_name)
+            node_style = get_node_style(node_label)
             nodes_map[node_id] = GraphNode(
                 id=node_id,
                 label=node_label,

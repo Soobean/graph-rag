@@ -122,18 +122,9 @@ async def shutdown_clients() -> None:
 def get_neo4j_repository(request: Request) -> Neo4jRepository:
     """
     Neo4j Repository 의존성 주입
-    main.py lifespan에서 초기화된 인스턴스를 app.state에서 가져옵니다.
-    """
-    # Neo4jRepository는 client를 인자로 받지만, lifespan에서 이미 생성됨.
-    # main.py에서 app.state.neo4j_repo로 저장하거나,
-    # 여기서는 임시로 client를 가져와서 생성할 수도 있지만,
-    # Singleton 유지를 위해 app.state에 저장된 것을 가져오는 것이 좋음.
-    # main.py를 확인해보면 현재는 app.state.neo4j_client만 저장하고 있음. Wait, let me check main.py again.
-    # Checked main.py: It initializes neo4j_repo but DOES NOT save it to app.state.
-    # It saves: app.state.neo4j_client, app.state.llm_repo, app.state.pipeline.
-    # So for Neo4jRepository, we can either instantiate it here using the client from state,
-    # or update main.py to save it. Instantiating here is fine as it's lightweight wrapper.
 
+    app.state.neo4j_client를 사용해 경량 래퍼 인스턴스 생성
+    """
     client = request.app.state.neo4j_client
     return Neo4jRepository(client)
 
