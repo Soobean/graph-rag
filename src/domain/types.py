@@ -267,6 +267,48 @@ class CacheCheckerUpdate(TypedDict, total=False):
     error: str | None
 
 
+# Multi-hop Query Types
+
+
+class QueryHop(TypedDict, total=False):
+    """Multi-hop 쿼리의 단일 홉 정보"""
+
+    step: int  # 1, 2, 3...
+    description: str  # "Python 스킬 보유자 찾기"
+    node_label: str  # "Employee", "Skill"
+    relationship: str  # "HAS_SKILL", "MENTOR_OF"
+    direction: Literal["outgoing", "incoming", "both"]
+    filter_condition: str | None  # "name = 'Python'"
+
+
+class QueryPlan(TypedDict, total=False):
+    """Multi-hop 쿼리 분해 계획"""
+
+    is_multi_hop: bool  # Multi-hop 쿼리 여부
+    hop_count: int  # 총 홉 수
+    hops: list[QueryHop]  # 각 홉 정보
+    final_return: str  # 최종 반환 대상 (예: "mentor")
+    explanation: str  # 쿼리 해석 설명
+
+
+class QueryDecomposerUpdate(TypedDict, total=False):
+    """QueryDecomposer 노드 반환 타입"""
+
+    query_plan: QueryPlan
+    execution_path: list[str]
+    error: str | None
+
+
+class QueryDecompositionResult(TypedDict, total=False):
+    """LLM 쿼리 분해 결과"""
+
+    is_multi_hop: bool
+    hop_count: int
+    hops: list[QueryHop]
+    final_return: str
+    explanation: str
+
+
 # =============================================================================
 # Type Aliases
 # =============================================================================
@@ -281,4 +323,5 @@ NodeUpdate = (
     | GraphExecutorUpdate
     | ResponseGeneratorUpdate
     | CacheCheckerUpdate
+    | QueryDecomposerUpdate
 )

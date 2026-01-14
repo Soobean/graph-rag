@@ -125,7 +125,7 @@ class EntityExtractionError(PipelineError):
 class EntityResolutionError(PipelineError):
     """엔티티 해석 실패"""
 
-    def __init__(self, message: str, unresolved_entities: list[str] = None):
+    def __init__(self, message: str, unresolved_entities: list[str] | None = None):
         self.unresolved_entities = unresolved_entities or []
         super().__init__(message, node="entity_resolver", code="ENTITY_RESOLUTION_ERROR")
 

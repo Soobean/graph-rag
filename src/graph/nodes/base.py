@@ -7,14 +7,11 @@ Base Node Abstract Class
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
 
 from src.graph.state import GraphRAGState
 
-T = TypeVar("T")
 
-
-class BaseNode(ABC, Generic[T]):
+class BaseNode[T](ABC):
     """
     모든 LangGraph 노드가 상속해야 할 추상 클래스
 

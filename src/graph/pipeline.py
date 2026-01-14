@@ -8,9 +8,11 @@ LangGraph를 사용한 RAG 파이프라인 정의
 """
 
 import logging
-from typing import TYPE_CHECKING, Literal
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, Literal
 
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -31,6 +33,7 @@ from src.graph.nodes import (
     EntityResolverNode,
     GraphExecutorNode,
     IntentClassifierNode,
+    QueryDecomposerNode,
     ResponseGeneratorNode,
 )
 from src.graph.state import GraphRAGState
@@ -110,6 +113,7 @@ class GraphRAGPipeline:
 
         # 노드 초기화
         self._intent_classifier = IntentClassifierNode(llm_repository)
+        self._query_decomposer = QueryDecomposerNode(llm_repository)
         self._entity_extractor = EntityExtractorNode(llm_repository)
         self._concept_expander = ConceptExpanderNode(self._ontology_loader)
         self._entity_resolver = EntityResolverNode(neo4j_repository)
@@ -151,6 +155,7 @@ class GraphRAGPipeline:
 
         # 노드 추가 (schema_fetcher 제거됨 - 스키마는 초기화 시 주입)
         workflow.add_node("intent_classifier", self._intent_classifier)
+        workflow.add_node("query_decomposer", self._query_decomposer)
         workflow.add_node("entity_extractor", self._entity_extractor)
         workflow.add_node("concept_expander", self._concept_expander)
         workflow.add_node("entity_resolver", self._entity_resolver)
@@ -170,22 +175,25 @@ class GraphRAGPipeline:
         # 조건부 엣지 정의 (Conditional Edges)
         # ---------------------------------------------------------
 
-        # 1. Intent Classifier -> Cache Checker 또는 Entity Extractor
-        if self._cache_checker:
-            # Vector Cache 활성화 시: intent_classifier -> cache_checker
-            def route_after_intent_with_cache(
-                state: GraphRAGState,
-            ) -> Literal["cache_checker", "response_generator"]:
-                if state.get("intent") == "unknown":
-                    logger.info("Intent is unknown. Skipping to response generator.")
-                    return "response_generator"
-                return "cache_checker"
+        # 1. Intent Classifier -> Query Decomposer 또는 Response Generator
+        def route_after_intent(
+            state: GraphRAGState,
+        ) -> Literal["query_decomposer", "response_generator"]:
+            if state.get("intent") == "unknown":
+                logger.info("Intent is unknown. Skipping to response generator.")
+                return "response_generator"
+            return "query_decomposer"
 
-            workflow.add_conditional_edges(
-                "intent_classifier",
-                route_after_intent_with_cache,
-                ["cache_checker", "response_generator"],
-            )
+        workflow.add_conditional_edges(
+            "intent_classifier",
+            route_after_intent,
+            ["query_decomposer", "response_generator"],
+        )
+
+        # 2. Query Decomposer -> Cache Checker 또는 Entity Extractor
+        if self._cache_checker:
+            # Vector Cache 활성화 시: query_decomposer -> cache_checker
+            workflow.add_edge("query_decomposer", "cache_checker")
 
             # 2. Cache Checker -> 캐시 히트 시 cypher_generator, 미스 시 entity_extractor
             def route_after_cache_check(
@@ -211,26 +219,8 @@ class GraphRAGPipeline:
                 ["entity_extractor", "cypher_generator"],
             )
         else:
-            # Vector Cache 비활성화 시: intent -> entity_extractor
-            def route_after_intent(
-                state: GraphRAGState,
-            ) -> Literal["entity_extractor", "response_generator"]:
-                """
-                Intent에 따라 라우팅:
-                - unknown: response_generator로 직접 이동
-                - 유효한 intent: entity_extractor로 이동
-                """
-                if state.get("intent") == "unknown":
-                    logger.info("Intent is unknown. Skipping to response generator.")
-                    return "response_generator"
-
-                return "entity_extractor"
-
-            workflow.add_conditional_edges(
-                "intent_classifier",
-                route_after_intent,
-                ["entity_extractor", "response_generator"],
-            )
+            # Vector Cache 비활성화 시: query_decomposer -> entity_extractor
+            workflow.add_edge("query_decomposer", "entity_extractor")
 
         # 2. Entity Extractor -> Concept Expander -> Entity Resolver (순차 실행)
         workflow.add_edge("entity_extractor", "concept_expander")
@@ -315,7 +305,7 @@ class GraphRAGPipeline:
 
         # thread_id로 세션 구분 (Checkpointer가 대화 기록 자동 관리)
         thread_id = session_id or "default"
-        config = {"configurable": {"thread_id": thread_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
         # 초기 상태 구성 (스키마 포함)
         initial_state: GraphRAGState = {
@@ -373,7 +363,7 @@ class GraphRAGPipeline:
         self,
         question: str,
         session_id: str | None = None,
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         """
         스트리밍 모드로 파이프라인 실행
 
@@ -390,7 +380,7 @@ class GraphRAGPipeline:
 
         # thread_id로 세션 구분 (Checkpointer가 대화 기록 자동 관리)
         thread_id = session_id or "default"
-        config = {"configurable": {"thread_id": thread_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
         # 초기 상태 구성 (스키마 포함)
         initial_state: GraphRAGState = {

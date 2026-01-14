@@ -25,6 +25,7 @@ from src.domain.types import (
     CypherGenerationResult,
     EntityExtractionResult,
     IntentClassificationResult,
+    QueryDecompositionResult,
 )
 from src.utils.prompt_manager import PromptManager
 
@@ -208,7 +209,7 @@ class LLMRepository:
                 raise LLMResponseError("No response choices returned from LLM")
 
             content = response.choices[0].message.content or "{}"
-            result = json.loads(content)
+            result: dict[str, Any] = json.loads(content)
             logger.debug(f"LLM JSON response ({model_tier.value}): {result}")
             return result
 
@@ -406,12 +407,19 @@ class LLMRepository:
         question: str,
         schema: dict[str, Any],
         entities: list[dict[str, Any]],
+        query_plan: dict[str, Any] | None = None,
     ) -> CypherGenerationResult:
         """
         Cypher 쿼리 생성 (with Fallback: HEAVY → LIGHT → Error)
 
         Cypher 생성은 복잡한 작업이므로 HEAVY 티어를 우선 사용하고,
         실패 시 LIGHT 티어로 fallback합니다.
+
+        Args:
+            question: 사용자 질문
+            schema: 그래프 스키마
+            entities: 추출된 엔티티 목록
+            query_plan: Multi-hop 쿼리 계획 (선택적)
 
         Returns:
             CypherGenerationResult: Generated Cypher query and metadata
@@ -423,10 +431,13 @@ class LLMRepository:
 
         schema_str = self._format_schema(schema)
         entities_str = self._format_entities(entities)
+        query_plan_str = self._format_query_plan(query_plan)
 
         system_prompt = prompt["system"].format(schema_str=schema_str)
         user_prompt = prompt["user"].format(
-            question=question, entities_str=entities_str
+            question=question,
+            entities_str=entities_str,
+            query_plan_str=query_plan_str,
         )
 
         # Fallback 적용: HEAVY → LIGHT → Error
@@ -496,6 +507,33 @@ class LLMRepository:
             user_prompt=user_prompt,
             model_tier=ModelTier.LIGHT,
         )
+
+    async def decompose_query(
+        self,
+        question: str,
+    ) -> QueryDecompositionResult:
+        """
+        Multi-hop 쿼리 분해
+
+        복잡한 관계 쿼리를 단계별 그래프 순회 계획으로 분해합니다.
+
+        Args:
+            question: 사용자 질문
+
+        Returns:
+            QueryDecompositionResult: 쿼리 분해 결과
+        """
+        prompt = self._prompt_manager.load_prompt("query_decomposition")
+
+        system_prompt = prompt["system"]
+        user_prompt = prompt["user"].format(question=question)
+
+        result = await self.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_tier=ModelTier.LIGHT,
+        )
+        return cast(QueryDecompositionResult, result)
 
     async def close(self) -> None:
         """클라이언트 리소스 정리"""
@@ -638,6 +676,36 @@ class LLMRepository:
                 f"- {entity.get('type', 'Unknown')}: {entity.get('value', '')} "
                 f"(normalized: {entity.get('normalized', '')})"
             )
+        return "\n".join(lines)
+
+    def _format_query_plan(self, query_plan: dict[str, Any] | None) -> str:
+        """Multi-hop 쿼리 계획을 문자열로 포맷팅"""
+        if not query_plan:
+            return "No query plan (single-hop query)"
+
+        if not query_plan.get("is_multi_hop"):
+            return "Single-hop query"
+
+        lines = [
+            f"Multi-hop Query Plan ({query_plan.get('hop_count', 0)} hops):",
+            f"Goal: {query_plan.get('final_return', 'unknown')}",
+        ]
+
+        hops = query_plan.get("hops", [])
+        for hop in hops:
+            step = hop.get("step", "?")
+            desc = hop.get("description", "")
+            rel = hop.get("relationship", "")
+            direction = hop.get("direction", "")
+            filter_cond = hop.get("filter_condition", "")
+
+            hop_line = f"  Step {step}: {desc}"
+            if rel:
+                hop_line += f" [{rel}, {direction}]"
+            if filter_cond:
+                hop_line += f" WHERE {filter_cond}"
+            lines.append(hop_line)
+
         return "\n".join(lines)
 
     def _format_results(self, results: list[dict[str, Any]]) -> str:

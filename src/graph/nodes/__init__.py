@@ -13,11 +13,13 @@ from src.graph.nodes.entity_extractor import EntityExtractorNode
 from src.graph.nodes.entity_resolver import EntityResolverNode
 from src.graph.nodes.graph_executor import GraphExecutorNode
 from src.graph.nodes.intent_classifier import IntentClassifierNode
+from src.graph.nodes.query_decomposer import QueryDecomposerNode
 from src.graph.nodes.response_generator import ResponseGeneratorNode
 
 __all__ = [
     "BaseNode",
     "IntentClassifierNode",
+    "QueryDecomposerNode",
     "EntityExtractorNode",
     "ConceptExpanderNode",
     "EntityResolverNode",

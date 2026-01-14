@@ -10,7 +10,7 @@ Query Cache Repository - 질문-Cypher 캐싱 관리
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from src.config import Settings
@@ -58,7 +58,7 @@ class CachedQuery:
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
         elif created_at is None:
-            created_at = datetime.now(timezone.utc)
+            created_at = datetime.now(UTC)
 
         return cls(
             id=data.get("id", ""),
@@ -146,7 +146,7 @@ class QueryCacheRepository:
         await self.ensure_index()
 
         params_json = json.dumps(cypher_parameters or {}, ensure_ascii=False)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         query = f"""
         CREATE (c:{QUERY_CACHE_LABEL} {{
@@ -218,7 +218,7 @@ class QueryCacheRepository:
             ttl_hours = self._settings.query_cache_ttl_hours
             expiry_time = cached.created_at + timedelta(hours=ttl_hours)
 
-            if datetime.now(timezone.utc) > expiry_time:
+            if datetime.now(UTC) > expiry_time:
                 logger.debug(f"Cache expired for query: {cached.question[:50]}...")
                 # 만료된 캐시 삭제
                 await self._delete_cache(cached.id)
@@ -276,7 +276,7 @@ class QueryCacheRepository:
         """
         if older_than is None:
             ttl_hours = self._settings.query_cache_ttl_hours
-            older_than = datetime.now(timezone.utc) - timedelta(hours=ttl_hours)
+            older_than = datetime.now(UTC) - timedelta(hours=ttl_hours)
 
         query = f"""
         MATCH (c:{QUERY_CACHE_LABEL})
