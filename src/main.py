@@ -11,7 +11,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import analytics_router, ingest_router, query_router
+from src.api import (
+    analytics_router,
+    ingest_router,
+    ontology_router,
+    query_router,
+    visualization_router,
+)
 from src.config import get_settings
 from src.graph import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
@@ -63,7 +69,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     except Exception as e:
         logger.error(f"Failed to load graph schema: {e}")
-        raise RuntimeError("Schema loading is required for pipeline initialization") from e
+        raise RuntimeError(
+            "Schema loading is required for pipeline initialization"
+        ) from e
 
     # Pipeline 초기화 (스키마 주입)
     pipeline = GraphRAGPipeline(
@@ -130,6 +138,8 @@ app.add_middleware(
 app.include_router(query_router)
 app.include_router(ingest_router)
 app.include_router(analytics_router)
+app.include_router(visualization_router)
+app.include_router(ontology_router)
 
 
 @app.get("/")

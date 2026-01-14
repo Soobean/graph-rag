@@ -172,6 +172,7 @@ class PipelineMetadata(TypedDict, total=False):
     cypher_parameters: dict[str, Any]
     result_count: int
     execution_path: list[str]
+    query_plan: dict[str, Any] | None
     error: str | None
 
 
