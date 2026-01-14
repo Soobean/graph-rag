@@ -20,6 +20,7 @@ from src.graph.pipeline import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.services.gds_service import GDSService
 
 logger = logging.getLogger(__name__)
 
@@ -166,3 +167,16 @@ def get_graph_pipeline(request: Request) -> GraphRAGPipeline:
 def get_current_settings() -> Settings:
     """현재 설정 반환 (Depends 래퍼)"""
     return get_settings()
+
+
+# ============================================
+# GDS Service 의존성
+# ============================================
+
+
+def get_gds_service(request: Request) -> GDSService:
+    """
+    GDS Service 의존성 주입
+    app.state에서 초기화된 인스턴스를 가져옵니다.
+    """
+    return request.app.state.gds_service
