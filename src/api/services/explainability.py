@@ -12,7 +12,8 @@ from src.api.schemas.explainability import (
     ThoughtProcessVisualization,
     ThoughtStep,
 )
-from src.api.schemas.visualization import GraphEdge, GraphNode, NodeStyle
+from src.api.schemas.visualization import GraphEdge, GraphNode
+from src.api.utils.graph_utils import get_node_style, sanitize_props
 from src.domain.types import FullState, PipelineMetadata
 
 # ============================================
@@ -46,17 +47,6 @@ NODE_DESCRIPTIONS: dict[str, str] = {
     "response_generator": "응답 생성",
     "clarification_handler": "명확화 요청",
 }
-
-# 노드 타입별 스타일
-NODE_STYLES: dict[str, dict[str, Any]] = {
-    "Employee": {"color": "#4A90D9", "icon": "person", "size": 1.2},
-    "Skill": {"color": "#7CB342", "icon": "code", "size": 1.0},
-    "Department": {"color": "#FF7043", "icon": "business", "size": 1.3},
-    "Project": {"color": "#AB47BC", "icon": "folder", "size": 1.1},
-    "Position": {"color": "#26A69A", "icon": "work", "size": 1.0},
-    "default": {"color": "#BDBDBD", "icon": "circle", "size": 1.0},
-}
-
 
 class ExplainabilityService:
     """Explainability 관련 로직을 처리하는 서비스"""
@@ -206,10 +196,10 @@ class ExplainabilityService:
                 id=node_id,
                 label=label,
                 name=name or "Unknown",
-                properties=self._sanitize_props(props),
+                properties=sanitize_props(props),
                 group=label,
                 role=role,
-                style=self._get_node_style(label),
+                style=get_node_style(label),
             )
 
         def add_edge(
@@ -230,7 +220,7 @@ class ExplainabilityService:
                 source=source_id,
                 target=target_id,
                 label=rel_type,
-                properties=self._sanitize_props(props) if props else {},
+                properties=sanitize_props(props) if props else {},
             )
 
         # Resolved entities에서 노드 추가
@@ -296,28 +286,3 @@ class ExplainabilityService:
             result_entity_ids=result_entity_ids,
             has_more=has_more,
         )
-
-    def _get_node_style(self, label: str) -> NodeStyle:
-        """노드 라벨에 따른 스타일 반환"""
-        style_data = NODE_STYLES.get(label, NODE_STYLES["default"])
-        return NodeStyle(
-            color=str(style_data["color"]),
-            icon=str(style_data["icon"]),
-            size=float(style_data["size"]),
-        )
-
-    def _sanitize_props(self, props: dict[str, Any]) -> dict[str, Any]:
-        """Neo4j 속성을 JSON 직렬화 가능한 형태로 변환"""
-        sanitized: dict[str, Any] = {}
-        for key, value in props.items():
-            if "embedding" in key.lower():
-                continue
-            if hasattr(value, "isoformat"):
-                sanitized[key] = value.isoformat()
-            elif isinstance(value, (str, int, float, bool, type(None))):
-                sanitized[key] = value
-            elif isinstance(value, list):
-                sanitized[key] = [
-                    v.isoformat() if hasattr(v, "isoformat") else v for v in value
-                ]
-        return sanitized

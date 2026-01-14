@@ -20,7 +20,5 @@ class BaseLoader(ABC):
 
     @abstractmethod
     def load(self) -> Iterator[Document]:
-        """
-        데이터 소스에서 데이터를 읽어 Document 객체로 변환하여 반환
-        """
-        pass
+        """데이터 소스에서 데이터를 읽어 Document 객체로 변환하여 반환"""
+        ...

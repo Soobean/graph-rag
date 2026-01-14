@@ -9,10 +9,10 @@ import pytest
 
 from src.api.services.explainability import (
     NODE_DESCRIPTIONS,
-    NODE_STYLES,
     NODE_TO_STEP_TYPE,
     ExplainabilityService,
 )
+from src.api.utils.graph_utils import NODE_STYLES, get_node_style, sanitize_props
 
 
 class TestExplainabilityServiceInit:
@@ -423,94 +423,86 @@ class TestBuildGraphData:
 
 
 class TestGetNodeStyle:
-    """_get_node_style 메서드 테스트"""
+    """get_node_style 함수 테스트"""
 
-    @pytest.fixture
-    def service(self):
-        return ExplainabilityService()
-
-    def test_employee_style(self, service):
+    def test_employee_style(self):
         """Employee 노드 스타일"""
-        style = service._get_node_style("Employee")
+        style = get_node_style("Employee")
         assert style.color == "#4A90D9"
         assert style.icon == "person"
         assert style.size == 1.2
 
-    def test_skill_style(self, service):
+    def test_skill_style(self):
         """Skill 노드 스타일"""
-        style = service._get_node_style("Skill")
+        style = get_node_style("Skill")
         assert style.color == "#7CB342"
         assert style.icon == "code"
 
-    def test_department_style(self, service):
+    def test_department_style(self):
         """Department 노드 스타일"""
-        style = service._get_node_style("Department")
+        style = get_node_style("Department")
         assert style.color == "#FF7043"
         assert style.icon == "business"
 
-    def test_unknown_label_uses_default(self, service):
+    def test_unknown_label_uses_default(self):
         """알 수 없는 라벨은 기본 스타일"""
-        style = service._get_node_style("UnknownLabel")
+        style = get_node_style("UnknownLabel")
         default_style = NODE_STYLES["default"]
         assert style.color == default_style["color"]
         assert style.icon == default_style["icon"]
 
 
 class TestSanitizeProps:
-    """_sanitize_props 메서드 테스트"""
+    """sanitize_props 함수 테스트"""
 
-    @pytest.fixture
-    def service(self):
-        return ExplainabilityService()
-
-    def test_simple_props_preserved(self, service):
+    def test_simple_props_preserved(self):
         """기본 타입 속성 유지"""
         props = {"name": "홍길동", "age": 30, "active": True, "score": 0.95}
-        result = service._sanitize_props(props)
+        result = sanitize_props(props)
 
         assert result["name"] == "홍길동"
         assert result["age"] == 30
         assert result["active"] is True
         assert result["score"] == 0.95
 
-    def test_embedding_field_excluded(self, service):
+    def test_embedding_field_excluded(self):
         """embedding 필드 제외"""
         props = {
             "name": "test",
             "embedding": [0.1, 0.2, 0.3],
             "name_embedding": [0.4, 0.5],
         }
-        result = service._sanitize_props(props)
+        result = sanitize_props(props)
 
         assert "name" in result
         assert "embedding" not in result
         assert "name_embedding" not in result
 
-    def test_datetime_converted_to_isoformat(self, service):
+    def test_datetime_converted_to_isoformat(self):
         """DateTime을 ISO format으로 변환"""
         from datetime import datetime
 
         dt = datetime(2024, 1, 15, 10, 30, 0)
         props = {"created_at": dt}
-        result = service._sanitize_props(props)
+        result = sanitize_props(props)
 
         assert result["created_at"] == "2024-01-15T10:30:00"
 
-    def test_list_with_datetime(self, service):
+    def test_list_with_datetime(self):
         """리스트 내 DateTime 변환"""
         from datetime import datetime
 
         dt1 = datetime(2024, 1, 1)
         dt2 = datetime(2024, 12, 31)
         props = {"dates": [dt1, dt2]}
-        result = service._sanitize_props(props)
+        result = sanitize_props(props)
 
         assert result["dates"] == ["2024-01-01T00:00:00", "2024-12-31T00:00:00"]
 
-    def test_none_value_preserved(self, service):
+    def test_none_value_preserved(self):
         """None 값 유지"""
         props = {"optional_field": None}
-        result = service._sanitize_props(props)
+        result = sanitize_props(props)
 
         assert result["optional_field"] is None
 
