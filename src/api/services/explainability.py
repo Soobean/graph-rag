@@ -4,6 +4,7 @@ Explainability Service
 AI 추론 과정 및 그래프 시각화 데이터 생성 로직을 담당하는 서비스
 """
 
+import random
 from typing import Any
 
 from src.api.schemas.explainability import (
@@ -47,6 +48,7 @@ NODE_DESCRIPTIONS: dict[str, str] = {
     "response_generator": "응답 생성",
     "clarification_handler": "명확화 요청",
 }
+
 
 class ExplainabilityService:
     """Explainability 관련 로직을 처리하는 서비스"""
@@ -141,6 +143,48 @@ class ExplainabilityService:
             execution_path=execution_path,
         )
 
+    def _calculate_layout_position(
+        self, role: str, index: int, total: int
+    ) -> tuple[float, float]:
+        """
+        노드 역할에 따른 초기 레이아웃 좌표 계산
+
+        Args:
+            role: 노드 역할 (start, intermediate, end)
+            index: 현재 노드 인덱스
+            total: 전체 예상 노드 수
+
+        Returns:
+            (x, y) 좌표 튜플
+
+        레이아웃 전략:
+        - X축: 역할 기반 (start→좌측, intermediate→중앙, end→우측)
+        - Y축: 인덱스 기반 균등 분산 + 약간의 지터(jitter)
+        """
+        # Y축: 인덱스 기반 균등 분산 (-300 ~ 300)
+        y_range = 600
+        y_spacing = y_range / max(total, 1)
+        base_y = -300 + (index * y_spacing)
+        # 약간의 랜덤 지터 추가 (겹침 방지)
+        jitter = random.uniform(-20, 20)
+        y = base_y + jitter
+
+        # X축: 역할 기반 배치
+        if role == "start":
+            # 좌측 배치 (-500 ~ -300)
+            x = random.uniform(-500, -300)
+        elif role == "intermediate":
+            # 중앙 배치 (-200 ~ 200)
+            x = random.uniform(-200, 200)
+        elif role == "end":
+            # 우측 배치 (300 ~ 500)
+            x = random.uniform(300, 500)
+        else:
+            # 기본 중앙
+            x = random.uniform(-100, 100)
+
+        return round(x, 2), round(y, 2)
+
     def build_graph_data(
         self,
         full_state: FullState,
@@ -192,6 +236,11 @@ class ExplainabilityService:
                 role = "end"
                 result_entity_ids.append(node_id)
 
+            # 역할별 좌표 계산
+            x, y = self._calculate_layout_position(
+                role, len(nodes_map), len(resolved_entities) + limit
+            )
+
             nodes_map[node_id] = GraphNode(
                 id=node_id,
                 label=label,
@@ -200,6 +249,8 @@ class ExplainabilityService:
                 group=label,
                 role=role,
                 style=get_node_style(label),
+                x=x,
+                y=y,
             )
 
         def add_edge(

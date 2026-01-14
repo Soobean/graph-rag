@@ -32,6 +32,8 @@ class GraphNode(BaseModel):
     style: NodeStyle | None = Field(
         default=None, description="노드 스타일 (Palantir-style)"
     )
+    x: float = Field(default=0.0, description="초기 X 좌표")
+    y: float = Field(default=0.0, description="초기 Y 좌표")
 
 
 class GraphEdge(BaseModel):
