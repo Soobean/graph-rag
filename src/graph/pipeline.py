@@ -290,6 +290,7 @@ class GraphRAGPipeline:
         self,
         question: str,
         session_id: str | None = None,
+        return_full_state: bool = False,
     ) -> PipelineResult:
         """
         파이프라인 실행
@@ -297,6 +298,7 @@ class GraphRAGPipeline:
         Args:
             question: 사용자 질문
             session_id: 세션 ID (대화 기록 유지를 위해 필요)
+            return_full_state: True면 graph_results, original_entities 등 추가 데이터 포함
 
         Returns:
             파이프라인 실행 결과
@@ -345,6 +347,16 @@ class GraphRAGPipeline:
                 "query_plan": query_plan_dict,
                 "error": final_state.get("error"),
             }
+
+            # Explainability: full_state 추가 (요청 시에만)
+            if return_full_state:
+                metadata["_full_state"] = {
+                    "original_entities": final_state.get("entities", {}),
+                    "expanded_entities": final_state.get("expanded_entities", {}),
+                    "expansion_strategy": final_state.get("expansion_strategy"),
+                    "expansion_count": final_state.get("expansion_count", 0),
+                    "graph_results": final_state.get("graph_results", []),
+                }
 
             return {
                 "success": True,

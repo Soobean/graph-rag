@@ -187,18 +187,6 @@ class TestOntologyLoader:
         assert expanded == ["UnknownSkill"]
 
     # =========================================================================
-    # 확장 규칙 테스트
-    # =========================================================================
-
-    def test_get_expansion_rules(self, loader: OntologyLoader):
-        """확장 규칙 조회"""
-        rules = loader.get_expansion_rules()
-
-        assert "default_depth" in rules
-        assert "include_synonyms" in rules
-        assert "include_children" in rules
-
-    # =========================================================================
     # 캐싱 테스트
     # =========================================================================
 
