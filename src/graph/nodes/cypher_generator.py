@@ -88,6 +88,9 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
             for value in values:
                 formatted_entities.append({"type": entity_type, "value": value})
 
+        # Multi-hop 쿼리 계획 (QueryDecomposer에서 생성)
+        query_plan = state.get("query_plan")
+
         self._logger.info(f"Generating Cypher for: {question[:50]}...")
 
         try:
@@ -104,6 +107,7 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 question=question,
                 schema=dict(schema),  # TypedDict를 dict로 변환
                 entities=formatted_entities,
+                query_plan=dict(query_plan) if query_plan else None,  # Multi-hop 쿼리 계획 전달
             )
 
             cypher = result.get("cypher", "")

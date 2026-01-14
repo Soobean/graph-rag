@@ -18,6 +18,7 @@ def mock_settings():
     """Mock Settings"""
     settings = MagicMock(spec=Settings)
     settings.vector_search_enabled = False
+    settings.ontology_mode = "file"  # Multi-hop 테스트용
     return settings
 
 
@@ -29,6 +30,12 @@ def mock_llm():
     llm.extract_entities = AsyncMock()
     llm.generate_cypher = AsyncMock()
     llm.generate_response = AsyncMock()
+    llm.decompose_query = AsyncMock(return_value={
+        "is_multi_hop": False,
+        "hop_count": 1,
+        "hops": [],
+        "explanation": "Single-hop query",
+    })
     return llm
 
 

@@ -13,7 +13,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
-from src.domain.types import GraphSchema, ResolvedEntity
+from src.domain.types import GraphSchema, QueryPlan, ResolvedEntity
 
 # ARCHITECTURE.md에 정의된 7가지 Intent Type + unknown
 IntentType = Literal[
@@ -46,6 +46,7 @@ class GraphRAGState(TypedDict, total=False):
     entities: dict[str, list[str]]  # 예: {'skills': ['Python'], 'names': ['김철수']}
     expanded_entities: dict[str, list[str]]  # 온톨로지 확장된 엔티티
     resolved_entities: list[ResolvedEntity]  # Neo4j에서 매칭된 엔티티 정보
+    query_plan: QueryPlan  # Multi-hop 쿼리 분해 계획
 
     # 3. Graph Retrieval (검색 단계)
     schema: GraphSchema  # 그래프 스키마 정보

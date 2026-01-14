@@ -20,8 +20,20 @@ system: |
   - Return meaningful property names
   - Limit results when appropriate
 
+  For Multi-hop queries:
+  - Follow the query plan steps if provided
+  - Chain MATCH clauses for each hop
+  - Use variable names that reflect each step (e.g., e1, e2, mentor)
+  - Example 2-hop pattern:
+    MATCH (e:Employee)-[:HAS_SKILL]->(:Skill {{name: $skill1}})
+    MATCH (e)<-[:MENTOR_OF]-(mentor:Employee)-[:HAS_SKILL]->(:Skill {{name: $skill2}})
+    RETURN mentor
+
 user: |
   Question: {question}
 
   Extracted Entities:
   {entities_str}
+
+  Query Plan:
+  {query_plan_str}
