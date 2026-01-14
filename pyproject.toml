@@ -15,6 +15,7 @@ dependencies = [
 
     # Neo4j
     "neo4j>=5.15.0",
+    "graphdatascience>=1.9",  # GDS Python 클라이언트
 
     # LLM / LangGraph
     "langgraph>=0.2.0",
