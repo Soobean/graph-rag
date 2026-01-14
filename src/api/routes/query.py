@@ -2,6 +2,7 @@
 Query API Routes
 
 질의 관련 API 엔드포인트
+- Explainability: 추론 과정 시각화 및 그래프 데이터 반환 지원
 """
 
 import logging
@@ -16,6 +17,7 @@ from src.api.schemas import (
     QueryResponse,
     SchemaResponse,
 )
+from src.api.schemas.explainability import ExplainableResponse
 from src.config import Settings, get_settings
 from src.dependencies import get_graph_pipeline, get_neo4j_client
 from src.domain.exceptions import (
@@ -51,18 +53,65 @@ async def query(
 
     사용자의 자연어 질문을 받아 그래프 데이터베이스에서 정보를 검색하고
     자연어 응답을 생성합니다.
+
+    Explainability 옵션:
+    - include_explanation: 추론 과정 포함 (사고 과정 시각화)
+    - include_graph: 그래프 데이터 포함 (인터랙티브 그래프용)
+    - graph_limit: 그래프 최대 노드 수 (1-200)
     """
     logger.info(f"Query request: {request.question[:50]}...")
 
     try:
+        # Explainability 요청 시 full_state 포함
+        return_full_state = request.include_explanation or request.include_graph
+
         result = await pipeline.run(
             question=request.question,
             session_id=request.session_id,
+            return_full_state=return_full_state,
         )
 
+        # 기본 메타데이터 구축
         metadata = None
-        if result.get("metadata"):
-            metadata = QueryMetadata(**result["metadata"])
+        explanation = None
+        raw_metadata = result.get("metadata", {})
+
+        if raw_metadata:
+            # _full_state 제외한 메타데이터
+            clean_metadata = {
+                k: v for k, v in raw_metadata.items() if not k.startswith("_")
+            }
+            metadata = QueryMetadata(**clean_metadata)
+
+            # Explainability 데이터 구축
+            if return_full_state:
+                full_state = raw_metadata.get("_full_state")
+
+                thought_process = None
+                graph_data = None
+
+                # 서비스 인스턴스 생성 (필요하다면 의존성 주입으로 변경 가능)
+                from src.api.services.explainability import ExplainabilityService
+
+                service = ExplainabilityService()
+
+                if request.include_explanation:
+                    thought_process = service.build_thought_process(
+                        raw_metadata, full_state
+                    )
+
+                if request.include_graph and full_state:
+                    graph_data = service.build_graph_data(
+                        full_state=full_state,
+                        resolved_entities=raw_metadata.get("resolved_entities", []),
+                        limit=request.graph_limit,
+                    )
+
+                if thought_process or graph_data:
+                    explanation = ExplainableResponse(
+                        thought_process=thought_process,
+                        graph_data=graph_data,
+                    )
 
         return QueryResponse(
             success=result["success"],
@@ -70,6 +119,7 @@ async def query(
             response=result["response"],
             metadata=metadata,
             error=result.get("error"),
+            explanation=explanation,
         )
 
     except LLMRateLimitError as e:

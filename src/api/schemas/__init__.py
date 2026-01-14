@@ -14,6 +14,13 @@ from src.api.schemas.analytics import (
     TeamRecommendRequest,
     TeamRecommendResponse,
 )
+from src.api.schemas.explainability import (
+    ConceptExpansionTree,
+    ExplainableGraphData,
+    ExplainableResponse,
+    ThoughtProcessVisualization,
+    ThoughtStep,
+)
 from src.api.schemas.ingest import (
     IngestRequest,
     IngestResponse,
@@ -36,6 +43,12 @@ __all__ = [
     "QueryMetadata",
     "HealthResponse",
     "SchemaResponse",
+    # Explainability
+    "ThoughtStep",
+    "ConceptExpansionTree",
+    "ThoughtProcessVisualization",
+    "ExplainableGraphData",
+    "ExplainableResponse",
     # Ingest
     "IngestRequest",
     "IngestResponse",

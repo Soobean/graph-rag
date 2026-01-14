@@ -150,8 +150,17 @@ class TestNeo4jOntologyLoader:
     @pytest.mark.asyncio
     async def test_expand_concept_success(self, loader, mock_client):
         """개념 확장 성공"""
-        mock_client.execute_query.return_value = [
-            {"expanded": ["파이썬", "Python", "Python3", "Py"]}
+        # expand_concept은 내부적으로 여러 쿼리를 호출함:
+        # 1. get_canonical -> canonical_name 반환
+        # 2. get_synonyms_with_weights -> canonical, synonyms 반환
+        # 3. get_children -> children 반환
+        mock_client.execute_query.side_effect = [
+            # get_canonical 응답
+            [{"canonical_name": "Python"}],
+            # get_synonyms_with_weights 응답
+            [{"canonical": "Python", "synonyms": [{"name": "파이썬", "weight": 1.0}, {"name": "Python3", "weight": 0.8}]}],
+            # get_children 응답
+            [{"children": ["Django", "FastAPI"]}],
         ]
 
         result = await loader.expand_concept("파이썬", "skills")
@@ -367,8 +376,14 @@ class TestHybridOntologyLoader:
         """Neo4j 모드 - expand_concept"""
         from src.domain.ontology.hybrid_loader import HybridOntologyLoader
 
-        mock_neo4j_client.execute_query.return_value = [
-            {"expanded": ["파이썬", "Python", "Python3"]}
+        # expand_concept은 내부적으로 여러 쿼리를 호출함
+        mock_neo4j_client.execute_query.side_effect = [
+            # get_canonical 응답
+            [{"canonical_name": "Python"}],
+            # get_synonyms_with_weights 응답
+            [{"canonical": "Python", "synonyms": [{"name": "파이썬", "weight": 1.0}]}],
+            # get_children 응답
+            [{"children": []}],
         ]
 
         loader = HybridOntologyLoader(

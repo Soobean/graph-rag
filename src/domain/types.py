@@ -161,6 +161,16 @@ class SubGraphResult(TypedDict):
 # =============================================================================
 
 
+class FullState(TypedDict, total=False):
+    """Explainability를 위한 상세 상태"""
+
+    original_entities: dict[str, list[str]]
+    expanded_entities: dict[str, list[str]]
+    expansion_strategy: Literal["strict", "normal", "broad"]
+    expansion_count: int
+    graph_results: list[dict[str, Any]]
+
+
 class PipelineMetadata(TypedDict, total=False):
     """파이프라인 실행 메타데이터"""
 
@@ -174,6 +184,7 @@ class PipelineMetadata(TypedDict, total=False):
     execution_path: list[str]
     query_plan: dict[str, Any] | None
     error: str | None
+    _full_state: FullState  # 내부용 상세 상태
 
 
 class PipelineResult(TypedDict):

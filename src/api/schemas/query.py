@@ -4,9 +4,14 @@ Query API Schemas
 질의 API 요청/응답 스키마 정의
 """
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from src.api.schemas.explainability import ExplainableResponse
 
 
 class QueryRequest(BaseModel):
@@ -22,6 +27,21 @@ class QueryRequest(BaseModel):
     session_id: str | None = Field(
         default=None,
         description="세션 ID (선택)",
+    )
+    # Explainability 옵션 (하위 호환성 유지)
+    include_explanation: bool = Field(
+        default=False,
+        description="추론 과정 포함 여부",
+    )
+    include_graph: bool = Field(
+        default=False,
+        description="그래프 데이터 포함 여부",
+    )
+    graph_limit: int = Field(
+        default=50,
+        ge=1,
+        le=200,
+        description="그래프 최대 노드 수",
     )
 
 
@@ -51,6 +71,11 @@ class QueryResponse(BaseModel):
     response: str = Field(description="생성된 응답")
     metadata: QueryMetadata | None = Field(default=None, description="메타데이터")
     error: str | None = Field(default=None, description="에러 메시지")
+    # Explainability 데이터 (옵션)
+    explanation: "ExplainableResponse | None" = Field(
+        default=None,
+        description="추론 과정 및 그래프 데이터",
+    )
 
 
 class HealthResponse(BaseModel):
@@ -71,3 +96,15 @@ class SchemaResponse(BaseModel):
     relationship_types: list[str] = Field(default=[], description="관계 타입 목록")
     indexes: list[dict[str, Any]] = Field(default=[], description="인덱스 목록")
     constraints: list[dict[str, Any]] = Field(default=[], description="제약 조건 목록")
+
+
+# Forward reference 해결을 위해 ExplainableResponse 임포트 후 model_rebuild 호출
+# 순환 임포트 방지를 위해 모듈 끝에서 수행
+def _resolve_forward_refs() -> None:
+    """Forward reference 해결"""
+    from src.api.schemas.explainability import ExplainableResponse  # noqa: F401
+
+    QueryResponse.model_rebuild()
+
+
+_resolve_forward_refs()
