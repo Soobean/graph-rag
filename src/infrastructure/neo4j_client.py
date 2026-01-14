@@ -13,9 +13,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession, basic_auth
 from neo4j.exceptions import AuthError, Neo4jError, ServiceUnavailable
 
+from neo4j import (
+    AsyncDriver,
+    AsyncGraphDatabase,
+    AsyncManagedTransaction,
+    AsyncSession,
+    basic_auth,
+)
 from src.domain.exceptions import (
     DatabaseAuthenticationError,
     DatabaseConnectionError,
@@ -123,7 +129,12 @@ class Neo4jClient:
         await self.connect()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         """비동기 컨텍스트 매니저 종료"""
         await self.close()
 
@@ -221,7 +232,9 @@ class Neo4jClient:
             쿼리 결과 레코드 리스트
         """
 
-        async def _write_tx(tx, q: str, params: dict) -> list[dict]:
+        async def _write_tx(
+            tx: AsyncManagedTransaction, q: str, params: dict[str, Any]
+        ) -> list[dict[str, Any]]:
             result = await tx.run(q, params)
             return [record.data() async for record in result]
 
@@ -281,7 +294,7 @@ class Neo4jClient:
         Returns:
             스키마 정보 (노드 레이블, 관계 타입, 인덱스 등)
         """
-        schema_info = {
+        schema_info: dict[str, Any] = {
             "node_labels": [],
             "relationship_types": [],
             "indexes": [],
