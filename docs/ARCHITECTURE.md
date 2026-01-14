@@ -15,7 +15,8 @@ docs/
     ├── 05-design-decisions.md   # 설계 결정사항
     ├── 06-tech-stack.md         # 기술 스택
     ├── 07-operations.md         # 배포/보안/모니터링
-    └── 08-appendix.md           # 부록
+    ├── 08-appendix.md           # 부록
+    └── 09-ontology-system.md    # ⭐ 온톨로지 시스템 (개념 확장)
 ```
 
 ---
@@ -37,6 +38,7 @@ docs/
 | [06-tech-stack.md](./architecture/06-tech-stack.md) | 기술 스택, 모델 호환성, 성공 지표 | ✅ |
 | [07-operations.md](./architecture/07-operations.md) | 보안, 에러 핸들링, 성능, 배포, 캐싱, 모니터링 | ✅ |
 | [08-appendix.md](./architecture/08-appendix.md) | UI 옵션, 호환성 노트, 설정 예시 | ✅ |
+| [09-ontology-system.md](./architecture/09-ontology-system.md) | **⭐ 온톨로지 시스템, 개념 확장, 가중치 기반 검색** | ✅ |
 
 ---
 
@@ -89,6 +91,7 @@ result2 = await pipeline.run("그 사람의 직급은?", session_id="user-123")
 
 | 날짜 | 변경 내용 |
 |------|----------|
-| 2024-01 | 초기 설계 |
-| 2024-12 | Chat History (MemorySaver) 추가 |
-| 2025-01 | 문서 구조 분리 |
+| 2026-01-14 | 온톨로지 시스템 문서 추가 (09-ontology-system.md) |
+| 2026-01 | 문서 구조 분리 |
+| 2025-12 | Chat History (MemorySaver) 추가 |
+| 2025-01 | 초기 설계 |
