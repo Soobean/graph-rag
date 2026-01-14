@@ -21,6 +21,19 @@ from src.domain.types import FullState, PipelineMetadata
 # 상수 정의
 # ============================================
 
+# 레이아웃 상수
+LAYOUT_Y_RANGE = 600  # Y축 전체 범위 (-300 ~ 300)
+LAYOUT_Y_MIN = -300
+LAYOUT_JITTER = 20  # Y축 지터 범위
+
+# 역할별 X축 범위
+LAYOUT_X_RANGES: dict[str, tuple[float, float]] = {
+    "start": (-500, -300),       # 좌측: 쿼리 엔티티
+    "intermediate": (-200, 200),  # 중앙: 확장 개념
+    "end": (300, 500),           # 우측: 결과 엔티티
+    "default": (-100, 100),      # 기본
+}
+
 # 노드 이름 → 단계 유형 매핑
 NODE_TO_STEP_TYPE: dict[str, str] = {
     "intent_classifier": "classification",
@@ -144,46 +157,65 @@ class ExplainabilityService:
         )
 
     def _calculate_layout_position(
-        self, role: str, index: int, total: int
+        self, role: str, index_in_group: int, group_size: int
     ) -> tuple[float, float]:
         """
-        노드 역할에 따른 초기 레이아웃 좌표 계산
+        역할 그룹 내에서 노드의 레이아웃 좌표 계산
 
         Args:
             role: 노드 역할 (start, intermediate, end)
-            index: 현재 노드 인덱스
-            total: 전체 예상 노드 수
+            index_in_group: 해당 역할 그룹 내 인덱스
+            group_size: 해당 역할 그룹의 총 노드 수
 
         Returns:
             (x, y) 좌표 튜플
 
         레이아웃 전략:
-        - X축: 역할 기반 (start→좌측, intermediate→중앙, end→우측)
-        - Y축: 인덱스 기반 균등 분산 + 약간의 지터(jitter)
+        - X축: 역할별 영역에 랜덤 배치
+        - Y축: 그룹 내 균등 분산 + 지터
         """
-        # Y축: 인덱스 기반 균등 분산 (-300 ~ 300)
-        y_range = 600
-        y_spacing = y_range / max(total, 1)
-        base_y = -300 + (index * y_spacing)
-        # 약간의 랜덤 지터 추가 (겹침 방지)
-        jitter = random.uniform(-20, 20)
+        # Y축: 그룹 내 균등 분산
+        y_spacing = LAYOUT_Y_RANGE / max(group_size, 1)
+        base_y = LAYOUT_Y_MIN + (index_in_group * y_spacing) + (y_spacing / 2)
+        jitter = random.uniform(-LAYOUT_JITTER, LAYOUT_JITTER)
         y = base_y + jitter
 
-        # X축: 역할 기반 배치
-        if role == "start":
-            # 좌측 배치 (-500 ~ -300)
-            x = random.uniform(-500, -300)
-        elif role == "intermediate":
-            # 중앙 배치 (-200 ~ 200)
-            x = random.uniform(-200, 200)
-        elif role == "end":
-            # 우측 배치 (300 ~ 500)
-            x = random.uniform(300, 500)
-        else:
-            # 기본 중앙
-            x = random.uniform(-100, 100)
+        # X축: 역할별 영역에 랜덤 배치
+        x_min, x_max = LAYOUT_X_RANGES.get(role, LAYOUT_X_RANGES["default"])
+        x = random.uniform(x_min, x_max)
 
         return round(x, 2), round(y, 2)
+
+    def _assign_layout_positions(
+        self, nodes_map: dict[str, GraphNode]
+    ) -> None:
+        """
+        노드들에 역할별 그룹화 후 좌표 할당 (in-place 수정)
+
+        Args:
+            nodes_map: 노드 ID → GraphNode 맵 (좌표가 할당됨)
+        """
+        # 역할별 그룹화
+        by_role: dict[str, list[str]] = {
+            "start": [],
+            "intermediate": [],
+            "end": [],
+        }
+
+        for node_id, node in nodes_map.items():
+            role = node.role or "end"
+            if role in by_role:
+                by_role[role].append(node_id)
+            else:
+                by_role["end"].append(node_id)
+
+        # 각 그룹 내에서 좌표 계산
+        for role, node_ids in by_role.items():
+            group_size = len(node_ids)
+            for idx, node_id in enumerate(node_ids):
+                x, y = self._calculate_layout_position(role, idx, group_size)
+                nodes_map[node_id].x = x
+                nodes_map[node_id].y = y
 
     def build_graph_data(
         self,
@@ -219,7 +251,7 @@ class ExplainabilityService:
             name: str,
             props: dict[str, Any],
         ) -> None:
-            """노드 추가 헬퍼"""
+            """노드 추가 헬퍼 (좌표는 나중에 일괄 계산)"""
             if not node_id or node_id in nodes_map:
                 return
 
@@ -236,11 +268,7 @@ class ExplainabilityService:
                 role = "end"
                 result_entity_ids.append(node_id)
 
-            # 역할별 좌표 계산
-            x, y = self._calculate_layout_position(
-                role, len(nodes_map), len(resolved_entities) + limit
-            )
-
+            # 좌표는 0으로 초기화 (나중에 _assign_layout_positions에서 계산)
             nodes_map[node_id] = GraphNode(
                 id=node_id,
                 label=label,
@@ -249,8 +277,8 @@ class ExplainabilityService:
                 group=label,
                 role=role,
                 style=get_node_style(label),
-                x=x,
-                y=y,
+                x=0.0,
+                y=0.0,
             )
 
         def add_edge(
@@ -326,6 +354,9 @@ class ExplainabilityService:
                             add_edge(edge_id, rel_type, source, target, props)
 
         has_more = len(graph_results) > limit
+
+        # 역할별 그룹화 후 좌표 일괄 계산
+        self._assign_layout_positions(nodes_map)
 
         return ExplainableGraphData(
             nodes=list(nodes_map.values())[:limit],
