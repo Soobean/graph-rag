@@ -615,18 +615,88 @@ class OntologyLoader:
 
         return result[: config.max_total]
 
-    def get_expansion_rules(self) -> dict[str, Any]:
-        """확장 규칙 반환"""
+    def get_style_for_concept(
+        self, concept: str, category: str = "skills"
+    ) -> dict[str, str] | None:
+        """
+        개념에 대한 스타일(색상, 아이콘) 반환
+
+        Args:
+            concept: 개념 이름 (예: "Python", "Senior Engineer")
+            category: 카테고리 (skills, positions)
+
+        Returns:
+            {"color": "#...", "icon": "..."} 또는 None
+        """
         schema = self.load_schema()
-        return schema.get(
-            "expansion_rules",
-            {
-                "default_depth": 2,
-                "include_synonyms": True,
-                "include_children": True,
-                "include_parents": False,
-            },
-        )
+        concepts = schema.get("concepts", {})
+
+        # 1. Canonical 이름 확인
+        canonical = self.get_canonical(concept, category)
+
+        # 2. Category별 탐색
+        if category == OntologyCategory.SKILLS:
+            return self._get_skill_style(canonical, concepts)
+        elif category == OntologyCategory.POSITIONS:
+            return self._get_position_style(canonical, concepts)
+
+        return None
+
+    def _get_skill_style(
+        self, concept: str, concepts: dict[str, Any]
+    ) -> dict[str, str] | None:
+        """스킬 카테고리에서 스타일 탐색 (상속 지원)"""
+        skill_categories = concepts.get("SkillCategory", [])
+
+        for top_category in skill_categories:
+            if not isinstance(top_category, dict):
+                continue
+
+            top_style = top_category.get("style")
+
+            # Case 1: 최상위 카테고리 자체 (예: "Programming")
+            if top_category.get("name") == concept:
+                return top_style
+
+            # Case 2: 서브카테고리 탐색
+            for sub in top_category.get("subcategories", []):
+                sub_style = (
+                    sub.get("style") or top_style
+                )  # 서브에 없으면 상위 스타일 상속
+
+                # Case 2-1: 서브카테고리 자체 (예: "Backend")
+                if sub.get("name") == concept:
+                    return sub_style
+
+                # Case 2-2: 서브카테고리 내 스킬 (예: "Python")
+                if concept in sub.get("skills", []):
+                    return sub_style
+
+            # Case 3: 최상위 카테고리 직속 스킬
+            if concept in top_category.get("skills", []):
+                return top_style
+
+        return None
+
+    def _get_position_style(
+        self, concept: str, concepts: dict[str, Any]
+    ) -> dict[str, str] | None:
+        """직급 카테고리에서 스타일 탐색"""
+        position_level = concepts.get("PositionLevel", {})
+        hierarchy = position_level.get("hierarchy", [])
+
+        for level_info in hierarchy:
+            style = level_info.get("style")
+
+            # Case 1: 레벨 이름 자체 (예: "Senior")
+            if level_info.get("name") == concept:
+                return style
+
+            # Case 2: 레벨 내 직급 (예: "Senior Engineer")
+            if concept in level_info.get("includes", []):
+                return style
+
+        return None
 
 
 # =========================================================================

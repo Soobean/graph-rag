@@ -329,6 +329,10 @@ class GraphRAGPipeline:
             if entities_for_metadata is None:
                 entities_for_metadata = final_state.get("entities", {})
 
+            # query_plan 변환 (TypedDict -> dict)
+            query_plan_raw = final_state.get("query_plan")
+            query_plan_dict = dict(query_plan_raw) if query_plan_raw else None
+
             metadata: PipelineMetadata = {
                 "intent": final_state.get("intent", "unknown"),
                 "intent_confidence": final_state.get("intent_confidence", 0.0),
@@ -338,6 +342,7 @@ class GraphRAGPipeline:
                 "cypher_parameters": final_state.get("cypher_parameters", {}),
                 "result_count": final_state.get("result_count", 0),
                 "execution_path": final_state.get("execution_path", []),
+                "query_plan": query_plan_dict,
                 "error": final_state.get("error"),
             }
 

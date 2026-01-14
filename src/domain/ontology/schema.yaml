@@ -20,7 +20,7 @@ relations:
   IS_A:
     description: "하위 개념 → 상위 개념 (계층 관계)"
     direction: "child_to_parent"
-    transitive: true  # A IS_A B, B IS_A C → A IS_A C
+    transitive: true # A IS_A B, B IS_A C → A IS_A C
     examples:
       - ["Python", "Backend"]
       - ["Backend", "Programming"]
@@ -49,26 +49,55 @@ concepts:
   SkillCategory:
     - name: "Programming"
       description: "프로그래밍 관련 스킬"
+      style:
+        color: "#3B82F6" # Blue
+        icon: "code"
       subcategories:
         - name: "Backend"
           description: "서버/백엔드 개발"
+          style:
+            color: "#10B981" # Emerald
+            icon: "server"
           skills: ["Python", "Java", "Node.js", "Go", "Kotlin", "Spring"]
         - name: "Frontend"
           description: "클라이언트/프론트엔드 개발"
+          style:
+            color: "#F59E0B" # Amber
+            icon: "layout"
           skills: ["React", "Vue", "Angular", "TypeScript", "JavaScript"]
         - name: "AI/ML"
           description: "인공지능/머신러닝"
-          skills: ["ML", "Deep Learning", "NLP", "Computer Vision", "TensorFlow", "PyTorch"]
+          style:
+            color: "#8B5CF6" # Violet
+            icon: "brain"
+          skills:
+            [
+              "ML",
+              "Deep Learning",
+              "NLP",
+              "Computer Vision",
+              "TensorFlow",
+              "PyTorch",
+            ]
         - name: "Data"
           description: "데이터 엔지니어링/분석"
+          style:
+            color: "#EF4444" # Red
+            icon: "database"
           skills: ["SQL", "Spark", "Pandas", "Airflow", "ETL"]
 
     - name: "Cloud"
       description: "클라우드 플랫폼"
+      style:
+        color: "#0EA5E9" # Sky
+        icon: "cloud"
       skills: ["AWS", "GCP", "Azure", "Kubernetes", "Docker"]
 
     - name: "DevOps"
       description: "개발 운영"
+      style:
+        color: "#6366F1" # Indigo
+        icon: "terminal"
       skills: ["CI/CD", "Jenkins", "GitHub Actions", "Terraform", "Ansible"]
 
   PositionLevel:
@@ -76,15 +105,27 @@ concepts:
     hierarchy:
       - name: "Executive"
         level: 4
+        style:
+          color: "#991B1B" # Dark Red
+          icon: "award"
         includes: ["CTO", "VP", "Director"]
       - name: "Senior"
         level: 3
+        style:
+          color: "#B91C1C" # Red
+          icon: "star"
         includes: ["Senior Engineer", "Tech Lead", "Staff Engineer"]
       - name: "Mid"
         level: 2
+        style:
+          color: "#EA580C" # Orange
+          icon: "user"
         includes: ["Engineer", "Developer"]
       - name: "Junior"
         level: 1
+        style:
+          color: "#F97316" # Light Orange
+          icon: "user-plus"
         includes: ["Junior Engineer", "Associate", "Intern"]
 
     # 확장 규칙: "시니어 이상" 검색 시 level >= 3인 모든 직급 포함
@@ -94,7 +135,7 @@ concepts:
 # 확장 규칙 (ConceptExpander 동작 정의)
 # -----------------------------------------------------------------------------
 expansion_rules:
-  default_depth: 2  # IS_A 관계 탐색 최대 깊이
-  include_synonyms: true  # 동의어 자동 포함
-  include_children: true  # 하위 개념 포함 여부
-  include_parents: false  # 상위 개념 포함 여부 (기본값: false)
+  default_depth: 2 # IS_A 관계 탐색 최대 깊이
+  include_synonyms: true # 동의어 자동 포함
+  include_children: true # 하위 개념 포함 여부
+  include_parents: false # 상위 개념 포함 여부 (기본값: false)
