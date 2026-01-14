@@ -5,17 +5,18 @@ FastAPI 애플리케이션 진입점
 """
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import ingest_router, query_router
+from src.api import analytics_router, ingest_router, query_router
 from src.config import get_settings
 from src.graph import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
+from src.services.gds_service import GDSService
 
 # 로깅 설정
 settings = get_settings()
@@ -74,15 +75,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     logger.info("Pipeline initialized with pre-loaded schema")
 
+    # GDS 서비스 초기화
+    gds_service = GDSService(
+        uri=settings.neo4j_uri,
+        user=settings.neo4j_user,
+        password=settings.neo4j_password,
+        database=settings.neo4j_database,
+    )
+    await gds_service.connect()
+    logger.info("GDS service connected")
+
     # app.state에 저장 (멀티 워커 환경에서 각 워커가 자체 인스턴스 보유)
     app.state.neo4j_client = neo4j_client
     app.state.llm_repo = llm_repo
     app.state.pipeline = pipeline
+    app.state.gds_service = gds_service
 
     yield
 
     # 종료 시 리소스 정리
     logger.info("Shutting down Graph RAG API...")
+
+    if hasattr(app.state, "gds_service") and app.state.gds_service:
+        await app.state.gds_service.close()
+        logger.info("GDS service closed")
 
     if hasattr(app.state, "llm_repo") and app.state.llm_repo:
         await app.state.llm_repo.close()
@@ -113,6 +129,7 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(query_router)
 app.include_router(ingest_router)
+app.include_router(analytics_router)
 
 
 @app.get("/")

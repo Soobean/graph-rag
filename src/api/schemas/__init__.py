@@ -2,6 +2,18 @@
 API Schemas Package
 """
 
+from src.api.schemas.analytics import (
+    CommunityDetectRequest,
+    CommunityDetectResponse,
+    CommunityInfo,
+    ProjectionStatusResponse,
+    SimilarEmployee,
+    SimilarEmployeeRequest,
+    SimilarEmployeeResponse,
+    TeamMember,
+    TeamRecommendRequest,
+    TeamRecommendResponse,
+)
 from src.api.schemas.ingest import (
     IngestRequest,
     IngestResponse,
@@ -30,4 +42,15 @@ __all__ = [
     "IngestStats",
     "IngestStatusResponse",
     "SourceType",
+    # Analytics
+    "CommunityDetectRequest",
+    "CommunityDetectResponse",
+    "CommunityInfo",
+    "ProjectionStatusResponse",
+    "SimilarEmployee",
+    "SimilarEmployeeRequest",
+    "SimilarEmployeeResponse",
+    "TeamMember",
+    "TeamRecommendRequest",
+    "TeamRecommendResponse",
 ]
