@@ -9,7 +9,6 @@ Neo4j Repository - 그래프 데이터 접근 계층
 """
 
 import logging
-import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -20,13 +19,10 @@ from src.domain.exceptions import (
     ValidationError,
 )
 from src.domain.types import SubGraphResult
+from src.domain.validators import CYPHER_IDENTIFIER_PATTERN
 from src.infrastructure.neo4j_client import Neo4jClient
 
 logger = logging.getLogger(__name__)
-
-# Cypher Injection 방어용 정규식 패턴
-# 레이블/관계 타입은 알파벳, 숫자, 언더스코어, 한글만 허용
-IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9_\uAC00-\uD7A3]+$")
 
 
 @dataclass
@@ -108,10 +104,11 @@ class Neo4jRepository:
             raise ValidationError(
                 f"Empty {field_name} is not allowed", field=field_name
             )
-        if not IDENTIFIER_PATTERN.match(value):
+        if not CYPHER_IDENTIFIER_PATTERN.match(value):
             raise ValidationError(
                 f"Invalid {field_name} format: '{value}'. "
-                "Only alphanumeric, underscore, and Korean characters are allowed.",
+                "Must start with a letter and contain only alphanumeric, "
+                "underscore, or Korean characters.",
                 field=field_name,
             )
         return value

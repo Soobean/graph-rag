@@ -12,6 +12,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from neo4j.exceptions import AuthError, Neo4jError, ServiceUnavailable
 
@@ -27,8 +28,26 @@ from src.domain.exceptions import (
     DatabaseConnectionError,
     DatabaseError,
 )
+from src.domain.validators import validate_cypher_identifier
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_uri(uri: str) -> str:
+    """URI에서 비밀번호 제거 (로깅용)"""
+    try:
+        parsed = urlparse(uri)
+        if parsed.password:
+            # 비밀번호를 ***로 대체
+            netloc = f"{parsed.username}:***@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            sanitized = parsed._replace(netloc=netloc)
+            return urlunparse(sanitized)
+    except Exception:
+        # 파싱 실패 시 호스트만 반환
+        return uri.split("@")[-1] if "@" in uri else uri
+    return uri
 
 
 class Neo4jClient:
@@ -72,7 +91,7 @@ class Neo4jClient:
         self._driver: AsyncDriver | None = None
 
         logger.info(
-            f"Neo4jClient initialized: uri={uri}, database={database}, "
+            f"Neo4jClient initialized: uri={_sanitize_uri(uri)}, database={database}, "
             f"pool_size={max_connection_pool_size}"
         )
 
@@ -97,7 +116,7 @@ class Neo4jClient:
             )
             # 연결 확인
             await self._driver.verify_connectivity()
-            logger.info(f"Successfully connected to Neo4j at {self._uri}")
+            logger.info(f"Successfully connected to Neo4j at {_sanitize_uri(self._uri)}")
 
         except AuthError as e:
             logger.error(f"Neo4j authentication failed: {e}")
@@ -107,7 +126,7 @@ class Neo4jClient:
         except ServiceUnavailable as e:
             logger.error(f"Neo4j service unavailable: {e}")
             raise DatabaseConnectionError(
-                f"Neo4j service is unavailable at {self._uri}: {e}"
+                f"Neo4j service is unavailable at {_sanitize_uri(self._uri)}: {e}"
             ) from e
         except Exception as e:
             logger.error(f"Failed to connect to Neo4j: {e}")
@@ -262,7 +281,7 @@ class Neo4jClient:
         """
         result = {
             "connected": False,
-            "uri": self._uri,
+            "uri": _sanitize_uri(self._uri),
             "database": self._database,
             "server_info": None,
             "error": None,
@@ -367,22 +386,26 @@ class Neo4jClient:
         Returns:
             성공 여부
         """
+        # 식별자 검증 (Cypher Injection 방지)
+        safe_index = validate_cypher_identifier(index_name, "index_name")
+        safe_label = validate_cypher_identifier(label, "label")
+        safe_prop = validate_cypher_identifier(property_name, "property_name")
+
         # 이미 존재하는지 확인
         check_query = """
         SHOW INDEXES
         WHERE name = $index_name
         """
-        existing = await self.execute_query(check_query, {"index_name": index_name})
+        existing = await self.execute_query(check_query, {"index_name": safe_index})
         if existing:
-            logger.info(f"Vector index '{index_name}' already exists")
+            logger.info(f"Vector index '{safe_index}' already exists")
             return True
 
-        # Vector Index 생성
-        # Neo4j 5.x+ 문법
+        # Vector Index 생성 (Neo4j 5.x+ 문법)
         create_query = f"""
-        CREATE VECTOR INDEX `{index_name}` IF NOT EXISTS
-        FOR (n:`{label}`)
-        ON (n.`{property_name}`)
+        CREATE VECTOR INDEX `{safe_index}` IF NOT EXISTS
+        FOR (n:`{safe_label}`)
+        ON (n.`{safe_prop}`)
         OPTIONS {{
             indexConfig: {{
                 `vector.dimensions`: $dimensions,
@@ -414,10 +437,11 @@ class Neo4jClient:
         Returns:
             성공 여부
         """
-        drop_query = f"DROP INDEX `{index_name}` IF EXISTS"
+        safe_index = validate_cypher_identifier(index_name, "index_name")
+        drop_query = f"DROP INDEX `{safe_index}` IF EXISTS"
         try:
             await self.execute_write(drop_query)
-            logger.info(f"Dropped vector index '{index_name}'")
+            logger.info(f"Dropped vector index '{safe_index}'")
             return True
         except Exception as e:
             logger.error(f"Failed to drop vector index '{index_name}': {e}")
@@ -494,10 +518,13 @@ class Neo4jClient:
         Returns:
             성공 여부
         """
+        # Cypher Injection 방지
+        safe_prop = validate_cypher_identifier(property_name, "property_name")
+
         query = f"""
         MATCH (n)
         WHERE elementId(n) = $node_id
-        SET n.`{property_name}` = $embedding
+        SET n.`{safe_prop}` = $embedding
         RETURN elementId(n) as id
         """
         try:
@@ -528,11 +555,14 @@ class Neo4jClient:
         Returns:
             업데이트된 노드 수
         """
+        # Cypher Injection 방지
+        safe_prop = validate_cypher_identifier(property_name, "property_name")
+
         query = f"""
         UNWIND $updates AS update
         MATCH (n)
         WHERE elementId(n) = update.node_id
-        SET n.`{property_name}` = update.embedding
+        SET n.`{safe_prop}` = update.embedding
         RETURN count(n) as updated_count
         """
         try:

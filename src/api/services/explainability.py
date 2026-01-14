@@ -67,7 +67,7 @@ class ExplainabilityService:
             step = ThoughtStep(
                 step_number=i + 1,
                 node_name=node_name,
-                step_type=NODE_TO_STEP_TYPE.get(clean_name, "execution"),  # type: ignore
+                step_type=NODE_TO_STEP_TYPE.get(clean_name, "execution"),
                 description=NODE_DESCRIPTIONS.get(clean_name, node_name),
             )
 
@@ -129,7 +129,7 @@ class ExplainabilityService:
                             ConceptExpansionTree(
                                 original_concept=orig,
                                 entity_type=entity_type,
-                                expansion_strategy=strategy,  # type: ignore
+                                expansion_strategy=strategy,
                                 expanded_concepts=expanded_only,
                                 expansion_path=expansion_path,
                             )

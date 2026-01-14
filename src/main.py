@@ -125,13 +125,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS 설정
+# CORS 설정 (명시적 오리진 지정으로 보안 강화)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.is_development else [],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],  # 실제 사용하는 메서드만 허용
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
 )
 
 # 라우터 등록

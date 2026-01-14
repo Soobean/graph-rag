@@ -72,7 +72,7 @@ class QueryResponse(BaseModel):
     metadata: QueryMetadata | None = Field(default=None, description="메타데이터")
     error: str | None = Field(default=None, description="에러 메시지")
     # Explainability 데이터 (옵션)
-    explanation: "ExplainableResponse | None" = Field(
+    explanation: ExplainableResponse | None = Field(
         default=None,
         description="추론 과정 및 그래프 데이터",
     )

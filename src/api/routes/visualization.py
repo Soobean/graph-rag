@@ -24,10 +24,22 @@ from src.api.schemas.visualization import (
     SubgraphRequest,
     SubgraphResponse,
 )
-from src.api.utils.graph_utils import NODE_STYLES, get_node_style, sanitize_props
+from src.api.utils.graph_utils import get_node_style, sanitize_props
 from src.dependencies import get_graph_pipeline, get_neo4j_repository
+from src.domain.validators import validate_cypher_identifier
 from src.graph.pipeline import GraphRAGPipeline
 from src.repositories.neo4j_repository import Neo4jRepository
+
+
+def _validate_label(label: str) -> str:
+    """노드 라벨 검증 (Cypher Injection 방지)"""
+    try:
+        return validate_cypher_identifier(label, "label")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +76,7 @@ async def get_subgraph(
                 center_query, {"node_id": request.node_id}
             )
         elif request.node_name:
-            label_filter = f":{request.node_label}" if request.node_label else ""
+            label_filter = f":{_validate_label(request.node_label)}" if request.node_label else ""
             center_query = f"""
             MATCH (n{label_filter})
             WHERE n.name = $node_name
@@ -495,7 +507,7 @@ async def visualize_query_path(
         if not entities or not any(entities.values()):
             # cypher_parameters에서 엔티티 값 추출
             cypher_params = metadata.get("cypher_parameters", {})
-            for key, value in cypher_params.items():
+            for _key, value in cypher_params.items():
                 if isinstance(value, str) and value:
                     entities.setdefault("extracted", []).append(value)
                 elif isinstance(value, list):
@@ -593,7 +605,7 @@ def _build_path_visualization_query(
     """경로 시각화를 위한 쿼리 생성 (실제 쿼리 패턴 기반)"""
     # 엔티티에서 시작점 찾기 (중복 제거)
     start_entities_set: set[str] = set()
-    for entity_type, values in entities.items():
+    for _entity_type, values in entities.items():
         if values:
             for v in values[:3]:  # 각 타입에서 최대 3개
                 start_entities_set.add(v)

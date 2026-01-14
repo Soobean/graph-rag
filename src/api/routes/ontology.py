@@ -21,7 +21,7 @@ async def get_ontology_schema() -> dict:
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to load ontology schema: {e}"
-        )
+        ) from e
 
 
 @router.get("/concept/{category}/{name}/style")
@@ -38,4 +38,4 @@ async def get_concept_style(category: str, name: str) -> dict:
         # 기본 스타일 반환
         return {"color": "#94A3B8", "icon": "circle"}  # Slate-400
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

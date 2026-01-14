@@ -166,11 +166,11 @@ async def query(
         ) from e
 
     except Exception as e:
-        logger.error(f"Query failed: {e}")
+        logger.error(f"Query failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
-        ) from e
+        ) from None
 
 
 @router.get("/health", response_model=HealthResponse)

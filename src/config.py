@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     app_version: str = Field(default="0.1.0", description="애플리케이션 버전")
     debug: bool = Field(default=False, description="디버그 모드")
     environment: str = Field(default="development", description="실행 환경")
+    cors_origins: list[str] = Field(
+        default=["http://localhost:3000", "http://localhost:8080"],
+        description="CORS 허용 오리진 목록 (프론트엔드 URL)",
+    )
 
     # ============================================
     # Neo4j 설정
