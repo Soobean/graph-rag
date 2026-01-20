@@ -14,6 +14,36 @@ CYPHER_IDENTIFIER_PATTERN = re.compile(
 )
 
 
+# 쓰기 작업 키워드 (대소문자 무관)
+CYPHER_WRITE_KEYWORDS = re.compile(
+    r"\b(CREATE|DELETE|DETACH|SET|REMOVE|MERGE|DROP|CALL\s*\{)\b",
+    re.IGNORECASE,
+)
+
+
+def validate_read_only_cypher(query: str) -> str:
+    """
+    Cypher 쿼리가 READ-ONLY인지 검증
+
+    쓰기 작업(CREATE, DELETE, SET 등)이 포함된 쿼리를 차단합니다.
+
+    Args:
+        query: 검증할 Cypher 쿼리
+
+    Returns:
+        검증된 쿼리 (원본과 동일)
+
+    Raises:
+        ValueError: 쓰기 작업이 포함된 경우
+    """
+    if CYPHER_WRITE_KEYWORDS.search(query):
+        raise ValueError(
+            "Only read-only queries are allowed. "
+            "CREATE, DELETE, SET, REMOVE, MERGE, DROP, CALL{} are not permitted."
+        )
+    return query
+
+
 def validate_cypher_identifier(name: str, field_name: str = "identifier") -> str:
     """
     Cypher 식별자 검증 (Injection 방지)

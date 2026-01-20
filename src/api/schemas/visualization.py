@@ -29,6 +29,10 @@ class GraphNode(BaseModel):
         default=None,
         description="노드 역할 (start: 시작점, end: 결과, intermediate: 중간)",
     )
+    depth: int = Field(
+        default=0,
+        description="홉 깊이 (0=쿼리 엔티티, 1=첫번째 홉, ..., max=결과)",
+    )
     style: NodeStyle | None = Field(
         default=None, description="노드 스타일 (Palantir-style)"
     )

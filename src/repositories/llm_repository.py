@@ -709,20 +709,58 @@ class LLMRepository:
         return "\n".join(lines)
 
     def _format_results(self, results: list[dict[str, Any]]) -> str:
-        """쿼리 결과를 문자열로 포맷팅"""
+        """쿼리 결과를 문자열로 포맷팅 (엔티티 기준 그룹핑)"""
         if not results:
             return "No results found"
 
-        # 결과가 너무 많으면 요약
-        if len(results) > 10:
-            display_results = results[:10]
-            suffix = f"\n... and {len(results) - 10} more results"
-        else:
-            display_results = results
-            suffix = ""
+        # 엔티티(노드) 기준으로 결과 그룹핑
+        entities: dict[str, dict[str, Any]] = {}
+        relationships: list[str] = []
 
-        lines = []
-        for i, result in enumerate(display_results, 1):
-            lines.append(f"{i}. {result}")
+        for row in results:
+            for _key, value in row.items():
+                if isinstance(value, dict):
+                    # 노드 형식 감지 (labels 속성이 있는 경우)
+                    if "labels" in value and isinstance(value.get("labels"), list):
+                        node_id = value.get("id", value.get("elementId", ""))
+                        if node_id and node_id not in entities:
+                            props = value.get("properties", {})
+                            name = props.get("name", "Unknown")
+                            label = value["labels"][0] if value["labels"] else "Node"
+                            entities[node_id] = {
+                                "label": label,
+                                "name": name,
+                                "properties": props,
+                            }
+                    # 관계 형식 감지
+                    elif "type" in value and ("startNodeId" in value or "start" in value):
+                        rel_type = value.get("type", "RELATED")
+                        relationships.append(rel_type)
 
-        return "\n".join(lines) + suffix
+        # 엔티티를 라벨별로 그룹핑
+        by_label: dict[str, list[dict[str, Any]]] = {}
+        for _node_id, entity in entities.items():
+            label = entity["label"]
+            if label not in by_label:
+                by_label[label] = []
+            by_label[label].append(entity)
+
+        # 포맷팅
+        lines = [f"총 {len(entities)}개의 고유 엔티티, {len(results)}개의 관계 결과:"]
+
+        for label, ents in by_label.items():
+            lines.append(f"\n[{label}] ({len(ents)}개):")
+            # 각 라벨별로 최대 15개까지 표시
+            for i, ent in enumerate(ents[:15], 1):
+                props = ent.get("properties", {})
+                # 주요 속성 추출
+                prop_strs = []
+                for k, v in props.items():
+                    if k not in ("embedding", "vector") and v is not None:
+                        prop_strs.append(f"{k}={v}")
+                props_display = ", ".join(prop_strs[:5])
+                lines.append(f"  {i}. {ent['name']} ({props_display})")
+            if len(ents) > 15:
+                lines.append(f"  ... 외 {len(ents) - 15}개")
+
+        return "\n".join(lines)

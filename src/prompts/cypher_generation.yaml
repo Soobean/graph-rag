@@ -17,17 +17,36 @@ system: |
   Important:
   - Use MATCH, OPTIONAL MATCH appropriately
   - Use parameters ($param) for user-provided values
-  - Return meaningful property names
-  - Limit results when appropriate
+  - Limit results when appropriate (LIMIT 50 for non-aggregation queries)
+
+  ⚠️ CRITICAL RETURN CLAUSE RULE:
+  You MUST return node and relationship variables directly, NOT their properties.
+  This is required for graph visualization.
+
+  ❌ WRONG - Never do this:
+    RETURN e.name AS employeeName, s.name AS skillName
+    RETURN e.name, s.name
+    RETURN s.name AS skill
+
+  ✅ CORRECT - Always do this:
+    RETURN e, r, s
+    RETURN e, s
+    RETURN employee, skill
+
+  Example - Simple skill query:
+    MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
+    WHERE e.name = $employeeName
+    RETURN e, r, s
+    LIMIT 50
 
   For Multi-hop queries:
   - Follow the query plan steps if provided
   - Chain MATCH clauses for each hop
   - Use variable names that reflect each step (e.g., e1, e2, mentor)
   - Example 2-hop pattern:
-    MATCH (e:Employee)-[:HAS_SKILL]->(:Skill {{name: $skill1}})
-    MATCH (e)<-[:MENTOR_OF]-(mentor:Employee)-[:HAS_SKILL]->(:Skill {{name: $skill2}})
-    RETURN mentor
+    MATCH (e:Employee)-[r1:HAS_SKILL]->(s:Skill {{name: $skill1}})
+    MATCH (e)<-[r2:MENTOR_OF]-(mentor:Employee)-[r3:HAS_SKILL]->(s2:Skill {{name: $skill2}})
+    RETURN e, r1, s, r2, mentor, r3, s2
 
 user: |
   Question: {question}

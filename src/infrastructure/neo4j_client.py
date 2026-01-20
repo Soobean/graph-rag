@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from neo4j.exceptions import AuthError, Neo4jError, ServiceUnavailable
+from neo4j.graph import Node, Path, Relationship
 
 from neo4j import (
     AsyncDriver,
@@ -31,6 +32,41 @@ from src.domain.exceptions import (
 from src.domain.validators import validate_cypher_identifier
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_value(value: Any) -> Any:
+    """
+    Neo4j 반환값을 JSON 직렬화 가능한 형태로 변환
+
+    Node, Relationship, Path 객체의 구조적 메타데이터를 보존합니다.
+    """
+    if isinstance(value, Node):
+        return {
+            "id": value.element_id,
+            "elementId": value.element_id,
+            "labels": list(value.labels),
+            "properties": dict(value),
+        }
+    elif isinstance(value, Relationship):
+        return {
+            "id": value.element_id,
+            "elementId": value.element_id,
+            "type": value.type,
+            "startNodeId": value.start_node.element_id if value.start_node else None,
+            "endNodeId": value.end_node.element_id if value.end_node else None,
+            "properties": dict(value),
+        }
+    elif isinstance(value, Path):
+        return {
+            "nodes": [_serialize_value(node) for node in value.nodes],
+            "relationships": [_serialize_value(rel) for rel in value.relationships],
+        }
+    elif isinstance(value, list):
+        return [_serialize_value(item) for item in value]
+    elif isinstance(value, dict):
+        return {k: _serialize_value(v) for k, v in value.items()}
+    else:
+        return value
 
 
 def _sanitize_uri(uri: str) -> str:
@@ -224,7 +260,14 @@ class Neo4jClient:
         try:
             async with self.session(database=database) as session:
                 result = await session.run(query, parameters or {})
-                records = [record.data() async for record in result]
+                # record.data()는 속성만 반환하므로, 구조적 메타데이터 보존을 위해
+                # record.keys()와 record[key]로 원본 객체에 접근하여 직렬화
+                records = []
+                async for record in result:
+                    serialized = {
+                        key: _serialize_value(record[key]) for key in record.keys()
+                    }
+                    records.append(serialized)
                 logger.debug(
                     f"Query executed successfully: {len(records)} records returned"
                 )
@@ -255,7 +298,13 @@ class Neo4jClient:
             tx: AsyncManagedTransaction, q: str, params: dict[str, Any]
         ) -> list[dict[str, Any]]:
             result = await tx.run(q, params)
-            return [record.data() async for record in result]
+            records = []
+            async for record in result:
+                serialized = {
+                    key: _serialize_value(record[key]) for key in record.keys()
+                }
+                records.append(serialized)
+            return records
 
         try:
             async with self.session(database=database) as session:

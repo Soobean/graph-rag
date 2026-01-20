@@ -26,7 +26,7 @@ from src.api.schemas.visualization import (
 )
 from src.api.utils.graph_utils import get_node_style, sanitize_props
 from src.dependencies import get_graph_pipeline, get_neo4j_repository
-from src.domain.validators import validate_cypher_identifier
+from src.domain.validators import validate_cypher_identifier, validate_read_only_cypher
 from src.graph.pipeline import GraphRAGPipeline
 from src.repositories.neo4j_repository import Neo4jRepository
 
@@ -333,10 +333,21 @@ async def visualize_query_result(
 
     노드와 관계를 반환하는 쿼리의 결과를 시각화 가능한 형식으로 변환합니다.
     쿼리에서 노드는 n, 관계는 r로 반환해야 합니다.
+
+    ⚠️ 보안: READ-ONLY 쿼리만 허용됩니다.
     """
     logger.info(f"Query result visualization: {request.cypher_query[:50]}...")
 
     try:
+        # 보안: READ-ONLY 쿼리만 허용
+        try:
+            validate_read_only_cypher(request.cypher_query)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+
         results = await neo4j.execute_cypher(request.cypher_query, request.parameters)
 
         nodes_map: dict[str, GraphNode] = {}
