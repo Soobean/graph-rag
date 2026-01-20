@@ -4,7 +4,6 @@ Explainability Service
 AI 추론 과정 및 그래프 시각화 데이터 생성 로직을 담당하는 서비스
 """
 
-import random
 from typing import Any
 
 from src.api.schemas.explainability import (
@@ -21,17 +20,12 @@ from src.domain.types import FullState, PipelineMetadata
 # 상수 정의
 # ============================================
 
-# 레이아웃 상수
-LAYOUT_Y_RANGE = 600  # Y축 전체 범위 (-300 ~ 300)
-LAYOUT_Y_MIN = -300
-LAYOUT_JITTER = 20  # Y축 지터 범위
-
-# 역할별 X축 범위
-LAYOUT_X_RANGES: dict[str, tuple[float, float]] = {
-    "start": (-500, -300),       # 좌측: 쿼리 엔티티
-    "intermediate": (-200, 200),  # 중앙: 확장 개념
-    "end": (300, 500),           # 우측: 결과 엔티티
-    "default": (-100, 100),      # 기본
+# 역할(role) → depth 기본 매핑
+# 프론트엔드에서 depth 기반 레이아웃 계산 시 사용
+ROLE_TO_DEFAULT_DEPTH: dict[str, int] = {
+    "start": 0,        # 쿼리 엔티티 (검색 시작점)
+    "intermediate": 1,  # 확장된 개념 (온톨로지 기반)
+    "end": 2,          # 결과 엔티티 (검색 결과)
 }
 
 # 노드 이름 → 단계 유형 매핑
@@ -127,7 +121,6 @@ class ExplainabilityService:
         if full_state:
             original = full_state.get("original_entities", {})
             expanded = full_state.get("expanded_entities", {})
-            # expansion_strategy가 None인 경우 "normal"로 기본값 설정
             strategy = full_state.get("expansion_strategy") or "normal"
 
             for entity_type, orig_values in original.items():
@@ -156,66 +149,22 @@ class ExplainabilityService:
             execution_path=execution_path,
         )
 
-    def _calculate_layout_position(
-        self, role: str, index_in_group: int, group_size: int
-    ) -> tuple[float, float]:
-        """
-        역할 그룹 내에서 노드의 레이아웃 좌표 계산
-
-        Args:
-            role: 노드 역할 (start, intermediate, end)
-            index_in_group: 해당 역할 그룹 내 인덱스
-            group_size: 해당 역할 그룹의 총 노드 수
-
-        Returns:
-            (x, y) 좌표 튜플
-
-        레이아웃 전략:
-        - X축: 역할별 영역에 랜덤 배치
-        - Y축: 그룹 내 균등 분산 + 지터
-        """
-        # Y축: 그룹 내 균등 분산
-        y_spacing = LAYOUT_Y_RANGE / max(group_size, 1)
-        base_y = LAYOUT_Y_MIN + (index_in_group * y_spacing) + (y_spacing / 2)
-        jitter = random.uniform(-LAYOUT_JITTER, LAYOUT_JITTER)
-        y = base_y + jitter
-
-        # X축: 역할별 영역에 랜덤 배치
-        x_min, x_max = LAYOUT_X_RANGES.get(role, LAYOUT_X_RANGES["default"])
-        x = random.uniform(x_min, x_max)
-
-        return round(x, 2), round(y, 2)
-
-    def _assign_layout_positions(
+    def _assign_depth_values(
         self, nodes_map: dict[str, GraphNode]
     ) -> None:
         """
-        노드들에 역할별 그룹화 후 좌표 할당 (in-place 수정)
+        노드들에 depth 값 할당 (in-place 수정)
+
+        x, y 좌표 계산은 프론트엔드에서 담당하며,
+        백엔드는 depth 메타데이터만 제공합니다.
 
         Args:
-            nodes_map: 노드 ID → GraphNode 맵 (좌표가 할당됨)
+            nodes_map: 노드 ID → GraphNode 맵 (depth가 할당됨)
         """
-        # 역할별 그룹화
-        by_role: dict[str, list[str]] = {
-            "start": [],
-            "intermediate": [],
-            "end": [],
-        }
-
-        for node_id, node in nodes_map.items():
-            role = node.role or "end"
-            if role in by_role:
-                by_role[role].append(node_id)
-            else:
-                by_role["end"].append(node_id)
-
-        # 각 그룹 내에서 좌표 계산
-        for role, node_ids in by_role.items():
-            group_size = len(node_ids)
-            for idx, node_id in enumerate(node_ids):
-                x, y = self._calculate_layout_position(role, idx, group_size)
-                nodes_map[node_id].x = x
-                nodes_map[node_id].y = y
+        for node in nodes_map.values():
+            # depth가 설정되지 않은 경우 role 기반으로 기본값 할당
+            if node.depth == 0 and node.role != "start":
+                node.depth = ROLE_TO_DEFAULT_DEPTH.get(node.role or "end", 2)
 
     def build_graph_data(
         self,
@@ -251,24 +200,28 @@ class ExplainabilityService:
             name: str,
             props: dict[str, Any],
         ) -> None:
-            """노드 추가 헬퍼 (좌표는 나중에 일괄 계산)"""
+            """노드 추가 헬퍼 (depth는 role 기반, x/y는 프론트엔드에서 계산)"""
             if not node_id or node_id in nodes_map:
                 return
 
             label = labels[0] if labels else "Node"
 
-            # 역할 판별
+            # 역할 판별 (depth는 프론트엔드에서 BFS로 계산)
+            # query_entity_ids: 오직 original_names에 매칭되는 노드만 (쿼리 시작점)
             if name in original_names:
                 role = "start"
+                depth = 0  # 힌트용, 실제 레이아웃은 프론트엔드 BFS
                 query_entity_ids.append(node_id)
             elif name in expanded_names:
                 role = "intermediate"
+                depth = 1
                 expanded_entity_ids.append(node_id)
             else:
+                # Employee, Skill 등 모든 결과 노드
                 role = "end"
+                depth = 2
                 result_entity_ids.append(node_id)
 
-            # 좌표는 0으로 초기화 (나중에 _assign_layout_positions에서 계산)
             nodes_map[node_id] = GraphNode(
                 id=node_id,
                 label=label,
@@ -276,9 +229,8 @@ class ExplainabilityService:
                 properties=sanitize_props(props),
                 group=label,
                 role=role,
+                depth=depth,
                 style=get_node_style(label),
-                x=0.0,
-                y=0.0,
             )
 
         def add_edge(
@@ -355,8 +307,8 @@ class ExplainabilityService:
 
         has_more = len(graph_results) > limit
 
-        # 역할별 그룹화 후 좌표 일괄 계산
-        self._assign_layout_positions(nodes_map)
+        # depth 값 할당 (x, y 좌표는 프론트엔드에서 계산)
+        self._assign_depth_values(nodes_map)
 
         return ExplainableGraphData(
             nodes=list(nodes_map.values())[:limit],
