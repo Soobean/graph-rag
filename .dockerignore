@@ -1,0 +1,83 @@
+# ============================================
+# Docker Ignore
+# ============================================
+# 빌드 컨텍스트에서 제외할 파일들
+# 이미지 크기 최적화 + 빌드 속도 향상
+# ============================================
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+*.egg-info
+.eggs
+*.egg
+dist
+build
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.nox
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Docker (자체 참조 방지)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Tests
+tests
+conftest.py
+
+# Scripts
+scripts
+
+# Logs & Data
+*.log
+logs
+data
+output
+*.db
+*.sqlite
+
+# Neo4j local data
+neo4j
+
+frontend
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude
+CLAUDE.md
+PROGRESS.md

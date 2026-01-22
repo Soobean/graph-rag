@@ -1,0 +1,25 @@
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      # 소스 코드 마운트 (Hot Reload)
+      - ./src:/app/src:ro
+      - ./src/prompts:/app/src/prompts:ro
+      - ./src/domain/ontology:/app/src/domain/ontology:ro
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - ENVIRONMENT=development
+    # 개발 모드에서는 uvicorn reload 활성화
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  neo4j:
+    # 개발용 Community Edition (무료)
+    image: neo4j:5.15-community
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+      # GDS는 Enterprise만 지원, 개발 시 APOC만 사용
+      - NEO4J_PLUGINS=["apoc"]

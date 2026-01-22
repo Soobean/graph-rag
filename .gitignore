@@ -71,3 +71,5 @@ neo4j/
 
 # Claude Code
 .claude/
+
+frontend/
