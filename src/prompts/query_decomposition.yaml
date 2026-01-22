@@ -70,6 +70,20 @@ system: |
     "explanation": "Simple query to find Python developers"
   }}
 
+  Query: "구은서가 멘토링하는 사람들이 어떤 프로젝트에서 어떤 부서와 협업하나요?" (Complex 4-hop)
+  {{
+    "is_multi_hop": true,
+    "hop_count": 4,
+    "hops": [
+      {{"step": 1, "description": "Find employee 구은서", "node_label": "Employee", "relationship": null, "direction": "both", "filter_condition": "name = '구은서'"}},
+      {{"step": 2, "description": "Find mentees of 구은서", "node_label": "Employee", "relationship": "MENTOR_OF", "direction": "outgoing", "filter_condition": null}},
+      {{"step": 3, "description": "Find projects the mentees participated in", "node_label": "Project", "relationship": "PARTICIPATED_IN", "direction": "outgoing", "filter_condition": null}},
+      {{"step": 4, "description": "Find departments collaborating on those projects", "node_label": "Department", "relationship": "BELONGS_TO", "direction": "incoming", "filter_condition": null}}
+    ],
+    "final_return": "departments collaborating on mentees' projects",
+    "explanation": "Traverse from 구은서 to mentees, then to their projects, and find collaborating departments"
+  }}
+
 user: |
   Analyze this query and decompose it into traversal steps:
 
