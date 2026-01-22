@@ -87,6 +87,25 @@ class ExplainabilityService:
                 step.output_summary = f"Intent: {intent} ({confidence:.0%})"
                 step.details = {"intent": intent, "confidence": confidence}
 
+            elif clean_name == "query_decomposer":
+                query_plan = metadata.get("query_plan") or {}
+                is_multi_hop = query_plan.get("is_multi_hop", False)
+                hop_count = query_plan.get("hop_count", 1)
+                hops = query_plan.get("hops", [])
+                explanation = query_plan.get("explanation", "")
+
+                if is_multi_hop and hop_count > 1:
+                    step.output_summary = f"Multi-hop 쿼리: {hop_count}단계"
+                else:
+                    step.output_summary = "Single-hop 쿼리"
+
+                step.details = {
+                    "is_multi_hop": is_multi_hop,
+                    "hop_count": hop_count,
+                    "hops": hops,
+                    "explanation": explanation,
+                }
+
             elif clean_name == "entity_extractor":
                 entities = metadata.get("entities", {})
                 total = sum(len(v) for v in entities.values())
@@ -310,11 +329,17 @@ class ExplainabilityService:
         # depth 값 할당 (x, y 좌표는 프론트엔드에서 계산)
         self._assign_depth_values(nodes_map)
 
+        # 유효한 엣지만 필터링 (source와 target이 모두 nodes_map에 존재하는 경우)
+        valid_edges = [
+            edge for edge in edges_map.values()
+            if edge.source in nodes_map and edge.target in nodes_map
+        ]
+
         return ExplainableGraphData(
             nodes=list(nodes_map.values())[:limit],
-            edges=list(edges_map.values()),
+            edges=valid_edges,
             node_count=min(len(nodes_map), limit),
-            edge_count=len(edges_map),
+            edge_count=len(valid_edges),
             query_entity_ids=query_entity_ids,
             expanded_entity_ids=expanded_entity_ids,
             result_entity_ids=result_entity_ids,

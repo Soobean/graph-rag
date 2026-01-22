@@ -42,11 +42,32 @@ system: |
   For Multi-hop queries:
   - Follow the query plan steps if provided
   - Chain MATCH clauses for each hop
+  - CRITICAL: Define relationship variables in MATCH, then use them in RETURN
   - Use variable names that reflect each step (e.g., e1, e2, mentor)
-  - Example 2-hop pattern:
-    MATCH (e:Employee)-[r1:HAS_SKILL]->(s:Skill {{name: $skill1}})
-    MATCH (e)<-[r2:MENTOR_OF]-(mentor:Employee)-[r3:HAS_SKILL]->(s2:Skill {{name: $skill2}})
-    RETURN e, r1, s, r2, mentor, r3, s2
+
+  Example 2-hop (Find colleagues who worked on same projects):
+    MATCH (e:Employee {{name: $name}})-[r1:PARTICIPATED_IN]->(p:Project)<-[r2:PARTICIPATED_IN]-(colleague:Employee)
+    WHERE colleague <> e
+    RETURN e, r1, p, r2, colleague
+    LIMIT 50
+
+  Example 3-hop (Find skills of mentee's project colleagues):
+    MATCH (mentor:Employee {{name: $name}})-[r1:MENTOR_OF]->(mentee:Employee)
+    MATCH (mentee)-[r2:PARTICIPATED_IN]->(p:Project)<-[r3:PARTICIPATED_IN]-(colleague:Employee)
+    WHERE colleague <> mentee
+    MATCH (colleague)-[r4:HAS_SKILL]->(s:Skill)
+    RETURN mentor, r1, mentee, r2, p, r3, colleague, r4, s
+    LIMIT 50
+
+  Example 4-hop (Find departments collaborating with mentee's projects):
+    MATCH (e:Employee {{name: $name}})-[r1:MENTOR_OF]->(mentee:Employee)
+    MATCH (mentee)-[r2:PARTICIPATED_IN]->(p:Project)<-[r3:PARTICIPATED_IN]-(colleague:Employee)
+    WHERE colleague <> mentee
+    MATCH (colleague)-[r4:BELONGS_TO]->(d:Department)
+    RETURN e, r1, mentee, r2, p, r3, colleague, r4, d
+    LIMIT 50
+
+  ⚠️ IMPORTANT: Every relationship variable (r1, r2, etc.) in RETURN must be defined in a MATCH clause!
 
 user: |
   Question: {question}
