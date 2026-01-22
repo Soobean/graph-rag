@@ -1,0 +1,36 @@
+FROM python:3.12-slim
+
+# uv 설치
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# 개발용 패키지 설치
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 환경 변수 설정
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PYTHON=python3.12 \
+    PYTHONPATH="/app:$PYTHONPATH" \
+    PYTHONUNBUFFERED=1
+
+# 의존성 설치 (dev 포함)
+COPY pyproject.toml ./
+RUN uv venv /app/.venv && \
+    uv pip install --no-cache -r pyproject.toml && \
+    uv pip install --no-cache -e ".[dev]"
+
+# PATH에 venv 추가
+ENV PATH="/app/.venv/bin:$PATH"
+
+# 소스 코드 복사 (볼륨 마운트로 오버라이드됨)
+COPY src/ ./src/
+
+EXPOSE 8000
+
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
