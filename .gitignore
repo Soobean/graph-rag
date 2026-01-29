@@ -72,4 +72,7 @@ neo4j/
 # Claude Code
 .claude/
 
-frontend/
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
