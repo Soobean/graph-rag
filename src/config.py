@@ -11,12 +11,100 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 프로젝트 루트 디렉토리 (src/config.py 기준으로 한 단계 상위)
 PROJECT_ROOT = Path(__file__).parent.parent
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
+
+
+class AdaptiveOntologySettings(BaseModel):
+    """
+    Adaptive Ontology 설정
+
+    미해결 엔티티 학습 및 자동 승인 관련 설정
+    """
+
+    # 기본 설정
+    enabled: bool = Field(
+        default=False,
+        description="Adaptive Ontology 기능 활성화 여부",
+    )
+
+    # 자동 승인 설정
+    auto_approve_enabled: bool = Field(
+        default=True,
+        description="자동 승인 기능 활성화 여부",
+    )
+    auto_approve_confidence: float = Field(
+        default=0.95,
+        ge=0.0,
+        le=1.0,
+        description="자동 승인 최소 신뢰도 (0.0 ~ 1.0)",
+    )
+    auto_approve_min_frequency: int = Field(
+        default=5,
+        ge=1,
+        description="자동 승인 최소 등장 빈도",
+    )
+    auto_approve_types: list[str] = Field(
+        default=["NEW_SYNONYM"],
+        description="자동 승인 허용 제안 유형 (NEW_CONCEPT, NEW_SYNONYM, NEW_RELATION)",
+    )
+    auto_approve_daily_limit: int = Field(
+        default=20,
+        ge=0,
+        description="일일 자동 승인 최대 수 (0 = 무제한)",
+    )
+
+    # 용어 검증 설정
+    min_term_length: int = Field(
+        default=2,
+        ge=1,
+        description="최소 용어 길이",
+    )
+    max_term_length: int = Field(
+        default=100,
+        ge=1,
+        description="최대 용어 길이",
+    )
+
+    # 분석 설정
+    batch_size: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="LLM 분석 배치 크기",
+    )
+    analysis_timeout_seconds: float = Field(
+        default=30.0,
+        ge=1.0,
+        description="LLM 분석 타임아웃 (초)",
+    )
+
+    @field_validator("auto_approve_types")
+    @classmethod
+    def validate_auto_approve_types(cls, v: list[str]) -> list[str]:
+        """자동 승인 유형이 유효한 ProposalType 값인지 검증"""
+        valid_types = {"NEW_CONCEPT", "NEW_SYNONYM", "NEW_RELATION"}
+        invalid_types = set(v) - valid_types
+        if invalid_types:
+            raise ValueError(
+                f"Invalid proposal types: {invalid_types}. "
+                f"Valid types are: {valid_types}"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_term_length_range(self) -> "AdaptiveOntologySettings":
+        """min_term_length가 max_term_length보다 크지 않은지 검증"""
+        if self.min_term_length > self.max_term_length:
+            raise ValueError(
+                f"min_term_length ({self.min_term_length}) cannot be greater "
+                f"than max_term_length ({self.max_term_length})"
+            )
+        return self
 
 
 class Settings(BaseSettings):
@@ -156,6 +244,14 @@ class Settings(BaseSettings):
     ontology_mode: Literal["yaml", "neo4j", "hybrid"] = Field(
         default="yaml",
         description="온톨로지 로더 모드 (yaml: YAML 파일, neo4j: Neo4j DB, hybrid: Neo4j 우선 + YAML 폴백)",
+    )
+
+    # ============================================
+    # Adaptive Ontology 설정
+    # ============================================
+    adaptive_ontology: AdaptiveOntologySettings = Field(
+        default_factory=AdaptiveOntologySettings,
+        description="Adaptive Ontology 학습 설정",
     )
 
     @field_validator("ontology_mode")

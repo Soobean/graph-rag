@@ -7,6 +7,7 @@ LangGraph를 사용한 RAG 파이프라인 정의
 - 스키마는 초기화 시 주입 (런타임 조회 제거)
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal
@@ -36,6 +37,7 @@ from src.graph.nodes import (
     QueryDecomposerNode,
     ResponseGeneratorNode,
 )
+from src.graph.nodes.ontology_learner import OntologyLearner
 from src.graph.state import GraphRAGState
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories.llm_repository import LLMRepository
@@ -136,6 +138,20 @@ class GraphRAGPipeline:
                 settings,
             )
             logger.info("Cache checker node initialized")
+
+        # Ontology Learner (Adaptive Ontology Phase 2)
+        self._ontology_learner: OntologyLearner | None = None
+        if settings.adaptive_ontology.enabled:
+            self._ontology_learner = OntologyLearner(
+                settings=settings.adaptive_ontology,
+                llm_repository=llm_repository,
+                neo4j_repository=neo4j_repository,
+                ontology_loader=self._ontology_loader,
+            )
+            logger.info("OntologyLearner initialized (Adaptive Ontology enabled)")
+
+        # 백그라운드 태스크 참조 저장 (GC 방지)
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
         # MemorySaver Checkpointer (대화 기록 자동 관리)
         self._checkpointer = MemorySaver()
@@ -358,6 +374,21 @@ class GraphRAGPipeline:
                     "graph_results": final_state.get("graph_results", []),
                 }
 
+            # Adaptive Ontology: 미해결 엔티티 백그라운드 학습 트리거
+            unresolved_entities = final_state.get("unresolved_entities", [])
+            if unresolved_entities and self._ontology_learner:
+                # Task 참조를 set에 저장하여 GC 방지 (fire-and-forget 패턴)
+                task = asyncio.create_task(
+                    self._safe_process_unresolved(
+                        unresolved_entities,
+                        self._graph_schema,
+                    ),
+                    name="ontology_learning",
+                )
+                # 참조 저장 및 완료 시 자동 제거
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
+
             return {
                 "success": True,
                 "question": question,
@@ -426,3 +457,34 @@ class GraphRAGPipeline:
                 "node": "error",
                 "output": {"error": str(e)},
             }
+
+    async def _safe_process_unresolved(
+        self,
+        unresolved: list[Any],
+        schema: GraphSchema | None,
+    ) -> None:
+        """
+        미해결 엔티티 백그라운드 학습 (안전한 래퍼)
+
+        예외 발생 시 로그만 남기고 스킵합니다.
+        메인 파이프라인 응답에 영향을 주지 않습니다.
+
+        Args:
+            unresolved: 미해결 엔티티 리스트
+            schema: 현재 그래프 스키마
+        """
+        if not self._ontology_learner:
+            return
+
+        try:
+            # GraphSchema를 dict로 안전하게 변환
+            schema_dict: dict[str, Any] | None = None
+            if schema:
+                try:
+                    schema_dict = dict(schema)
+                except Exception as e:
+                    logger.warning(f"Failed to convert schema to dict: {e}")
+
+            await self._ontology_learner.process_unresolved(unresolved, schema_dict)
+        except Exception as e:
+            logger.warning(f"Background ontology learning failed: {e}")
