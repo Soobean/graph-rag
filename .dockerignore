@@ -71,7 +71,9 @@ output
 # Neo4j local data
 neo4j
 
-frontend
+# Frontend (빌드 시 필요하므로 제외하지 않음)
+frontend/node_modules
+frontend/dist
 
 # OS
 .DS_Store
