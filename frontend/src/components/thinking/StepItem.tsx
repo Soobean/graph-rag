@@ -71,7 +71,7 @@ export function StepItem({ step, isLast = false }: StepItemProps) {
         <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
 
         {/* Input/Output summary */}
-        {(step.input_summary || step.output_summary) && (
+        {Boolean(step.input_summary || step.output_summary) && (
           <div className="mt-2 space-y-1 rounded bg-muted/50 p-2 text-xs">
             {step.input_summary && (
               <div>
@@ -126,7 +126,7 @@ export function StepItem({ step, isLast = false }: StepItemProps) {
                 </div>
               ))}
             </div>
-            {step.details.explanation && (
+            {Boolean(step.details.explanation) && (
               <div className="mt-2 text-xs text-muted-foreground italic">
                 {String(step.details.explanation)}
               </div>
