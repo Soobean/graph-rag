@@ -1,0 +1,63 @@
+# Azure DevOps Pipeline for Graph RAG (Prototype)
+# Frontend + Backend 통합 배포
+
+trigger:
+  - main
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  azureSubscription: "azure-service-connection"
+  appServiceName: "ontology-poc-app"
+  pythonVersion: "3.12"
+  nodeVersion: "20"
+
+steps:
+  # Node.js 설정 (Frontend)
+  - task: NodeTool@0
+    displayName: "Use Node.js $(nodeVersion)"
+    inputs:
+      versionSpec: "$(nodeVersion)"
+
+  # Frontend 빌드
+  - script: |
+      cd frontend
+      npm ci
+      npm run build
+    displayName: "Build Frontend"
+
+  # Python 설정 (Backend)
+  - task: UsePythonVersion@0
+    displayName: "Use Python $(pythonVersion)"
+    inputs:
+      versionSpec: "$(pythonVersion)"
+
+  # Backend 의존성 설치
+  - script: |
+      pip install uv
+      uv venv
+      source .venv/bin/activate
+      uv pip install -r pyproject.toml
+    displayName: "Install Backend dependencies"
+
+  # 배포 패키지 생성
+  - task: ArchiveFiles@2
+    displayName: "Archive files"
+    inputs:
+      rootFolderOrFile: "$(Build.SourcesDirectory)"
+      includeRootFolder: false
+      archiveType: "zip"
+      archiveFile: "$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip"
+      replaceExistingArchive: true
+
+  # App Service 배포
+  - task: AzureWebApp@1
+    displayName: "Deploy to Azure App Service"
+    inputs:
+      azureSubscription: "$(azureSubscription)"
+      appType: "webAppLinux"
+      appName: "$(appServiceName)"
+      package: "$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip"
+      runtimeStack: "PYTHON|3.12"
+      startUpCommand: "uvicorn src.main:app --host 0.0.0.0 --port 8000"
