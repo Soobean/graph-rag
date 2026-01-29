@@ -17,7 +17,18 @@ interface ChatState {
   clearAllHistory: () => void;
 }
 
-const generateId = () => crypto.randomUUID();
+// crypto.randomUUID()는 HTTPS에서만 동작하므로 폴백 추가
+const generateId = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // HTTP 환경용 폴백
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 
 export const useChatStore = create<ChatState>()(
   persist(
