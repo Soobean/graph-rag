@@ -76,13 +76,13 @@ export function StepItem({ step, isLast = false }: StepItemProps) {
             {step.input_summary && (
               <div>
                 <span className="font-medium">Input: </span>
-                <span className="text-muted-foreground">{step.input_summary}</span>
+                <span className="text-muted-foreground">{String(step.input_summary)}</span>
               </div>
             )}
             {step.output_summary && (
               <div>
                 <span className="font-medium">Output: </span>
-                <span className="text-muted-foreground">{step.output_summary}</span>
+                <span className="text-muted-foreground">{String(step.output_summary)}</span>
               </div>
             )}
           </div>

@@ -7,7 +7,6 @@ import {
   BackgroundVariant,
   useNodesState,
   useEdgesState,
-  useReactFlow,
   ReactFlowProvider,
   type NodeMouseHandler,
 } from '@xyflow/react';
@@ -19,7 +18,6 @@ import { NodeDetailPanel } from './NodeDetailPanel';
 import { useGraphStore } from '@/stores';
 import { cn } from '@/lib/utils';
 import type { FlowNode, FlowEdge } from '@/types/graph';
-import { DEFAULT_LAYOUT_CONFIG } from '@/types/graph';
 
 const nodeTypes = {
   query: QueryNode,
@@ -33,70 +31,6 @@ const edgeTypes = {
 
 interface GraphViewerProps {
   className?: string;
-}
-
-// Hop 컬럼 배경 및 헤더 컴포넌트
-function HopColumns({ nodes }: { nodes: FlowNode[] }) {
-  const { getViewport } = useReactFlow();
-  const viewport = getViewport();
-
-  // 노드들의 depth 값 수집
-  const depths = useMemo(() => {
-    const depthSet = new Set<number>();
-    nodes.forEach(node => {
-      const depth = node.data?.depth ?? 0;
-      depthSet.add(depth);
-    });
-    return Array.from(depthSet).sort((a, b) => a - b);
-  }, [nodes]);
-
-  if (depths.length === 0) return null;
-
-  const { depthSpacing } = DEFAULT_LAYOUT_CONFIG;
-  const columnWidth = depthSpacing;
-
-  return (
-    <div
-      className="absolute inset-0 pointer-events-none overflow-hidden"
-      style={{ zIndex: 0 }}
-    >
-      {/* 컬럼 배경 및 헤더 */}
-      <div
-        className="absolute flex"
-        style={{
-          transform: `translate(${viewport.x}px, 0) scale(${viewport.zoom})`,
-          transformOrigin: '0 0',
-        }}
-      >
-        {depths.map((depth, index) => (
-          <div
-            key={depth}
-            className="flex flex-col items-center"
-            style={{
-              width: columnWidth,
-              marginLeft: index === 0 ? -columnWidth / 2 : 0,
-            }}
-          >
-            {/* 컬럼 헤더 */}
-            <div
-              className="sticky top-0 z-10 px-4 py-2 rounded-b-lg bg-slate-800/90 text-white text-sm font-semibold shadow-lg"
-              style={{
-                transform: `scale(${1 / viewport.zoom})`,
-                transformOrigin: 'top center',
-              }}
-            >
-              Hop {depth + 1}
-            </div>
-            {/* 컬럼 구분선 */}
-            <div
-              className="h-[2000px] border-r border-dashed border-slate-300/30"
-              style={{ marginTop: 8 }}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function GraphViewerInner({ className }: GraphViewerProps) {
