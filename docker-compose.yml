@@ -42,7 +42,7 @@ services:
   # Neo4j Database
   # -----------------------------------------
   neo4j:
-    image: neo4j:5.15-enterprise
+    image: neo4j:latest
     container_name: graph-rag-neo4j
     restart: unless-stopped
     ports:
@@ -50,7 +50,8 @@ services:
       - "${NEO4J_BOLT_PORT:-7687}:7687"   # Bolt
     environment:
       - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password123}
-      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+      # Community edition은 라이선스 동의 불필요
+      # - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
       # 메모리 설정 (프로덕션에서 조정 필요)
       - NEO4J_server_memory_heap_initial__size=512m
       - NEO4J_server_memory_heap_max__size=1G
