@@ -85,12 +85,23 @@ class ExtractedEntity(TypedDict):
 class ResolvedEntity(TypedDict, total=False):
     """Neo4j에서 매칭된 엔티티"""
 
-    id: int
+    id: str  # Neo4j 5.x elementId() 반환값
     labels: list[str]
     name: str
     properties: dict[str, Any]  # Neo4j 속성은 동적이므로 Any 허용
     match_score: float
     original_value: str
+
+
+class UnresolvedEntity(TypedDict):
+    """
+    미해결 엔티티 (Neo4j에서 매칭 실패)
+    """
+
+    term: str  # 원본 용어 (예: "LangGraph")
+    category: str  # 카테고리 (예: "skills", "Person")
+    question: str  # 원본 질문 (증거 데이터)
+    timestamp: str  # ISO 8601 타임스탬프
 
 
 # =============================================================================
@@ -234,6 +245,7 @@ class EntityResolverUpdate(TypedDict, total=False):
     """EntityResolver 노드 반환 타입"""
 
     resolved_entities: list[ResolvedEntity]
+    unresolved_entities: list[UnresolvedEntity]  # Adaptive Ontology Phase 1
     execution_path: list[str]
     error: str | None
 
