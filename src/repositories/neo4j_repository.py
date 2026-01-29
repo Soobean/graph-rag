@@ -8,11 +8,13 @@ Neo4j Repository - 그래프 데이터 접근 계층
 - 스키마 정보 제공 (TTL 기반 캐싱)
 """
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
 from typing import Any
 
+from src.domain.adaptive.models import OntologyProposal, ProposalStatus
 from src.domain.exceptions import (
     EntityNotFoundError,
     QueryExecutionError,
@@ -84,6 +86,7 @@ class Neo4jRepository:
         # 스키마 캐시
         self._schema_cache: dict[str, Any] | None = None
         self._schema_cache_time: float = 0.0
+        self._schema_fetch_lock: asyncio.Lock | None = None  # Lazy initialization
 
     @staticmethod
     def _validate_identifier(value: str, field_name: str = "identifier") -> str:
@@ -428,7 +431,7 @@ class Neo4jRepository:
 
     async def get_schema(self, force_refresh: bool = False) -> dict[str, Any]:
         """
-        그래프 스키마 정보 조회 (TTL 기반 캐싱)
+        그래프 스키마 정보 조회 (TTL 기반 캐싱, 동시성 안전)
         """
         current_time = time.time()
         cache_expired = (
@@ -436,9 +439,20 @@ class Neo4jRepository:
         ) > self.SCHEMA_CACHE_TTL_SECONDS
 
         if force_refresh or self._schema_cache is None or cache_expired:
-            logger.debug("Fetching schema from database (cache miss or expired)")
-            self._schema_cache = await self._client.get_schema_info()
-            self._schema_cache_time = current_time
+            # Lazy lock initialization (이벤트 루프에서만 생성 가능)
+            if self._schema_fetch_lock is None:
+                self._schema_fetch_lock = asyncio.Lock()
+
+            async with self._schema_fetch_lock:
+                # Double-check after acquiring lock (다른 태스크가 이미 갱신했을 수 있음)
+                if force_refresh or self._schema_cache is None or (
+                    time.time() - self._schema_cache_time
+                ) > self.SCHEMA_CACHE_TTL_SECONDS:
+                    logger.debug("Fetching schema from database (cache miss or expired)")
+                    self._schema_cache = await self._client.get_schema_info()
+                    self._schema_cache_time = time.time()
+                else:
+                    logger.debug("Using cached schema (updated by another task)")
         else:
             logger.debug("Using cached schema")
 
@@ -759,3 +773,427 @@ class Neo4jRepository:
             results = [(node, score) for node, score in results if node.id not in exclude_set]
 
         return results[:limit]
+
+    # ============================================
+    # Ontology Proposal 관련 메서드 (Adaptive Ontology)
+    # ============================================
+
+    async def save_ontology_proposal(
+        self,
+        proposal: OntologyProposal,
+    ) -> OntologyProposal:
+        """
+        온톨로지 제안 저장 (MERGE 패턴)
+
+        동일한 term + category 조합이 이미 존재하면 업데이트,
+        없으면 새로 생성합니다.
+
+        Args:
+            proposal: 저장할 OntologyProposal
+
+        Returns:
+            저장된 OntologyProposal (id 포함)
+        """
+        query = """
+        MERGE (p:OntologyProposal {term: $term, category: $category})
+        ON CREATE SET
+            p.id = $id,
+            p.version = 1,
+            p.proposal_type = $proposal_type,
+            p.suggested_action = $suggested_action,
+            p.suggested_parent = $suggested_parent,
+            p.suggested_canonical = $suggested_canonical,
+            p.evidence_questions = $evidence_questions,
+            p.frequency = $frequency,
+            p.confidence = $confidence,
+            p.status = $status,
+            p.created_at = datetime(),
+            p.updated_at = datetime()
+        ON MATCH SET
+            p.version = p.version + 1,
+            p.frequency = p.frequency + 1,
+            p.evidence_questions = CASE
+                WHEN $question <> '' AND NOT $question IN COALESCE(p.evidence_questions, [])
+                THEN COALESCE(p.evidence_questions, []) + [$question]
+                ELSE COALESCE(p.evidence_questions, [])
+            END,
+            p.updated_at = datetime()
+        RETURN
+            p.id as id,
+            p.version as version,
+            p.proposal_type as proposal_type,
+            p.term as term,
+            p.category as category,
+            p.suggested_action as suggested_action,
+            p.suggested_parent as suggested_parent,
+            p.suggested_canonical as suggested_canonical,
+            p.evidence_questions as evidence_questions,
+            p.frequency as frequency,
+            p.confidence as confidence,
+            p.status as status,
+            p.created_at as created_at,
+            p.updated_at as updated_at,
+            p.reviewed_at as reviewed_at,
+            p.reviewed_by as reviewed_by
+        """
+
+        data = proposal.to_dict()
+        # MERGE 시 첫 번째 질문을 추출 (빈 리스트 안전 처리)
+        evidence_questions = data.get("evidence_questions") or []
+        question = evidence_questions[0] if evidence_questions else ""
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "id": data["id"],
+                    "term": data["term"],
+                    "category": data["category"],
+                    "proposal_type": data["proposal_type"],
+                    "suggested_action": data["suggested_action"],
+                    "suggested_parent": data["suggested_parent"],
+                    "suggested_canonical": data["suggested_canonical"],
+                    "evidence_questions": data["evidence_questions"],
+                    "frequency": data["frequency"],
+                    "confidence": data["confidence"],
+                    "status": data["status"],
+                    "question": question,
+                },
+            )
+
+            if results:
+                return OntologyProposal.from_dict(results[0])
+            return proposal
+
+        except Exception as e:
+            logger.error(f"Failed to save ontology proposal: {e}")
+            raise QueryExecutionError(
+                f"Failed to save ontology proposal: {e}", query=query
+            ) from e
+
+    async def find_ontology_proposal(
+        self,
+        term: str,
+        category: str,
+    ) -> OntologyProposal | None:
+        """
+        term + category로 기존 제안 검색
+
+        Args:
+            term: 검색할 용어
+            category: 카테고리
+
+        Returns:
+            찾은 OntologyProposal 또는 None
+        """
+        query = """
+        MATCH (p:OntologyProposal {term: $term, category: $category})
+        RETURN
+            p.id as id,
+            p.version as version,
+            p.proposal_type as proposal_type,
+            p.term as term,
+            p.category as category,
+            p.suggested_action as suggested_action,
+            p.suggested_parent as suggested_parent,
+            p.suggested_canonical as suggested_canonical,
+            p.evidence_questions as evidence_questions,
+            p.frequency as frequency,
+            p.confidence as confidence,
+            p.status as status,
+            p.created_at as created_at,
+            p.updated_at as updated_at,
+            p.reviewed_at as reviewed_at,
+            p.reviewed_by as reviewed_by
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query, {"term": term, "category": category}
+            )
+
+            if results:
+                return OntologyProposal.from_dict(results[0])
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to find ontology proposal: {e}")
+            return None
+
+    async def update_proposal_frequency(
+        self,
+        proposal_id: str,
+        question: str,
+    ) -> bool:
+        """
+        제안의 빈도 증가 및 증거 질문 추가
+
+        Args:
+            proposal_id: 제안 ID
+            question: 추가할 증거 질문
+
+        Returns:
+            성공 여부
+        """
+        query = """
+        MATCH (p:OntologyProposal {id: $id})
+        SET
+            p.frequency = p.frequency + 1,
+            p.evidence_questions = CASE
+                WHEN $question <> '' AND NOT $question IN COALESCE(p.evidence_questions, [])
+                THEN COALESCE(p.evidence_questions, []) + [$question]
+                ELSE COALESCE(p.evidence_questions, [])
+            END,
+            p.updated_at = datetime()
+        RETURN p.id as id
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query, {"id": proposal_id, "question": question}
+            )
+            return len(results) > 0
+
+        except Exception as e:
+            logger.error(f"Failed to update proposal frequency: {e}")
+            return False
+
+    async def update_proposal_status(
+        self,
+        proposal: OntologyProposal,
+        expected_version: int,
+    ) -> bool:
+        """
+        제안 상태 업데이트 (Optimistic Locking)
+
+        Args:
+            proposal: 업데이트할 OntologyProposal
+            expected_version: 예상 버전 (필수 - Optimistic Locking 보장)
+
+        Returns:
+            성공 여부
+
+        Raises:
+            ValueError: expected_version이 양수가 아닌 경우
+        """
+        if expected_version < 1:
+            raise ValueError(f"expected_version must be >= 1, got {expected_version}")
+
+        # Optimistic Locking: 버전 일치 시에만 업데이트
+        query = """
+        MATCH (p:OntologyProposal {id: $id})
+        WHERE p.version = $expected_version
+        SET
+            p.status = $status,
+            p.version = p.version + 1,
+            p.reviewed_at = $reviewed_at,
+            p.reviewed_by = $reviewed_by,
+            p.updated_at = datetime()
+        RETURN p.id as id, p.version as new_version
+        """
+
+        data = proposal.to_dict()
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "id": data["id"],
+                    "status": data["status"],
+                    "reviewed_at": data["reviewed_at"],
+                    "reviewed_by": data["reviewed_by"],
+                    "expected_version": expected_version,
+                },
+            )
+
+            if not results:
+                logger.warning(
+                    f"Optimistic lock failed for proposal {data['id']} "
+                    f"(expected version: {expected_version})"
+                )
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to update proposal status: {e}")
+            return False
+
+    async def count_today_auto_approved(self) -> int:
+        """
+        오늘 자동 승인된 제안 수 조회
+
+        Returns:
+            오늘 자동 승인된 제안 수
+        """
+        query = """
+        MATCH (p:OntologyProposal)
+        WHERE p.status = $status
+          AND date(p.reviewed_at) = date()
+        RETURN count(p) as count
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query, {"status": ProposalStatus.AUTO_APPROVED.value}
+            )
+
+            if results:
+                count = results[0].get("count", 0)
+                return int(count) if count is not None else 0
+            return 0
+
+        except Exception as e:
+            logger.error(f"Failed to count today's auto-approved proposals: {e}")
+            return 0
+
+    async def try_auto_approve_with_limit(
+        self,
+        proposal_id: str,
+        expected_version: int,
+        daily_limit: int,
+    ) -> bool:
+        """
+        일일 한도를 확인하면서 원자적으로 자동 승인 (Race Condition 방지)
+
+        Args:
+            proposal_id: 제안 ID
+            expected_version: 예상 버전 (Optimistic Locking)
+            daily_limit: 일일 자동 승인 한도 (0이면 무제한)
+
+        Returns:
+            True: 자동 승인 성공
+            False: 한도 초과 또는 버전 불일치로 실패
+        """
+        # daily_limit이 0이면 무제한
+        if daily_limit <= 0:
+            # 한도 없음 - 일반 업데이트 사용
+            query = """
+            MATCH (p:OntologyProposal {id: $proposal_id})
+            WHERE p.version = $expected_version
+            SET
+                p.status = $new_status,
+                p.version = p.version + 1,
+                p.reviewed_at = datetime(),
+                p.reviewed_by = 'system',
+                p.updated_at = datetime()
+            RETURN p.id as id
+            """
+            params = {
+                "proposal_id": proposal_id,
+                "expected_version": expected_version,
+                "new_status": ProposalStatus.AUTO_APPROVED.value,
+            }
+        else:
+            # 원자적 카운트 + 업데이트 쿼리
+            query = """
+            // 오늘 자동 승인 수 카운트
+            OPTIONAL MATCH (approved:OntologyProposal)
+            WHERE approved.status = $auto_approved_status
+              AND date(approved.reviewed_at) = date()
+            WITH count(approved) as today_count
+
+            // 한도 이하일 때만 타겟 제안 매칭
+            MATCH (p:OntologyProposal {id: $proposal_id})
+            WHERE today_count < $daily_limit
+              AND p.version = $expected_version
+            SET
+                p.status = $new_status,
+                p.version = p.version + 1,
+                p.reviewed_at = datetime(),
+                p.reviewed_by = 'system',
+                p.updated_at = datetime()
+            RETURN p.id as id, today_count
+            """
+            params = {
+                "proposal_id": proposal_id,
+                "expected_version": expected_version,
+                "new_status": ProposalStatus.AUTO_APPROVED.value,
+                "auto_approved_status": ProposalStatus.AUTO_APPROVED.value,
+                "daily_limit": daily_limit,
+            }
+
+        try:
+            results = await self._client.execute_query(query, params)
+
+            if not results:
+                logger.debug(
+                    f"Auto-approve failed for {proposal_id}: "
+                    f"limit exceeded or version mismatch (expected: {expected_version})"
+                )
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to auto-approve proposal: {e}")
+            return False
+
+    async def get_pending_proposals(
+        self,
+        category: str | None = None,
+        limit: int = 50,
+    ) -> list[OntologyProposal]:
+        """
+        대기 중인 제안 목록 조회
+
+        Args:
+            category: 필터링할 카테고리 (None이면 전체)
+            limit: 최대 결과 수
+
+        Returns:
+            OntologyProposal 리스트
+
+        Raises:
+            ValidationError: category가 빈 문자열인 경우
+        """
+        # 빈 문자열 검증 (None은 허용 - 전체 조회)
+        if category is not None:
+            category = category.strip()
+            if not category:
+                raise ValidationError(
+                    "Category cannot be empty string (use None for all)",
+                    field="category",
+                )
+
+        # 동적 쿼리 대신 파라미터화된 조건 사용 (Injection 방지)
+        query = """
+        MATCH (p:OntologyProposal)
+        WHERE p.status = $status
+          AND ($category IS NULL OR p.category = $category)
+        RETURN
+            p.id as id,
+            p.version as version,
+            p.proposal_type as proposal_type,
+            p.term as term,
+            p.category as category,
+            p.suggested_action as suggested_action,
+            p.suggested_parent as suggested_parent,
+            p.suggested_canonical as suggested_canonical,
+            p.evidence_questions as evidence_questions,
+            p.frequency as frequency,
+            p.confidence as confidence,
+            p.status as status,
+            p.created_at as created_at,
+            p.updated_at as updated_at,
+            p.reviewed_at as reviewed_at,
+            p.reviewed_by as reviewed_by
+        ORDER BY p.frequency DESC, p.confidence DESC
+        LIMIT $limit
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "status": ProposalStatus.PENDING.value,
+                    "category": category,
+                    "limit": limit,
+                },
+            )
+
+            return [OntologyProposal.from_dict(r) for r in results]
+
+        except Exception as e:
+            logger.error(f"Failed to get pending proposals: {e}")
+            return []
