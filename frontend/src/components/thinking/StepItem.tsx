@@ -33,6 +33,11 @@ export function StepItem({ step, isLast = false }: StepItemProps) {
   const config = stepTypeConfig[step.step_type] || { icon: CheckCircle, color: 'text-gray-500' };
   const Icon = config.icon;
 
+  // Type-safe summaries
+  const inputSummary = typeof step.input_summary === 'string' ? step.input_summary : null;
+  const outputSummary = typeof step.output_summary === 'string' ? step.output_summary : null;
+  const hasSummary = inputSummary !== null || outputSummary !== null;
+
   return (
     <div className="relative flex gap-3">
       {/* Timeline connector */}
@@ -71,18 +76,18 @@ export function StepItem({ step, isLast = false }: StepItemProps) {
         <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
 
         {/* Input/Output summary */}
-        {Boolean(step.input_summary || step.output_summary) && (
+        {hasSummary && (
           <div className="mt-2 space-y-1 rounded bg-muted/50 p-2 text-xs">
-            {step.input_summary && (
+            {inputSummary && (
               <div>
                 <span className="font-medium">Input: </span>
-                <span className="text-muted-foreground">{String(step.input_summary)}</span>
+                <span className="text-muted-foreground">{inputSummary}</span>
               </div>
             )}
-            {step.output_summary && (
+            {outputSummary && (
               <div>
                 <span className="font-medium">Output: </span>
-                <span className="text-muted-foreground">{String(step.output_summary)}</span>
+                <span className="text-muted-foreground">{outputSummary}</span>
               </div>
             )}
           </div>
