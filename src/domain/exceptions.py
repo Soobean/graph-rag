@@ -176,3 +176,34 @@ class ConfigurationError(GraphRAGError):
     def __init__(self, message: str, config_key: str = ""):
         self.config_key = config_key
         super().__init__(message, code="CONFIGURATION_ERROR")
+
+
+# ============================================
+# 동시성 및 상태 관련 예외
+# ============================================
+
+
+class ConflictError(GraphRAGError):
+    """동시성 충돌 (Optimistic Locking 실패)"""
+
+    def __init__(
+        self, message: str, expected_version: int, current_version: int | None = None
+    ):
+        self.expected_version = expected_version
+        self.current_version = current_version
+        super().__init__(message, code="VERSION_CONFLICT")
+
+
+class InvalidStateError(GraphRAGError):
+    """유효하지 않은 상태 전이"""
+
+    def __init__(self, message: str, current_state: str):
+        self.current_state = current_state
+        super().__init__(message, code="INVALID_STATE")
+
+
+class ProposalNotFoundError(EntityNotFoundError):
+    """온톨로지 제안을 찾을 수 없음"""
+
+    def __init__(self, proposal_id: str):
+        super().__init__("OntologyProposal", proposal_id)
