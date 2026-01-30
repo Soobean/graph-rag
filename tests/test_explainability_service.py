@@ -305,16 +305,27 @@ class TestBuildGraphData:
 
     def test_edges_from_graph_results(self, service):
         """graph_results에서 엣지 추출"""
+        # 엣지가 유효하려면 source와 target 노드가 모두 존재해야 함
         full_state = {
             "graph_results": [
                 {
+                    "n1": {
+                        "id": 100,
+                        "labels": ["Employee"],
+                        "properties": {"name": "김철수"},
+                    },
+                    "n2": {
+                        "id": 101,
+                        "labels": ["Skill"],
+                        "properties": {"name": "Python"},
+                    },
                     "r": {
                         "id": 200,
                         "type": "HAS_SKILL",
                         "startNodeId": 100,
                         "endNodeId": 101,
                         "properties": {"level": "expert"},
-                    }
+                    },
                 }
             ],
             "original_entities": {},
@@ -331,9 +342,14 @@ class TestBuildGraphData:
 
     def test_edges_from_path_query_results(self, service):
         """path 쿼리 결과에서 엣지 추출 (리스트 형식)"""
+        # 엣지가 유효하려면 source와 target 노드가 모두 존재해야 함
+        # 노드는 개별 키로 제공, 관계는 리스트로 제공
         full_state = {
             "graph_results": [
                 {
+                    "n1": {"id": 10, "labels": ["Employee"], "properties": {"name": "A"}},
+                    "n2": {"id": 20, "labels": ["Department"], "properties": {"name": "B"}},
+                    "n3": {"id": 30, "labels": ["Employee"], "properties": {"name": "C"}},
                     "rels": [
                         {
                             "id": 300,
@@ -349,7 +365,7 @@ class TestBuildGraphData:
                             "end": 30,
                             "properties": {},
                         },
-                    ]
+                    ],
                 }
             ],
             "original_entities": {},

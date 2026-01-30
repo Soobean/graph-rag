@@ -116,12 +116,18 @@ class TestFormatHelpers:
         assert "Unknown" not in result
 
     def test_format_results_with_data(self, repo):
-        """결과 포맷팅"""
-        results = [{"name": "홍길동"}, {"name": "김철수"}]
+        """결과 포맷팅 - Neo4j 노드 형식 필요"""
+        # _format_results는 이제 Neo4j 노드 형식(labels 속성)을 기대함
+        results = [
+            {"n": {"id": 1, "labels": ["Employee"], "properties": {"name": "홍길동"}}},
+            {"n": {"id": 2, "labels": ["Employee"], "properties": {"name": "김철수"}}},
+        ]
         result = repo._format_results(results)
 
-        assert "1." in result
-        assert "2." in result
+        assert "홍길동" in result
+        assert "김철수" in result
+        assert "[Employee]" in result
+        assert "2개" in result  # 총 2개의 고유 엔티티
 
     def test_format_results_empty(self, repo):
         """빈 결과 포맷팅"""
@@ -129,13 +135,18 @@ class TestFormatHelpers:
         assert result == "No results found"
 
     def test_format_results_truncation(self, repo):
-        """결과 10개 초과 시 자르기"""
-        results = [{"id": i} for i in range(15)]
+        """결과 15개 초과 시 자르기"""
+        # _format_results는 라벨별로 최대 15개까지 표시
+        # id는 1부터 시작 (0은 falsy로 처리될 수 있음)
+        results = [
+            {"n": {"id": i + 1, "labels": ["Node"], "properties": {"name": f"Node{i + 1}"}}}
+            for i in range(20)
+        ]
         result = repo._format_results(results)
 
-        assert "10." in result
-        assert "11." not in result
-        assert "... and 5 more results" in result
+        assert "20개의 고유 엔티티" in result
+        assert "[Node]" in result
+        assert "외 5개" in result  # 15개 초과분 표시
 
 
 class TestLLMGenerate:

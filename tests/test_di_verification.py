@@ -22,18 +22,22 @@ def test_di_providers():
     mock_app.state = mock_state
 
     # Mock initialized objects in state
+    # Note: dependencies now return pre-initialized instances from app.state
     mock_neo4j_client = MagicMock(spec=Neo4jClient)
+    mock_neo4j_repo = MagicMock(spec=Neo4jRepository)
+    mock_neo4j_repo._client = mock_neo4j_client  # Set internal client reference
     mock_llm_repo = MagicMock(spec=LLMRepository)
     mock_pipeline = MagicMock(spec=GraphRAGPipeline)
 
     mock_state.neo4j_client = mock_neo4j_client
+    mock_state.neo4j_repo = mock_neo4j_repo  # Pre-initialized repository
     mock_state.llm_repo = mock_llm_repo
     mock_state.pipeline = mock_pipeline
 
     # Test get_neo4j_repository
-    # Note: get_neo4j_repository creates a NEW instance using the client from state
+    # Note: get_neo4j_repository returns the pre-initialized instance from state
     repo = get_neo4j_repository(mock_request)
-    assert isinstance(repo, Neo4jRepository)
+    assert repo == mock_neo4j_repo
     assert repo._client == mock_neo4j_client
 
     # Test get_llm_repository
