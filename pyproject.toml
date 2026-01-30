@@ -25,6 +25,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "httpx>=0.26.0",
     "PyYAML>=6.0",
+
+    # Streaming
+    "sse-starlette>=1.6.5",
 ]
 
 [project.optional-dependencies]
