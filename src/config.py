@@ -7,12 +7,15 @@ Pydantic Settings를 활용한 환경변수 기반 설정 관리
 - 환경별 설정 분리
 """
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 # 프로젝트 루트 디렉토리 (src/config.py 기준으로 한 단계 상위)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -265,24 +268,6 @@ class Settings(BaseSettings):
         return lower_v
 
     # ============================================
-    # 캐시 설정
-    # ============================================
-    cache_enabled: bool = Field(
-        default=True,
-        description="캐시 활성화 여부",
-    )
-    cache_ttl_seconds: int = Field(
-        default=3600,
-        ge=0,
-        description="기본 캐시 TTL (초)",
-    )
-    cache_max_size: int = Field(
-        default=1000,
-        ge=1,
-        description="캐시 최대 항목 수",
-    )
-
-    # ============================================
     # 로깅 설정
     # ============================================
     log_level: str = Field(
@@ -314,6 +299,25 @@ class Settings(BaseSettings):
             raise ValueError(f"environment must be one of {valid_envs}")
         return lower_v
 
+    @field_validator("cors_origins")
+    @classmethod
+    def validate_cors_origins(cls, v: list[str]) -> list[str]:
+        """
+        CORS 오리진 목록 검증
+
+        SECURITY: Wildcard "*"는 credentials와 함께 사용할 수 없으므로
+        프로덕션 환경에서는 명시적인 오리진 목록을 권장합니다.
+
+        Note: allow_credentials=True와 "*" 조합은 브라우저에서 거부됩니다.
+        이 검증은 설정 오류를 조기에 발견하기 위한 것입니다.
+        """
+        if "*" in v and len(v) > 1:
+            raise ValueError(
+                "CORS origins cannot mix wildcard '*' with specific origins. "
+                "Use either '*' alone or specific origin URLs."
+            )
+        return v
+
     @property
     def is_production(self) -> bool:
         """프로덕션 환경 여부"""
@@ -342,8 +346,7 @@ class Settings(BaseSettings):
 
             # API 키는 Managed Identity 사용 시 불필요할 수 있으므로 경고만
             if not self.azure_openai_api_key:
-                import logging
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     "azure_openai_api_key is not set. "
                     "Ensure Managed Identity is configured for Azure OpenAI access."
                 )
