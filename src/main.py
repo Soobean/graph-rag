@@ -8,21 +8,30 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from src.api import (
     analytics_router,
     ingest_router,
+    ontology_admin_router,
     ontology_router,
     query_router,
     visualization_router,
 )
 from src.config import get_settings
+from src.domain.exceptions import (
+    ConflictError,
+    EntityNotFoundError,
+    GraphRAGError,
+    InvalidStateError,
+)
 from src.graph import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
 from src.services.gds_service import GDSService
+from src.services.ontology_service import OntologyService
 
 # 로깅 설정
 settings = get_settings()
@@ -69,6 +78,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     except Exception as e:
         logger.error(f"Failed to load graph schema: {e}")
+        # 리소스 정리 후 예외 발생
+        await neo4j_client.close()
+        logger.info("Neo4j connection closed due to schema loading failure")
         raise RuntimeError(
             "Schema loading is required for pipeline initialization"
         ) from e
@@ -93,11 +105,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await gds_service.connect()
     logger.info("GDS service connected")
 
+    # OntologyService 초기화
+    ontology_service = OntologyService(neo4j_repository=neo4j_repo)
+    logger.info("OntologyService initialized")
+
     # app.state에 저장 (멀티 워커 환경에서 각 워커가 자체 인스턴스 보유)
     app.state.neo4j_client = neo4j_client
+    app.state.neo4j_repo = neo4j_repo
     app.state.llm_repo = llm_repo
     app.state.pipeline = pipeline
     app.state.gds_service = gds_service
+    app.state.ontology_service = ontology_service
 
     yield
 
@@ -130,9 +148,71 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],  # 실제 사용하는 메서드만 허용
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],  # PATCH 추가 (Admin API)
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
 )
+
+
+# ============================================
+# 글로벌 예외 핸들러
+# ============================================
+
+
+@app.exception_handler(EntityNotFoundError)
+async def entity_not_found_handler(
+    request: Request, exc: EntityNotFoundError
+) -> JSONResponse:
+    """엔티티를 찾을 수 없을 때 404 응답"""
+    return JSONResponse(
+        status_code=404,
+        content={"detail": {"message": exc.message, "code": exc.code}},
+    )
+
+
+@app.exception_handler(ConflictError)
+async def conflict_handler(request: Request, exc: ConflictError) -> JSONResponse:
+    """동시성 충돌 시 409 응답"""
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": {
+                "message": exc.message,
+                "code": exc.code,
+                "expected_version": exc.expected_version,
+                "current_version": exc.current_version,
+            }
+        },
+    )
+
+
+@app.exception_handler(InvalidStateError)
+async def invalid_state_handler(
+    request: Request, exc: InvalidStateError
+) -> JSONResponse:
+    """유효하지 않은 상태 전이 시 400 응답"""
+    return JSONResponse(
+        status_code=400,
+        content={
+            "detail": {
+                "message": exc.message,
+                "code": exc.code,
+                "current_state": exc.current_state,
+            }
+        },
+    )
+
+
+@app.exception_handler(GraphRAGError)
+async def graphrag_error_handler(
+    request: Request, exc: GraphRAGError
+) -> JSONResponse:
+    """기타 도메인 예외 시 500 응답"""
+    logger.error(f"GraphRAGError: {exc.message}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": {"message": exc.message, "code": exc.code}},
+    )
+
 
 # 라우터 등록
 app.include_router(query_router)
@@ -140,10 +220,11 @@ app.include_router(ingest_router)
 app.include_router(analytics_router)
 app.include_router(visualization_router)
 app.include_router(ontology_router)
+app.include_router(ontology_admin_router)
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
     """루트 엔드포인트"""
     return {
         "name": settings.app_name,
