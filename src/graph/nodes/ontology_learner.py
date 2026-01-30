@@ -202,9 +202,12 @@ class OntologyLearner:
         existing = await self._neo4j.find_ontology_proposal(term, category)
 
         if existing:
-            # 빈도 증가 및 증거 추가
+            # 빈도 증가 및 증거 추가 (DB에서 원자적으로 처리)
             await self._neo4j.update_proposal_frequency(existing.id, question)
-            existing.add_evidence(question)
+            # 로컬 상태도 동기화 (자동 승인 조건 평가용)
+            existing.frequency += 1
+            if question and question not in existing.evidence_questions:
+                existing.evidence_questions.append(question)
 
             # 자동 승인 조건 재평가 (빈도 증가 후)
             await self._check_and_auto_approve(existing)

@@ -1170,6 +1170,7 @@ class Neo4jRepository:
             p.suggested_action as suggested_action,
             p.suggested_parent as suggested_parent,
             p.suggested_canonical as suggested_canonical,
+            p.suggested_relation_type as suggested_relation_type,
             p.evidence_questions as evidence_questions,
             p.frequency as frequency,
             p.confidence as confidence,
@@ -1177,7 +1178,9 @@ class Neo4jRepository:
             p.created_at as created_at,
             p.updated_at as updated_at,
             p.reviewed_at as reviewed_at,
-            p.reviewed_by as reviewed_by
+            p.reviewed_by as reviewed_by,
+            p.rejection_reason as rejection_reason,
+            p.applied_at as applied_at
         ORDER BY p.frequency DESC, p.confidence DESC
         LIMIT $limit
         """
@@ -1197,3 +1200,917 @@ class Neo4jRepository:
         except Exception as e:
             logger.error(f"Failed to get pending proposals: {e}")
             return []
+
+    # ============================================
+    # Ontology Admin API 메서드
+    # ============================================
+
+    async def get_proposal_by_id(self, proposal_id: str) -> OntologyProposal | None:
+        """
+        ID로 단일 제안 조회
+
+        Args:
+            proposal_id: 제안 ID (UUID)
+
+        Returns:
+            OntologyProposal 또는 None
+        """
+        query = """
+        MATCH (p:OntologyProposal {id: $id})
+        RETURN
+            p.id as id,
+            p.version as version,
+            p.proposal_type as proposal_type,
+            p.term as term,
+            p.category as category,
+            p.suggested_action as suggested_action,
+            p.suggested_parent as suggested_parent,
+            p.suggested_canonical as suggested_canonical,
+            p.suggested_relation_type as suggested_relation_type,
+            p.evidence_questions as evidence_questions,
+            p.frequency as frequency,
+            p.confidence as confidence,
+            p.status as status,
+            p.created_at as created_at,
+            p.updated_at as updated_at,
+            p.reviewed_at as reviewed_at,
+            p.reviewed_by as reviewed_by,
+            p.rejection_reason as rejection_reason,
+            p.applied_at as applied_at
+        """
+
+        try:
+            results = await self._client.execute_query(query, {"id": proposal_id})
+
+            if results:
+                return OntologyProposal.from_dict(results[0])
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get proposal by id {proposal_id}: {e}")
+            return None
+
+    async def get_proposals_paginated(
+        self,
+        status: str | None = None,
+        proposal_type: str | None = None,
+        category: str | None = None,
+        term_search: str | None = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[OntologyProposal], int]:
+        """
+        필터링 + 페이지네이션 목록 조회
+
+        Args:
+            status: 필터링할 상태 (None이면 전체)
+            proposal_type: 필터링할 제안 유형 (None이면 전체)
+            category: 필터링할 카테고리 (None이면 전체)
+            term_search: 용어 검색어 (CONTAINS 매칭)
+            sort_by: 정렬 필드 (created_at, frequency, confidence)
+            sort_order: 정렬 방향 (asc, desc)
+            offset: 건너뛸 레코드 수
+            limit: 최대 결과 수
+
+        Returns:
+            (OntologyProposal 리스트, 총 개수) 튜플
+        """
+        # SECURITY: 화이트리스트 기반 정렬 필드 검증 (Cypher Injection 방지)
+        # sort_by와 sort_direction은 아래 f-string에서 사용되므로 반드시 검증 필요
+        allowed_sort_fields = {"created_at", "frequency", "confidence", "updated_at"}
+        if sort_by not in allowed_sort_fields:
+            sort_by = "created_at"  # 기본값으로 폴백
+
+        # SECURITY: 방향값도 명시적으로 제한 (ASC/DESC만 허용)
+        sort_direction = "DESC" if sort_order.lower() == "desc" else "ASC"
+
+        # 카운트 쿼리
+        count_query = """
+        MATCH (p:OntologyProposal)
+        WHERE ($status IS NULL OR p.status = $status)
+          AND ($proposal_type IS NULL OR p.proposal_type = $proposal_type)
+          AND ($category IS NULL OR p.category = $category)
+          AND ($term_search IS NULL OR toLower(p.term) CONTAINS toLower($term_search))
+        RETURN count(p) as total
+        """
+
+        # 데이터 쿼리
+        # NOTE: ORDER BY에서 f-string 사용 - sort_by/sort_direction은 위에서 화이트리스트 검증됨
+        data_query = f"""
+        MATCH (p:OntologyProposal)
+        WHERE ($status IS NULL OR p.status = $status)
+          AND ($proposal_type IS NULL OR p.proposal_type = $proposal_type)
+          AND ($category IS NULL OR p.category = $category)
+          AND ($term_search IS NULL OR toLower(p.term) CONTAINS toLower($term_search))
+        RETURN
+            p.id as id,
+            p.version as version,
+            p.proposal_type as proposal_type,
+            p.term as term,
+            p.category as category,
+            p.suggested_action as suggested_action,
+            p.suggested_parent as suggested_parent,
+            p.suggested_canonical as suggested_canonical,
+            p.suggested_relation_type as suggested_relation_type,
+            p.evidence_questions as evidence_questions,
+            p.frequency as frequency,
+            p.confidence as confidence,
+            p.status as status,
+            p.created_at as created_at,
+            p.updated_at as updated_at,
+            p.reviewed_at as reviewed_at,
+            p.reviewed_by as reviewed_by,
+            p.rejection_reason as rejection_reason,
+            p.applied_at as applied_at
+        ORDER BY p.{sort_by} {sort_direction}
+        SKIP $offset
+        LIMIT $limit
+        """
+
+        params = {
+            "status": status,
+            "proposal_type": proposal_type,
+            "category": category,
+            "term_search": term_search,
+            "offset": offset,
+            "limit": limit,
+        }
+
+        try:
+            count_results = await self._client.execute_query(count_query, params)
+            total = count_results[0]["total"] if count_results else 0
+
+            data_results = await self._client.execute_query(data_query, params)
+            proposals = [OntologyProposal.from_dict(r) for r in data_results]
+
+            return proposals, total
+
+        except Exception as e:
+            logger.error(f"Failed to get paginated proposals: {e}")
+            return [], 0
+
+    async def get_ontology_stats(self) -> dict[str, Any]:
+        """
+        온톨로지 통계 집계
+
+        Returns:
+            상태별 카운트, 카테고리 분포, top 미해결 용어 등
+        """
+        query = """
+        // 상태별 카운트
+        MATCH (p:OntologyProposal)
+        WITH
+            count(p) as total,
+            sum(CASE WHEN p.status = 'pending' THEN 1 ELSE 0 END) as pending,
+            sum(CASE WHEN p.status = 'approved' THEN 1 ELSE 0 END) as approved,
+            sum(CASE WHEN p.status = 'auto_approved' THEN 1 ELSE 0 END) as auto_approved,
+            sum(CASE WHEN p.status = 'rejected' THEN 1 ELSE 0 END) as rejected
+
+        // 카테고리 분포 (별도 쿼리로 분리)
+        OPTIONAL MATCH (p2:OntologyProposal)
+        WITH total, pending, approved, auto_approved, rejected,
+             collect({category: p2.category, status: p2.status}) as all_categories
+
+        RETURN
+            total,
+            pending,
+            approved,
+            auto_approved,
+            rejected,
+            all_categories
+        """
+
+        # Top 미해결 용어 (pending 상태, 빈도순)
+        top_terms_query = """
+        MATCH (p:OntologyProposal)
+        WHERE p.status = 'pending'
+        RETURN p.term as term, p.category as category,
+               p.frequency as frequency, p.confidence as confidence
+        ORDER BY p.frequency DESC, p.confidence DESC
+        LIMIT 10
+        """
+
+        try:
+            stats_results = await self._client.execute_query(query, {})
+            top_terms_results = await self._client.execute_query(top_terms_query, {})
+
+            if not stats_results:
+                return {
+                    "total_proposals": 0,
+                    "pending_count": 0,
+                    "approved_count": 0,
+                    "auto_approved_count": 0,
+                    "rejected_count": 0,
+                    "category_distribution": {},
+                    "top_unresolved_terms": [],
+                }
+
+            stats = stats_results[0]
+
+            # 카테고리 분포 계산
+            category_dist: dict[str, int] = {}
+            for item in stats.get("all_categories", []):
+                if item and item.get("category"):
+                    cat = item["category"]
+                    category_dist[cat] = category_dist.get(cat, 0) + 1
+
+            return {
+                "total_proposals": stats.get("total", 0),
+                "pending_count": stats.get("pending", 0),
+                "approved_count": stats.get("approved", 0),
+                "auto_approved_count": stats.get("auto_approved", 0),
+                "rejected_count": stats.get("rejected", 0),
+                "category_distribution": category_dist,
+                "top_unresolved_terms": [
+                    {
+                        "term": r["term"],
+                        "category": r["category"],
+                        "frequency": r["frequency"],
+                        "confidence": r["confidence"],
+                    }
+                    for r in top_terms_results
+                ],
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get ontology stats: {e}")
+            return {
+                "total_proposals": 0,
+                "pending_count": 0,
+                "approved_count": 0,
+                "auto_approved_count": 0,
+                "rejected_count": 0,
+                "category_distribution": {},
+                "top_unresolved_terms": [],
+            }
+
+    async def batch_update_proposal_status(
+        self,
+        proposal_ids: list[str],
+        new_status: str,
+        reviewed_by: str | None = None,
+        rejection_reason: str | None = None,
+    ) -> tuple[int, list[str]]:
+        """
+        일괄 상태 업데이트 (Optimistic Locking 없음)
+
+        Warning:
+            이 메서드는 **버전 체크 없이** 업데이트합니다.
+            동시성 충돌 시 마지막 요청이 이전 요청을 덮어씁니다.
+            단일 관리자가 사용하는 Admin UI에서만 사용하세요.
+
+            개별 제안의 동시성 제어가 필요하면 update_proposal_with_version()을 사용하세요.
+
+        Args:
+            proposal_ids: 업데이트할 제안 ID 목록
+            new_status: 새 상태 값
+            reviewed_by: 검토자 ID
+            rejection_reason: 거절 사유 (rejected 상태일 때)
+
+        Returns:
+            (성공 수, 실패한 ID 목록) 튜플
+            실패 원인: pending 상태가 아니거나 존재하지 않음
+        """
+        query = """
+        UNWIND $proposal_ids as pid
+        MATCH (p:OntologyProposal {id: pid})
+        WHERE p.status = 'pending'
+        SET
+            p.status = $new_status,
+            p.version = p.version + 1,
+            p.reviewed_at = datetime(),
+            p.reviewed_by = $reviewed_by,
+            p.rejection_reason = $rejection_reason,
+            p.updated_at = datetime()
+        RETURN p.id as id
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "proposal_ids": proposal_ids,
+                    "new_status": new_status,
+                    "reviewed_by": reviewed_by,
+                    "rejection_reason": rejection_reason,
+                },
+            )
+
+            updated_ids = {r["id"] for r in results}
+            failed_ids = [pid for pid in proposal_ids if pid not in updated_ids]
+
+            return len(updated_ids), failed_ids
+
+        except Exception as e:
+            logger.error(f"Failed to batch update proposals: {e}")
+            return 0, proposal_ids
+
+    async def update_proposal_with_version(
+        self,
+        proposal_id: str,
+        expected_version: int,
+        updates: dict[str, Any],
+    ) -> OntologyProposal | None:
+        """
+        제안 수정 (Optimistic Locking)
+
+        Args:
+            proposal_id: 제안 ID
+            expected_version: 예상 버전 (일치해야 업데이트)
+            updates: 업데이트할 필드 딕셔너리
+
+        Returns:
+            업데이트된 OntologyProposal 또는 None (버전 불일치 시)
+        """
+        # SECURITY: 화이트리스트 기반 필드 검증 (Cypher Injection 방지)
+        # 아래 f-string에서 필드명이 사용되므로 반드시 검증 필요
+        allowed_fields = {
+            "suggested_parent",
+            "suggested_canonical",
+            "category",
+            "suggested_action",
+            "status",
+            "reviewed_at",
+            "reviewed_by",
+            "rejection_reason",
+        }
+
+        # SET 절 동적 생성 (허용된 필드만 - 화이트리스트 검증됨)
+        set_clauses = []
+        params: dict[str, Any] = {
+            "id": proposal_id,
+            "expected_version": expected_version,
+        }
+
+        for field, value in updates.items():
+            if field in allowed_fields:
+                # NOTE: field는 위 allowed_fields에서 검증됨 - Injection 안전
+                set_clauses.append(f"p.{field} = ${field}")
+                params[field] = value
+
+        if not set_clauses:
+            # 업데이트할 필드가 없으면 현재 상태 반환
+            return await self.get_proposal_by_id(proposal_id)
+
+        # 버전 증가 및 updated_at 추가
+        set_clauses.extend([
+            "p.version = p.version + 1",
+            "p.updated_at = datetime()",
+        ])
+
+        query = f"""
+        MATCH (p:OntologyProposal {{id: $id}})
+        WHERE p.version = $expected_version
+        SET {", ".join(set_clauses)}
+        RETURN
+            p.id as id,
+            p.version as version,
+            p.proposal_type as proposal_type,
+            p.term as term,
+            p.category as category,
+            p.suggested_action as suggested_action,
+            p.suggested_parent as suggested_parent,
+            p.suggested_canonical as suggested_canonical,
+            p.suggested_relation_type as suggested_relation_type,
+            p.evidence_questions as evidence_questions,
+            p.frequency as frequency,
+            p.confidence as confidence,
+            p.status as status,
+            p.created_at as created_at,
+            p.updated_at as updated_at,
+            p.reviewed_at as reviewed_at,
+            p.reviewed_by as reviewed_by,
+            p.rejection_reason as rejection_reason,
+            p.applied_at as applied_at
+        """
+
+        try:
+            results = await self._client.execute_query(query, params)
+
+            if results:
+                return OntologyProposal.from_dict(results[0])
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to update proposal {proposal_id}: {e}")
+            return None
+
+    async def create_proposal(
+        self,
+        proposal: OntologyProposal,
+    ) -> OntologyProposal:
+        """
+        새 제안 생성 (수동 생성용)
+
+        기존 save_ontology_proposal은 MERGE 패턴을 사용하지만,
+        이 메서드는 항상 새로운 노드를 생성합니다.
+
+        Args:
+            proposal: 생성할 OntologyProposal
+
+        Returns:
+            생성된 OntologyProposal
+        """
+        query = """
+        CREATE (p:OntologyProposal {
+            id: $id,
+            version: 1,
+            proposal_type: $proposal_type,
+            term: $term,
+            category: $category,
+            suggested_action: $suggested_action,
+            suggested_parent: $suggested_parent,
+            suggested_canonical: $suggested_canonical,
+            suggested_relation_type: $suggested_relation_type,
+            evidence_questions: $evidence_questions,
+            frequency: $frequency,
+            confidence: $confidence,
+            status: $status,
+            created_at: datetime(),
+            updated_at: datetime(),
+            reviewed_at: null,
+            reviewed_by: null,
+            rejection_reason: null,
+            applied_at: null
+        })
+        RETURN
+            p.id as id,
+            p.version as version,
+            p.proposal_type as proposal_type,
+            p.term as term,
+            p.category as category,
+            p.suggested_action as suggested_action,
+            p.suggested_parent as suggested_parent,
+            p.suggested_canonical as suggested_canonical,
+            p.suggested_relation_type as suggested_relation_type,
+            p.evidence_questions as evidence_questions,
+            p.frequency as frequency,
+            p.confidence as confidence,
+            p.status as status,
+            p.created_at as created_at,
+            p.updated_at as updated_at,
+            p.reviewed_at as reviewed_at,
+            p.reviewed_by as reviewed_by,
+            p.rejection_reason as rejection_reason,
+            p.applied_at as applied_at
+        """
+
+        data = proposal.to_dict()
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "id": data["id"],
+                    "proposal_type": data["proposal_type"],
+                    "term": data["term"],
+                    "category": data["category"],
+                    "suggested_action": data["suggested_action"],
+                    "suggested_parent": data["suggested_parent"],
+                    "suggested_canonical": data["suggested_canonical"],
+                    "suggested_relation_type": data["suggested_relation_type"],
+                    "evidence_questions": data["evidence_questions"],
+                    "frequency": data["frequency"],
+                    "confidence": data["confidence"],
+                    "status": data["status"],
+                },
+            )
+
+            if results:
+                return OntologyProposal.from_dict(results[0])
+            return proposal
+
+        except Exception as e:
+            logger.error(f"Failed to create proposal: {e}")
+            raise QueryExecutionError(
+                f"Failed to create proposal: {e}", query=query
+            ) from e
+
+    async def get_proposal_current_version(self, proposal_id: str) -> int | None:
+        """
+        제안의 현재 버전 조회
+
+        Args:
+            proposal_id: 제안 ID
+
+        Returns:
+            현재 버전 번호 또는 None (존재하지 않을 때)
+        """
+        query = """
+        MATCH (p:OntologyProposal {id: $id})
+        RETURN p.version as version
+        """
+
+        try:
+            results = await self._client.execute_query(query, {"id": proposal_id})
+
+            if results:
+                return results[0]["version"]
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get proposal version: {e}")
+            return None
+
+    # ============================================
+    # Ontology Application 메서드 (Phase 4)
+    # ============================================
+
+    # Concept 이름 검증 상수
+    CONCEPT_NAME_MIN_LENGTH = 1
+    CONCEPT_NAME_MAX_LENGTH = 100
+
+    def _validate_concept_name(self, name: str, field_name: str = "name") -> str:
+        """
+        Concept 이름 검증
+
+        Args:
+            name: 검증할 이름
+            field_name: 에러 메시지용 필드명
+
+        Returns:
+            정규화된 이름 (strip 적용)
+
+        Raises:
+            ValidationError: 유효하지 않은 이름인 경우
+        """
+        if name is None:
+            raise ValidationError(f"{field_name} cannot be None", field=field_name)
+
+        name = name.strip()
+
+        if not name:
+            raise ValidationError(
+                f"{field_name} cannot be empty or whitespace only",
+                field=field_name,
+            )
+
+        if len(name) < self.CONCEPT_NAME_MIN_LENGTH:
+            raise ValidationError(
+                f"{field_name} must be at least {self.CONCEPT_NAME_MIN_LENGTH} characters",
+                field=field_name,
+            )
+
+        if len(name) > self.CONCEPT_NAME_MAX_LENGTH:
+            raise ValidationError(
+                f"{field_name} must be at most {self.CONCEPT_NAME_MAX_LENGTH} characters",
+                field=field_name,
+            )
+
+        return name
+
+    async def concept_exists(self, name: str) -> bool:
+        """
+        Concept 노드 존재 여부 확인
+
+        Args:
+            name: 개념 이름
+
+        Returns:
+            존재 여부
+
+        Raises:
+            ValidationError: 이름이 유효하지 않은 경우
+        """
+        validated_name = self._validate_concept_name(name)
+
+        query = """
+        MATCH (c:Concept {name: $name})
+        RETURN count(c) > 0 as exists
+        """
+
+        try:
+            results = await self._client.execute_query(query, {"name": validated_name})
+            return results[0]["exists"] if results else False
+
+        except Exception as e:
+            logger.error(f"Failed to check concept existence: {e}")
+            return False
+
+    async def create_or_get_concept(
+        self,
+        name: str,
+        concept_type: str = "skill",
+        is_canonical: bool = True,
+        description: str | None = None,
+        source: str = "admin_proposal",
+    ) -> dict[str, Any]:
+        """
+        Concept 노드 생성 또는 기존 노드 반환 (MERGE 패턴)
+
+        Args:
+            name: 개념 이름
+            concept_type: 개념 유형 (skill, department 등)
+            is_canonical: 정규 형태 여부 (alias면 False)
+            description: 설명
+            source: 출처 정보 (proposal:{id} 형식)
+
+        Returns:
+            생성/조회된 Concept 노드 정보
+
+        Raises:
+            ValidationError: 이름이 유효하지 않은 경우
+            QueryExecutionError: 쿼리 실행 실패 시
+        """
+        validated_name = self._validate_concept_name(name)
+
+        query = """
+        MERGE (c:Concept {name: $name})
+        ON CREATE SET
+            c.type = $type,
+            c.is_canonical = $is_canonical,
+            c.description = $description,
+            c.source = $source,
+            c.created_at = datetime()
+        ON MATCH SET
+            c.updated_at = datetime()
+        RETURN
+            elementId(c) as id,
+            c.name as name,
+            c.type as type,
+            c.is_canonical as is_canonical,
+            c.description as description,
+            c.source as source
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "name": validated_name,
+                    "type": concept_type,
+                    "is_canonical": is_canonical,
+                    "description": description,
+                    "source": source,
+                },
+            )
+
+            if results:
+                logger.info(f"Concept '{validated_name}' created or retrieved")
+                return results[0]
+
+            return {"name": validated_name, "type": concept_type}
+
+        except Exception as e:
+            logger.error(f"Failed to create/get concept '{validated_name}': {e}")
+            raise QueryExecutionError(
+                f"Failed to create/get concept: {e}", query=query
+            ) from e
+
+    async def create_same_as_relation(
+        self,
+        alias_name: str,
+        canonical_name: str,
+        weight: float = 1.0,
+        proposal_id: str | None = None,
+    ) -> bool:
+        """
+        SAME_AS 관계 생성 (동의어 매핑)
+
+        Args:
+            alias_name: 별칭 개념 이름
+            canonical_name: 정규 개념 이름
+            weight: 관계 가중치 (유사도)
+            proposal_id: 출처 제안 ID
+
+        Returns:
+            성공 여부
+
+        Raises:
+            ValidationError: 이름이 유효하지 않은 경우
+        """
+        validated_alias = self._validate_concept_name(alias_name, "alias_name")
+        validated_canonical = self._validate_concept_name(canonical_name, "canonical_name")
+
+        query = """
+        MATCH (alias:Concept {name: $alias_name})
+        MATCH (canonical:Concept {name: $canonical_name})
+        MERGE (alias)-[r:SAME_AS]->(canonical)
+        ON CREATE SET
+            r.weight = $weight,
+            r.proposal_id = $proposal_id,
+            r.created_at = datetime()
+        ON MATCH SET
+            r.updated_at = datetime()
+        RETURN type(r) as rel_type
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "alias_name": validated_alias,
+                    "canonical_name": validated_canonical,
+                    "weight": weight,
+                    "proposal_id": proposal_id,
+                },
+            )
+
+            if results:
+                logger.info(
+                    f"SAME_AS relation created: '{validated_alias}' -> '{validated_canonical}'"
+                )
+                return True
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to create SAME_AS relation: {e}")
+            return False
+
+    async def create_is_a_relation(
+        self,
+        child_name: str,
+        parent_name: str,
+        depth: int = 1,
+        proposal_id: str | None = None,
+    ) -> bool:
+        """
+        IS_A 관계 생성 (계층 관계)
+
+        Args:
+            child_name: 자식 개념 이름
+            parent_name: 부모 개념 이름
+            depth: 계층 깊이
+            proposal_id: 출처 제안 ID
+
+        Returns:
+            성공 여부
+
+        Raises:
+            ValidationError: 이름이 유효하지 않은 경우
+        """
+        validated_child = self._validate_concept_name(child_name, "child_name")
+        validated_parent = self._validate_concept_name(parent_name, "parent_name")
+
+        query = """
+        MATCH (child:Concept {name: $child_name})
+        MATCH (parent:Concept {name: $parent_name})
+        MERGE (child)-[r:IS_A]->(parent)
+        ON CREATE SET
+            r.depth = $depth,
+            r.proposal_id = $proposal_id,
+            r.created_at = datetime()
+        ON MATCH SET
+            r.updated_at = datetime()
+        RETURN type(r) as rel_type
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "child_name": validated_child,
+                    "parent_name": validated_parent,
+                    "depth": depth,
+                    "proposal_id": proposal_id,
+                },
+            )
+
+            if results:
+                logger.info(
+                    f"IS_A relation created: '{validated_child}' -> '{validated_parent}'"
+                )
+                return True
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to create IS_A relation: {e}")
+            return False
+
+    async def create_requires_relation(
+        self,
+        entity_name: str,
+        skill_name: str,
+        proposal_id: str | None = None,
+    ) -> bool:
+        """
+        REQUIRES 관계 생성 (엔티티-스킬 요구 관계)
+
+        Args:
+            entity_name: 엔티티 이름 (예: "Senior Engineer")
+            skill_name: 스킬 이름 (예: "Python")
+            proposal_id: 출처 제안 ID
+
+        Returns:
+            성공 여부
+
+        Raises:
+            ValidationError: 이름이 유효하지 않은 경우
+        """
+        validated_entity = self._validate_concept_name(entity_name, "entity_name")
+        validated_skill = self._validate_concept_name(skill_name, "skill_name")
+
+        query = """
+        MATCH (entity:Concept {name: $entity_name})
+        MATCH (skill:Concept {name: $skill_name})
+        MERGE (entity)-[r:REQUIRES]->(skill)
+        ON CREATE SET
+            r.proposal_id = $proposal_id,
+            r.created_at = datetime()
+        ON MATCH SET
+            r.updated_at = datetime()
+        RETURN type(r) as rel_type
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "entity_name": validated_entity,
+                    "skill_name": validated_skill,
+                    "proposal_id": proposal_id,
+                },
+            )
+
+            if results:
+                logger.info(
+                    f"REQUIRES relation created: '{validated_entity}' -> '{validated_skill}'"
+                )
+                return True
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to create REQUIRES relation: {e}")
+            return False
+
+    async def create_part_of_relation(
+        self,
+        part_name: str,
+        whole_name: str,
+        proposal_id: str | None = None,
+    ) -> bool:
+        """
+        PART_OF 관계 생성 (부분-전체 관계)
+
+        Args:
+            part_name: 부분 개념 이름 (예: "Microservices")
+            whole_name: 전체 개념 이름 (예: "Architecture")
+            proposal_id: 출처 제안 ID
+
+        Returns:
+            성공 여부
+
+        Raises:
+            ValidationError: 이름이 유효하지 않은 경우
+        """
+        validated_part = self._validate_concept_name(part_name, "part_name")
+        validated_whole = self._validate_concept_name(whole_name, "whole_name")
+
+        query = """
+        MATCH (part:Concept {name: $part_name})
+        MATCH (whole:Concept {name: $whole_name})
+        MERGE (part)-[r:PART_OF]->(whole)
+        ON CREATE SET
+            r.proposal_id = $proposal_id,
+            r.created_at = datetime()
+        ON MATCH SET
+            r.updated_at = datetime()
+        RETURN type(r) as rel_type
+        """
+
+        try:
+            results = await self._client.execute_query(
+                query,
+                {
+                    "part_name": validated_part,
+                    "whole_name": validated_whole,
+                    "proposal_id": proposal_id,
+                },
+            )
+
+            if results:
+                logger.info(
+                    f"PART_OF relation created: '{validated_part}' -> '{validated_whole}'"
+                )
+                return True
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to create PART_OF relation: {e}")
+            return False
+
+    async def update_proposal_applied_at(self, proposal_id: str) -> bool:
+        """
+        제안의 applied_at 필드 업데이트 (온톨로지 적용 완료 시각)
+
+        Args:
+            proposal_id: 제안 ID
+
+        Returns:
+            성공 여부
+        """
+        query = """
+        MATCH (p:OntologyProposal {id: $id})
+        SET p.applied_at = datetime()
+        RETURN p.id as id
+        """
+
+        try:
+            results = await self._client.execute_query(query, {"id": proposal_id})
+            return len(results) > 0
+
+        except Exception as e:
+            logger.error(f"Failed to update proposal applied_at: {e}")
+            return False
