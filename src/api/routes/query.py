@@ -3,12 +3,15 @@ Query API Routes
 
 질의 관련 API 엔드포인트
 - Explainability: 추론 과정 시각화 및 그래프 데이터 반환 지원
+- Streaming: SSE 기반 실시간 응답 스트리밍 지원
 """
 
+import json
 import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sse_starlette.sse import EventSourceResponse
 
 from src.api.schemas import (
     HealthResponse,
@@ -18,8 +21,13 @@ from src.api.schemas import (
     SchemaResponse,
 )
 from src.api.schemas.explainability import ExplainableResponse
+from src.api.services.explainability import ExplainabilityService
 from src.config import Settings, get_settings
-from src.dependencies import get_graph_pipeline, get_neo4j_client
+from src.dependencies import (
+    get_explainability_service,
+    get_graph_pipeline,
+    get_neo4j_client,
+)
 from src.domain.exceptions import (
     DatabaseConnectionError,
     EntityNotFoundError,
@@ -47,6 +55,9 @@ router = APIRouter(prefix="/api/v1", tags=["query"])
 async def query(
     request: QueryRequest,
     pipeline: Annotated[GraphRAGPipeline, Depends(get_graph_pipeline)],
+    explainability_service: Annotated[
+        ExplainabilityService, Depends(get_explainability_service)
+    ],
 ) -> QueryResponse:
     """
     그래프 RAG 질의
@@ -59,7 +70,14 @@ async def query(
     - include_graph: 그래프 데이터 포함 (인터랙티브 그래프용)
     - graph_limit: 그래프 최대 노드 수 (1-200)
     """
-    logger.info(f"Query request: {request.question[:50]}...")
+    # 민감 정보 보호: 질문 내용 대신 메타데이터만 로깅
+    logger.info(
+        "Query request received (session=%s, length=%d, explain=%s, graph=%s)",
+        request.session_id,
+        len(request.question),
+        request.include_explanation,
+        request.include_graph,
+    )
 
     try:
         # Explainability 요청 시 full_state 포함
@@ -90,18 +108,13 @@ async def query(
                 thought_process = None
                 graph_data = None
 
-                # 서비스 인스턴스 생성 (필요하다면 의존성 주입으로 변경 가능)
-                from src.api.services.explainability import ExplainabilityService
-
-                service = ExplainabilityService()
-
                 if request.include_explanation:
-                    thought_process = service.build_thought_process(
+                    thought_process = explainability_service.build_thought_process(
                         raw_metadata, full_state
                     )
 
                 if request.include_graph and full_state:
-                    graph_data = service.build_graph_data(
+                    graph_data = explainability_service.build_graph_data(
                         full_state=full_state,
                         resolved_entities=raw_metadata.get("resolved_entities", []),
                         limit=request.graph_limit,
@@ -170,7 +183,115 @@ async def query(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
-        ) from None
+        ) from e
+
+
+@router.post("/query/stream")
+async def query_stream(
+    request: QueryRequest,
+    pipeline: Annotated[GraphRAGPipeline, Depends(get_graph_pipeline)],
+) -> EventSourceResponse:
+    """
+    스트리밍 그래프 RAG 질의 (SSE)
+
+    실시간으로 응답 토큰을 스트리밍합니다.
+    첫 토큰이 ~100ms 내에 도착하여 체감 레이턴시가 크게 개선됩니다.
+
+    SSE 이벤트 형식:
+    - event: metadata
+      data: {"intent": "...", "entities": {...}, "cypher_query": "..."}
+
+    - event: chunk
+      data: "응답 텍스트 조각"
+
+    - event: done
+      data: {"success": true, "full_response": "전체 응답"}
+
+    - event: error
+      data: {"message": "에러 메시지"}
+    """
+    # 민감 정보 보호: 질문 내용 대신 메타데이터만 로깅
+    logger.info(
+        "Streaming query request received (session=%s, length=%d)",
+        request.session_id,
+        len(request.question),
+    )
+
+    async def event_generator():
+        try:
+            async for event in pipeline.run_with_streaming_response(
+                question=request.question,
+                session_id=request.session_id,
+            ):
+                event_type = event.get("type", "unknown")
+
+                if event_type == "metadata":
+                    yield {
+                        "event": "metadata",
+                        "data": json.dumps(event["data"], ensure_ascii=False),
+                    }
+                elif event_type == "chunk":
+                    yield {
+                        "event": "chunk",
+                        "data": event["text"],
+                    }
+                elif event_type == "done":
+                    yield {
+                        "event": "done",
+                        "data": json.dumps(
+                            {
+                                "success": event.get("success", True),
+                                "full_response": event.get("full_response", ""),
+                            },
+                            ensure_ascii=False,
+                        ),
+                    }
+                elif event_type == "error":
+                    yield {
+                        "event": "error",
+                        "data": json.dumps(
+                            {"message": event.get("message", "Unknown error")},
+                            ensure_ascii=False,
+                        ),
+                    }
+                else:
+                    # 알 수 없는 이벤트 타입 로깅 (디버깅용)
+                    logger.warning(
+                        "Unknown event type in streaming: %s", event_type
+                    )
+
+        except LLMRateLimitError as e:
+            logger.warning(f"Rate limit exceeded during streaming: {e}")
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": f"Rate limit exceeded: {e}"}),
+            }
+        except LLMConnectionError as e:
+            logger.error(f"LLM connection error during streaming: {e}")
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": f"LLM service unavailable: {e}"}),
+            }
+        except LLMResponseError as e:
+            logger.error(f"LLM response error during streaming: {e}")
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": f"LLM response error: {e}"}),
+            }
+        except DatabaseConnectionError as e:
+            logger.error(f"Database connection error during streaming: {e}")
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": f"Database unavailable: {e}"}),
+            }
+        except Exception as e:
+            logger.error(f"Streaming query failed: {e}", exc_info=True)
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": "Internal server error"}),
+            }
+
+    return EventSourceResponse(event_generator())
 
 
 @router.get("/health", response_model=HealthResponse)

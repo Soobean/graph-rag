@@ -20,6 +20,7 @@ from src.api import (
     query_router,
     visualization_router,
 )
+from src.api.services.explainability import ExplainabilityService
 from src.config import get_settings
 from src.domain.exceptions import (
     ConflictError,
@@ -109,6 +110,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ontology_service = OntologyService(neo4j_repository=neo4j_repo)
     logger.info("OntologyService initialized")
 
+    # ExplainabilityService 초기화 (stateless 서비스)
+    explainability_service = ExplainabilityService()
+    logger.info("ExplainabilityService initialized")
+
     # app.state에 저장 (멀티 워커 환경에서 각 워커가 자체 인스턴스 보유)
     app.state.neo4j_client = neo4j_client
     app.state.neo4j_repo = neo4j_repo
@@ -116,6 +121,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.pipeline = pipeline
     app.state.gds_service = gds_service
     app.state.ontology_service = ontology_service
+    app.state.explainability_service = explainability_service
 
     yield
 

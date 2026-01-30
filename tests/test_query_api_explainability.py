@@ -7,15 +7,15 @@ Query API Explainability 테스트
     pytest tests/test_query_api_explainability.py -v
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from src.api.routes.query import router
-from src.api.schemas.query import QueryResponse
+from src.api.services.explainability import ExplainabilityService
 from src.config import Settings
 from src.graph import GraphRAGPipeline
 
@@ -38,15 +38,24 @@ def mock_pipeline():
 
 
 @pytest.fixture
-def app(mock_pipeline, mock_settings):
+def explainability_service():
+    """실제 ExplainabilityService 인스턴스 (stateless 서비스)"""
+    return ExplainabilityService()
+
+
+@pytest.fixture
+def app(mock_pipeline, mock_settings, explainability_service):
     """테스트용 FastAPI 앱"""
     test_app = FastAPI()
     test_app.include_router(router)
 
     # 의존성 오버라이드
-    from src.dependencies import get_graph_pipeline
+    from src.dependencies import get_explainability_service, get_graph_pipeline
 
     test_app.dependency_overrides[get_graph_pipeline] = lambda: mock_pipeline
+    test_app.dependency_overrides[get_explainability_service] = (
+        lambda: explainability_service
+    )
 
     return test_app
 
