@@ -222,6 +222,14 @@ class Settings(BaseSettings):
     )
 
     # ============================================
+    # Latency Optimization 설정
+    # ============================================
+    cypher_light_model_enabled: bool = Field(
+        default=True,
+        description="단순 쿼리에 LIGHT 모델 사용 여부 (Cypher 생성 최적화)",
+    )
+
+    # ============================================
     # Vector Search 설정
     # ============================================
     vector_similarity_threshold: float = Field(

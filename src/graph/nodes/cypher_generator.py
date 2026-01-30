@@ -3,8 +3,13 @@ Cypher Generator Node
 
 사용자 질문과 엔티티 정보를 바탕으로 Cypher 쿼리를 생성합니다.
 캐시 히트 시에는 생성을 스킵하고, 새로 생성 시에는 캐시에 저장합니다.
+
+Latency Optimization:
+- 단순 쿼리(single-hop, 기본 의도, 적은 엔티티)에는 LIGHT 모델 사용
+- 복잡한 쿼리(multi-hop, 복잡한 의도)에는 HEAVY 모델 사용
 """
 
+from enum import Enum
 from typing import Any
 
 from src.config import Settings
@@ -16,8 +21,30 @@ from src.repositories.neo4j_repository import Neo4jRepository
 from src.repositories.query_cache_repository import QueryCacheRepository
 
 
+class QueryComplexity(str, Enum):
+    """쿼리 복잡도 구분"""
+
+    SIMPLE = "simple"  # LIGHT 모델 사용
+    COMPLEX = "complex"  # HEAVY 모델 사용 (fallback 포함)
+
+
 class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
-    """Cypher 쿼리 생성 노드"""
+    """
+    Cypher 쿼리 생성 노드
+
+    Latency Optimization:
+    - 단순 쿼리 판별 기준:
+      1. Single-hop 쿼리 (is_multi_hop=False)
+      2. 단순 Intent (personnel_search, certificate_search)
+      3. 낮은 엔티티 수 (≤ 2개)
+    - 모든 조건 충족 시 LIGHT 모델 사용으로 ~400ms 절감
+    """
+
+    # 단순 Intent 목록 (LIGHT 모델로 처리 가능)
+    SIMPLE_INTENTS = ["personnel_search", "certificate_search"]
+
+    # 단순 쿼리의 최대 엔티티 수
+    MAX_ENTITIES_FOR_SIMPLE = 2
 
     def __init__(
         self,
@@ -56,6 +83,50 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 constraints=schema_dict.get("constraints", []),
             )
         return self._schema_cache
+
+    def _analyze_complexity(self, state: GraphRAGState) -> QueryComplexity:
+        """
+        쿼리 복잡도 분석
+
+        다음 조건을 모두 만족하면 SIMPLE로 판정:
+        1. Single-hop 쿼리 (is_multi_hop=False 또는 query_plan 없음)
+        2. 단순 Intent (SIMPLE_INTENTS에 포함)
+        3. 낮은 엔티티 수 (MAX_ENTITIES_FOR_SIMPLE 이하)
+
+        Args:
+            state: 현재 파이프라인 상태
+
+        Returns:
+            QueryComplexity: SIMPLE 또는 COMPLEX
+        """
+        query_plan = state.get("query_plan")
+        intent = state.get("intent", "unknown")
+        entities = state.get("entities", {})
+
+        # Multi-hop 쿼리면 COMPLEX
+        if query_plan and query_plan.get("is_multi_hop"):
+            self._logger.debug(
+                f"Complex query: multi-hop detected (hops={query_plan.get('hop_count')})"
+            )
+            return QueryComplexity.COMPLEX
+
+        # 복잡한 Intent면 COMPLEX
+        if intent not in self.SIMPLE_INTENTS:
+            self._logger.debug(f"Complex query: complex intent ({intent})")
+            return QueryComplexity.COMPLEX
+
+        # 엔티티 수 계산
+        total_entities = sum(len(v) for v in entities.values())
+        if total_entities > self.MAX_ENTITIES_FOR_SIMPLE:
+            self._logger.debug(
+                f"Complex query: too many entities ({total_entities} > {self.MAX_ENTITIES_FOR_SIMPLE})"
+            )
+            return QueryComplexity.COMPLEX
+
+        self._logger.debug(
+            f"Simple query: intent={intent}, entities={total_entities}"
+        )
+        return QueryComplexity.SIMPLE
 
     async def _process(self, state: GraphRAGState) -> CypherGeneratorUpdate:
         """
@@ -102,12 +173,22 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
             else:
                 schema = await self._get_schema()
 
+            # 복잡도 분석 및 모델 선택
+            use_light_model = False
+            if self._settings and self._settings.cypher_light_model_enabled:
+                complexity = self._analyze_complexity(state)
+                use_light_model = complexity == QueryComplexity.SIMPLE
+                self._logger.info(
+                    f"Query complexity: {complexity.value}, use_light_model={use_light_model}"
+                )
+
             # LLM을 통한 Cypher 생성
             result = await self._llm.generate_cypher(
                 question=question,
                 schema=dict(schema),  # TypedDict를 dict로 변환
                 entities=formatted_entities,
                 query_plan=dict(query_plan) if query_plan else None,  # Multi-hop 쿼리 계획 전달
+                use_light_model=use_light_model,
             )
 
             cypher = result.get("cypher", "")
