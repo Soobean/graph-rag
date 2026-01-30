@@ -122,6 +122,14 @@ class EntityExtractionResult(TypedDict):
     entities: list[ExtractedEntity]
 
 
+class IntentEntityExtractionResult(TypedDict):
+    """통합 Intent 분류 + 엔티티 추출 결과 (Latency Optimization)"""
+
+    intent: str
+    confidence: float
+    entities: list[ExtractedEntity]
+
+
 class CypherGenerationResult(TypedDict, total=False):
     """Cypher 생성 결과"""
 
@@ -225,6 +233,16 @@ class IntentClassifierUpdate(TypedDict, total=False):
 class EntityExtractorUpdate(TypedDict, total=False):
     """EntityExtractor 노드 반환 타입"""
 
+    entities: dict[str, list[str]]
+    execution_path: list[str]
+    error: str | None
+
+
+class IntentEntityExtractorUpdate(TypedDict, total=False):
+    """통합 IntentEntityExtractor 노드 반환 타입 (Latency Optimization)"""
+
+    intent: str
+    intent_confidence: float
     entities: dict[str, list[str]]
     execution_path: list[str]
     error: str | None
@@ -341,6 +359,7 @@ class QueryDecompositionResult(TypedDict, total=False):
 NodeUpdate = (
     IntentClassifierUpdate
     | EntityExtractorUpdate
+    | IntentEntityExtractorUpdate
     | ConceptExpanderUpdate
     | EntityResolverUpdate
     | CypherGeneratorUpdate

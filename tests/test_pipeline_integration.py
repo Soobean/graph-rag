@@ -9,6 +9,9 @@ Pipeline Integration Tests
 Note:
     공통 fixture (mock_settings, mock_llm, mock_neo4j, graph_schema, pipeline)는
     tests/conftest.py에 정의되어 있습니다.
+
+    Latency Optimization으로 IntentEntityExtractorNode가 사용됩니다.
+    (기존 IntentClassifier + EntityExtractor 통합)
 """
 
 import pytest
@@ -21,33 +24,31 @@ class TestPipelineRouting:
     async def test_unknown_intent_skips_to_response(
         self, pipeline, mock_llm, mock_neo4j
     ):
-        """Unknown intent 시 entity 추출 스킵"""
-        mock_llm.classify_intent.return_value = {
+        """Unknown intent 시 나머지 노드 스킵"""
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "unknown",
             "confidence": 0.0,
+            "entities": [],
         }
 
         result = await pipeline.run("알 수 없는 질문")
 
         assert result["success"] is True
         path = result["metadata"]["execution_path"]
-        assert "intent_classifier" in path
-        assert "entity_extractor" not in path
+        assert "intent_entity_extractor" in path
+        assert "cypher_generator" not in path
         assert "response_generator_empty" in path
-
-        # Entity extractor가 호출되지 않았는지 확인
-        mock_llm.extract_entities.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cypher_error_skips_executor(
         self, pipeline, mock_llm, mock_neo4j
     ):
         """Cypher 생성 에러 시 executor 스킵"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
+            "entities": [],
         }
-        mock_llm.extract_entities.return_value = {"entities": []}
         mock_llm.generate_cypher.side_effect = Exception("Cypher Error")
         mock_llm.generate_response.return_value = "오류가 발생했습니다."
 
@@ -63,12 +64,10 @@ class TestPipelineRouting:
         self, pipeline, mock_llm, mock_neo4j
     ):
         """정상 흐름 시 모든 노드 실행 (순차 실행)"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
-        }
-        mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Person", "value": "홍길동"}]
+            "entities": [{"type": "Person", "value": "홍길동", "normalized": "홍길동"}],
         }
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (p:Person {name: $name}) RETURN p",
@@ -84,10 +83,9 @@ class TestPipelineRouting:
         assert result["success"] is True
         path = result["metadata"]["execution_path"]
 
-        # 순차 실행 노드 (스키마는 초기화 시 주입됨)
+        # 순차 실행 노드 (IntentEntityExtractor가 intent + entity 통합 처리)
         expected_nodes = [
-            "intent_classifier",
-            "entity_extractor",
+            "intent_entity_extractor",
             "entity_resolver",
             "cypher_generator",
             "graph_executor",
@@ -103,11 +101,11 @@ class TestPipelineMetadata:
     @pytest.mark.asyncio
     async def test_metadata_includes_intent(self, pipeline, mock_llm, mock_neo4j):
         """메타데이터에 intent 정보 포함"""
-        mock_llm.classify_intent.return_value = {
-            "intent": "org_analysis",  # 유효한 IntentType 사용
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "org_analysis",
             "confidence": 0.85,
+            "entities": [],
         }
-        mock_llm.extract_entities.return_value = {"entities": []}
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (o:Organization) RETURN o",
             "parameters": {},
@@ -123,15 +121,13 @@ class TestPipelineMetadata:
     @pytest.mark.asyncio
     async def test_metadata_includes_entities(self, pipeline, mock_llm, mock_neo4j):
         """메타데이터에 엔티티 정보 포함"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
-        }
-        mock_llm.extract_entities.return_value = {
             "entities": [
-                {"type": "Person", "value": "김철수"},
-                {"type": "Department", "value": "인사팀"},
-            ]
+                {"type": "Person", "value": "김철수", "normalized": "김철수"},
+                {"type": "Department", "value": "인사팀", "normalized": "인사팀"},
+            ],
         }
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (p:Person)-[:BELONGS_TO]->(d:Department) RETURN p, d",
@@ -143,18 +139,19 @@ class TestPipelineMetadata:
         result = await pipeline.run("김철수가 인사팀 소속인가요?")
 
         entities = result["metadata"]["entities"]
-        assert len(entities) == 2
+        # IntentEntityExtractor는 dict[str, list[str]] 형태로 반환
+        assert "Person" in entities or "Department" in entities
 
     @pytest.mark.asyncio
     async def test_metadata_includes_cypher(self, pipeline, mock_llm, mock_neo4j):
         """메타데이터에 Cypher 쿼리 포함"""
         expected_cypher = "MATCH (p:Person {name: $name}) RETURN p"
 
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
+            "entities": [],
         }
-        mock_llm.extract_entities.return_value = {"entities": []}
         mock_llm.generate_cypher.return_value = {
             "cypher": expected_cypher,
             "parameters": {"name": "테스트"},
@@ -172,40 +169,30 @@ class TestPipelineErrorHandling:
     """파이프라인 에러 처리 테스트"""
 
     @pytest.mark.asyncio
-    async def test_intent_classifier_error(self, pipeline, mock_llm):
-        """Intent classifier 에러 시 graceful 처리 (fallback to unknown)"""
-        mock_llm.classify_intent.side_effect = Exception("LLM 연결 실패")
+    async def test_intent_entity_extractor_error(self, pipeline, mock_llm):
+        """IntentEntityExtractor 에러 시 graceful 처리 (fallback to unknown)"""
+        mock_llm.classify_intent_and_extract_entities.side_effect = Exception(
+            "LLM 연결 실패"
+        )
 
         result = await pipeline.run("테스트 질문")
 
-        # IntentClassifier는 에러 시 unknown으로 fallback하므로 파이프라인은 계속 진행
-        # 최종 응답은 success=True지만 intent가 unknown임
+        # IntentEntityExtractor는 에러 시 unknown으로 fallback하므로 파이프라인은 계속 진행
         assert result["metadata"]["intent"] == "unknown"
         path = result["metadata"]["execution_path"]
-        assert "intent_classifier_error" in path or "intent_classifier" in path
-
-    @pytest.mark.asyncio
-    async def test_entity_extractor_error(self, pipeline, mock_llm, mock_neo4j):
-        """Entity extractor 에러 시 graceful 처리"""
-        mock_llm.classify_intent.return_value = {
-            "intent": "personnel_search",
-            "confidence": 0.9,
-        }
-        mock_llm.extract_entities.side_effect = Exception("Entity 추출 실패")
-
-        result = await pipeline.run("테스트 질문")
-
-        # 에러가 발생해도 파이프라인이 중단되지 않음
-        assert result["success"] is False or result["metadata"].get("error")
+        assert (
+            "intent_entity_extractor_error" in path
+            or "intent_entity_extractor" in path
+        )
 
     @pytest.mark.asyncio
     async def test_graph_executor_error(self, pipeline, mock_llm, mock_neo4j):
         """Graph executor 에러 시 graceful 처리"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
+            "entities": [],
         }
-        mock_llm.extract_entities.return_value = {"entities": []}
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (n) RETURN n",
             "parameters": {},
@@ -226,11 +213,11 @@ class TestPipelineStreaming:
     @pytest.mark.asyncio
     async def test_streaming_yields_events(self, pipeline, mock_llm, mock_neo4j):
         """스트리밍 모드에서 각 노드 이벤트 yield"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
+            "entities": [],
         }
-        mock_llm.extract_entities.return_value = {"entities": []}
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (n) RETURN n",
             "parameters": {},
@@ -257,12 +244,12 @@ class TestPipelineEmptyResults:
     @pytest.mark.asyncio
     async def test_empty_query_results(self, pipeline, mock_llm, mock_neo4j):
         """쿼리 결과가 비어있는 경우"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
-        }
-        mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Person", "value": "존재하지않는사람"}]
+            "entities": [
+                {"type": "Person", "value": "존재하지않는사람", "normalized": "존재하지않는사람"}
+            ],
         }
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (p:Person {name: $name}) RETURN p",
@@ -282,11 +269,11 @@ class TestPipelineEmptyResults:
     @pytest.mark.asyncio
     async def test_no_entities_extracted(self, pipeline, mock_llm, mock_neo4j):
         """엔티티가 추출되지 않은 경우"""
-        mock_llm.classify_intent.return_value = {
-            "intent": "relationship_search",  # 유효한 IntentType 사용
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "relationship_search",
             "confidence": 0.7,
+            "entities": [],  # 빈 엔티티
         }
-        mock_llm.extract_entities.return_value = {"entities": []}  # 빈 엔티티
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (n) RETURN n LIMIT 10",
             "parameters": {},

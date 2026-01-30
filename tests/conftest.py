@@ -21,6 +21,8 @@ def mock_settings():
     settings.ontology_mode = "file"  # Multi-hop 테스트용
     settings.adaptive_ontology = MagicMock()
     settings.adaptive_ontology.enabled = False
+    # Latency Optimization 설정
+    settings.cypher_light_model_enabled = True
     return settings
 
 
@@ -28,8 +30,14 @@ def mock_settings():
 def mock_llm():
     """Mock LLM Repository"""
     llm = MagicMock(spec=LLMRepository)
-    llm.classify_intent = AsyncMock()
-    llm.extract_entities = AsyncMock()
+    # 통합 Intent + Entity 추출 (Latency Optimization)
+    llm.classify_intent_and_extract_entities = AsyncMock(
+        return_value={
+            "intent": "personnel_search",
+            "confidence": 0.9,
+            "entities": [],
+        }
+    )
     llm.generate_cypher = AsyncMock()
     llm.generate_response = AsyncMock()
     llm.decompose_query = AsyncMock(

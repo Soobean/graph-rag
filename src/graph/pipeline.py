@@ -30,10 +30,9 @@ from src.graph.nodes import (
     ClarificationHandlerNode,
     ConceptExpanderNode,
     CypherGeneratorNode,
-    EntityExtractorNode,
     EntityResolverNode,
     GraphExecutorNode,
-    IntentClassifierNode,
+    IntentEntityExtractorNode,
     QueryDecomposerNode,
     ResponseGeneratorNode,
 )
@@ -114,9 +113,9 @@ class GraphRAGPipeline:
             logger.info("OntologyLoader initialized (YAML mode)")
 
         # 노드 초기화
-        self._intent_classifier = IntentClassifierNode(llm_repository)
+        # 통합 Intent + Entity 노드 사용 (Latency Optimization: 2 LLM calls → 1)
+        self._intent_entity_extractor = IntentEntityExtractorNode(llm_repository)
         self._query_decomposer = QueryDecomposerNode(llm_repository)
-        self._entity_extractor = EntityExtractorNode(llm_repository)
         self._concept_expander = ConceptExpanderNode(self._ontology_loader)
         self._entity_resolver = EntityResolverNode(neo4j_repository)
         self._clarification_handler = ClarificationHandlerNode(llm_repository)
@@ -166,13 +165,21 @@ class GraphRAGPipeline:
         )
 
     def _build_graph(self) -> CompiledStateGraph:
-        """LangGraph 워크플로우 구성 (Vector Cache + Checkpointer)"""
+        """
+        LangGraph 워크플로우 구성 (Vector Cache + Checkpointer)
+
+        파이프라인 흐름:
+            intent_entity_extractor → query_decomposer → [cache_checker] → concept_expander
+            → entity_resolver → cypher_generator → graph_executor → response_generator
+
+        Latency Optimization:
+        - IntentEntityExtractor가 intent 분류 + entity 추출을 1회 LLM 호출로 처리
+        """
         workflow = StateGraph(GraphRAGState)
 
-        # 노드 추가 (schema_fetcher 제거됨 - 스키마는 초기화 시 주입)
-        workflow.add_node("intent_classifier", self._intent_classifier)
+        # 노드 추가
+        workflow.add_node("intent_entity_extractor", self._intent_entity_extractor)
         workflow.add_node("query_decomposer", self._query_decomposer)
-        workflow.add_node("entity_extractor", self._entity_extractor)
         workflow.add_node("concept_expander", self._concept_expander)
         workflow.add_node("entity_resolver", self._entity_resolver)
         workflow.add_node("clarification_handler", self._clarification_handler)
@@ -185,13 +192,13 @@ class GraphRAGPipeline:
             workflow.add_node("cache_checker", self._cache_checker)
 
         # 시작점 설정
-        workflow.set_entry_point("intent_classifier")
+        workflow.set_entry_point("intent_entity_extractor")
 
         # ---------------------------------------------------------
-        # 조건부 엣지 정의 (Conditional Edges)
+        # 엣지 정의
         # ---------------------------------------------------------
 
-        # 1. Intent Classifier -> Query Decomposer 또는 Response Generator
+        # 1. IntentEntityExtractor -> Query Decomposer 또는 Response Generator
         def route_after_intent(
             state: GraphRAGState,
         ) -> Literal["query_decomposer", "response_generator"]:
@@ -201,45 +208,37 @@ class GraphRAGPipeline:
             return "query_decomposer"
 
         workflow.add_conditional_edges(
-            "intent_classifier",
+            "intent_entity_extractor",
             route_after_intent,
             ["query_decomposer", "response_generator"],
         )
 
-        # 2. Query Decomposer -> Cache Checker 또는 Entity Extractor
+        # 2. Query Decomposer -> Cache Checker 또는 Concept Expander
         if self._cache_checker:
-            # Vector Cache 활성화 시: query_decomposer -> cache_checker
             workflow.add_edge("query_decomposer", "cache_checker")
 
-            # 2. Cache Checker -> 캐시 히트 시 cypher_generator, 미스 시 entity_extractor
             def route_after_cache_check(
                 state: GraphRAGState,
-            ) -> Literal["cypher_generator", "entity_extractor"]:
-                """
-                캐시 결과에 따라 라우팅:
-                - cache_hit=True: cypher_generator로 이동 (캐시된 쿼리 사용)
-                - cache_hit=False: entity_extractor로 이동
-                """
+            ) -> Literal["cypher_generator", "concept_expander"]:
+                """캐시 결과에 따라 라우팅"""
                 if state.get("skip_generation"):
                     logger.info(
                         "Cache HIT: skipping to cypher_generator (cached query)"
                     )
                     return "cypher_generator"
 
-                logger.info("Cache MISS: proceeding to entity_extractor")
-                return "entity_extractor"
+                logger.info("Cache MISS: proceeding to concept_expander")
+                return "concept_expander"
 
             workflow.add_conditional_edges(
                 "cache_checker",
                 route_after_cache_check,
-                ["entity_extractor", "cypher_generator"],
+                ["concept_expander", "cypher_generator"],
             )
         else:
-            # Vector Cache 비활성화 시: query_decomposer -> entity_extractor
-            workflow.add_edge("query_decomposer", "entity_extractor")
+            workflow.add_edge("query_decomposer", "concept_expander")
 
-        # 2. Entity Extractor -> Concept Expander -> Entity Resolver (순차 실행)
-        workflow.add_edge("entity_extractor", "concept_expander")
+        # 3. Concept Expander -> Entity Resolver
         workflow.add_edge("concept_expander", "entity_resolver")
 
         # 3. Entity Resolver -> Cypher Generator 또는 Clarification Handler
@@ -457,6 +456,146 @@ class GraphRAGPipeline:
                 "node": "error",
                 "output": {"error": str(e)},
             }
+
+    async def run_with_streaming_response(
+        self,
+        question: str,
+        session_id: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """
+        스트리밍 응답 파이프라인
+
+        파이프라인을 실행하고 응답 생성 단계에서 토큰 단위로 스트리밍합니다.
+
+        SSE 이벤트 형식:
+        - metadata: 파이프라인 메타데이터 (intent, entities, cypher 등)
+        - chunk: 응답 텍스트 청크
+        - done: 완료 신호 + 전체 응답
+
+        Args:
+            question: 사용자 질문
+            session_id: 세션 ID
+
+        Yields:
+            dict: SSE 이벤트 데이터
+                - {"type": "metadata", "data": {...}}
+                - {"type": "chunk", "text": "..."}
+                - {"type": "done", "full_response": "...", "success": True}
+                - {"type": "error", "message": "..."}
+        """
+        logger.info(f"Running streaming pipeline for: {question[:50]}...")
+
+        thread_id = session_id or "default"
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+
+        # 초기 상태 구성
+        initial_state: GraphRAGState = {
+            "question": question,
+            "session_id": session_id or "",
+            "messages": [HumanMessage(content=question)],
+            "execution_path": [],
+        }
+        if self._graph_schema:
+            initial_state["schema"] = self._graph_schema
+
+        try:
+            # 파이프라인 실행 (response_generator 직전까지 모든 노드 실행)
+            # astream을 사용하여 각 노드 결과를 추적
+            final_state: dict[str, Any] = dict(initial_state)
+
+            async for event in self._graph.astream(initial_state, config=config):
+                for node_name, node_output in event.items():
+                    # 상태 업데이트
+                    if isinstance(node_output, dict):
+                        final_state.update(node_output)
+
+                    # response_generator 노드 도달 전까지 진행
+                    # (response_generator는 마지막 노드)
+                    if node_name == "response_generator":
+                        # 이미 응답이 생성된 상태 → 비스트리밍 응답 (fallback)
+                        response = final_state.get("response", "")
+                        if response:
+                            # 이미 응답 있음 → 한 번에 전송
+                            yield {
+                                "type": "metadata",
+                                "data": self._build_metadata(final_state),
+                            }
+                            yield {"type": "chunk", "text": response}
+                            yield {
+                                "type": "done",
+                                "full_response": response,
+                                "success": True,
+                            }
+                            return
+
+            # 파이프라인 완료 후 스트리밍 응답 생성
+            # (response_generator 노드 대신 직접 스트리밍)
+
+            # 메타데이터 먼저 전송
+            metadata = self._build_metadata(final_state)
+            yield {"type": "metadata", "data": metadata}
+
+            # 스트리밍 응답 생성 조건 확인
+            cypher_query = final_state.get("cypher_query", "")
+            graph_results = final_state.get("graph_results", [])
+            error = final_state.get("error")
+
+            if error or not cypher_query:
+                # 에러 또는 쿼리 없음 → 기본 응답
+                fallback_response = (
+                    f"질문을 처리할 수 없습니다: {error}"
+                    if error
+                    else "검색 조건에 맞는 결과를 찾지 못했습니다."
+                )
+                yield {"type": "chunk", "text": fallback_response}
+                yield {
+                    "type": "done",
+                    "full_response": fallback_response,
+                    "success": not bool(error),
+                }
+                return
+
+            # 스트리밍 응답 생성
+            from src.graph.utils import format_chat_history
+
+            messages = final_state.get("messages", [])
+            chat_history = format_chat_history(messages)
+
+            full_response = ""
+            async for chunk in self._llm.generate_response_stream(
+                question=question,
+                query_results=graph_results,
+                cypher_query=cypher_query,
+                chat_history=chat_history,
+            ):
+                full_response += chunk
+                yield {"type": "chunk", "text": chunk}
+
+            yield {
+                "type": "done",
+                "full_response": full_response,
+                "success": True,
+            }
+
+        except Exception as e:
+            logger.error(f"Streaming pipeline failed: {e}")
+            yield {
+                "type": "error",
+                "message": str(e),
+            }
+
+    def _build_metadata(self, state: dict[str, Any]) -> dict[str, Any]:
+        """스트리밍용 메타데이터 구성"""
+        entities = state.get("expanded_entities") or state.get("entities", {})
+
+        return {
+            "intent": state.get("intent", "unknown"),
+            "intent_confidence": state.get("intent_confidence", 0.0),
+            "entities": entities,
+            "cypher_query": state.get("cypher_query", ""),
+            "result_count": state.get("result_count", 0),
+            "execution_path": state.get("execution_path", []),
+        }
 
     async def _safe_process_unresolved(
         self,

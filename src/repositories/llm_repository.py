@@ -10,6 +10,7 @@ LLM Repository - Azure OpenAI 접근 계층 (openai SDK 직접 사용)
 
 import json
 import logging
+from collections.abc import AsyncIterator
 from enum import Enum
 from typing import Any, cast
 
@@ -25,6 +26,7 @@ from src.domain.types import (
     CypherGenerationResult,
     EntityExtractionResult,
     IntentClassificationResult,
+    IntentEntityExtractionResult,
     QueryDecompositionResult,
 )
 from src.utils.prompt_manager import PromptManager
@@ -402,24 +404,65 @@ class LLMRepository:
         )
         return cast(EntityExtractionResult, result)
 
+    async def classify_intent_and_extract_entities(
+        self,
+        question: str,
+        available_intents: list[str],
+        entity_types: list[str],
+        chat_history: str = "",
+    ) -> IntentEntityExtractionResult:
+        """
+        통합 의도 분류 + 엔티티 추출 (1회 LLM 호출)
+
+        Latency Optimization: 2회 LLM 호출을 1회로 통합하여 ~200ms 절감
+
+        Args:
+            question: 사용자 질문
+            available_intents: 분류 가능한 의도 목록
+            entity_types: 추출할 엔티티 타입 목록
+            chat_history: 이전 대화 기록 (포맷된 문자열)
+
+        Returns:
+            IntentEntityExtractionResult: 통합 결과 (intent, confidence, entities)
+        """
+        prompt = self._prompt_manager.load_prompt("intent_entity_combined")
+
+        system_prompt = prompt["system"].format(
+            available_intents=", ".join(available_intents),
+            entity_types=", ".join(entity_types),
+        )
+        user_prompt = prompt["user"].format(
+            question=question,
+            chat_history=self._format_chat_history_for_prompt(chat_history),
+        )
+
+        result = await self.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_tier=ModelTier.LIGHT,
+        )
+        return cast(IntentEntityExtractionResult, result)
+
     async def generate_cypher(
         self,
         question: str,
         schema: dict[str, Any],
         entities: list[dict[str, Any]],
         query_plan: dict[str, Any] | None = None,
+        use_light_model: bool = False,
     ) -> CypherGenerationResult:
         """
-        Cypher 쿼리 생성 (with Fallback: HEAVY → LIGHT → Error)
+        Cypher 쿼리 생성 (복잡도에 따른 모델 선택 지원)
 
-        Cypher 생성은 복잡한 작업이므로 HEAVY 티어를 우선 사용하고,
-        실패 시 LIGHT 티어로 fallback합니다.
+        기본적으로 HEAVY 티어를 우선 사용하고, 실패 시 LIGHT 티어로 fallback합니다.
+        use_light_model=True인 경우 처음부터 LIGHT 모델만 사용합니다 (단순 쿼리 최적화).
 
         Args:
             question: 사용자 질문
             schema: 그래프 스키마
             entities: 추출된 엔티티 목록
             query_plan: Multi-hop 쿼리 계획 (선택적)
+            use_light_model: True면 LIGHT 모델만 사용 (단순 쿼리 최적화)
 
         Returns:
             CypherGenerationResult: Generated Cypher query and metadata
@@ -440,11 +483,20 @@ class LLMRepository:
             query_plan_str=query_plan_str,
         )
 
-        # Fallback 적용: HEAVY → LIGHT → Error
-        result = await self._generate_json_with_fallback(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-        )
+        if use_light_model:
+            # 단순 쿼리: LIGHT 모델 직접 사용 (fallback 없음)
+            logger.info("Using LIGHT model for simple Cypher generation")
+            result = await self.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model_tier=ModelTier.LIGHT,
+            )
+        else:
+            # 복잡한 쿼리: Fallback 적용 (HEAVY → LIGHT → Error)
+            result = await self._generate_json_with_fallback(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
         return cast(CypherGenerationResult, result)
 
     async def generate_response(
@@ -485,6 +537,82 @@ class LLMRepository:
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )
+
+    async def generate_response_stream(
+        self,
+        question: str,
+        query_results: list[dict[str, Any]],
+        cypher_query: str,
+        chat_history: str = "",
+    ) -> AsyncIterator[str]:
+        """
+        토큰 단위 스트리밍 응답 생성
+
+        Latency Optimization: 첫 토큰을 ~100ms 내에 반환하여 체감 레이턴시 개선
+
+        Args:
+            question: 사용자 질문
+            query_results: Neo4j 쿼리 결과
+            cypher_query: 실행된 Cypher 쿼리 (디버깅용)
+            chat_history: 이전 대화 기록 (포맷된 문자열)
+
+        Yields:
+            str: 토큰 단위 텍스트 청크
+
+        Raises:
+            LLMResponseError: 스트리밍 실패 시
+        """
+        prompt = self._prompt_manager.load_prompt("response_generation")
+
+        results_str = self._format_results(query_results)
+
+        system_prompt = prompt["system"]
+        user_prompt = prompt["user"].format(
+            question=question,
+            results_str=results_str,
+            chat_history=self._format_chat_history_for_prompt(chat_history),
+        )
+
+        client = self._get_client()
+        deployment = self._get_deployment(ModelTier.HEAVY)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            api_params: dict[str, Any] = {
+                "model": deployment,
+                "messages": messages,
+                "max_completion_tokens": self._settings.llm_max_tokens,
+                "stream": True,
+            }
+
+            # GPT-5 이상 모델은 temperature 미지원
+            if self._supports_temperature(deployment):
+                api_params["temperature"] = self._settings.llm_temperature
+
+            logger.info(f"Starting response streaming (deployment: {deployment})")
+
+            response = await client.chat.completions.create(**api_params)
+
+            async for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        except RateLimitError as e:
+            logger.warning(f"Rate limit exceeded during streaming: {e}")
+            raise LLMRateLimitError(str(e)) from e
+        except APIConnectionError as e:
+            logger.error(f"API connection error during streaming: {e}")
+            raise LLMConnectionError(str(e)) from e
+        except APIStatusError as e:
+            logger.error(f"API status error during streaming: {e}")
+            raise LLMResponseError(f"API error: {e.status_code} - {e.message}") from e
+        except Exception as e:
+            logger.error(f"Response streaming failed: {e}")
+            raise LLMResponseError(f"Failed to stream response: {e}") from e
 
     async def generate_clarification(
         self,
