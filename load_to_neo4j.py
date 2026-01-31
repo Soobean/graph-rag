@@ -42,7 +42,30 @@ def create_constraints(driver):
     for constraint in constraints:
         try:
             run_query(driver, constraint)
-        except Exception as e:
+        except Exception:
+            pass  # 이미 존재하는 경우 무시
+
+    # name 필드 인덱스 (검색 성능 최적화)
+    # 쿼리에서 WHERE n.name = $name, WHERE n.name CONTAINS $name 패턴이 빈번
+    indexes = [
+        "CREATE INDEX employee_name IF NOT EXISTS FOR (e:Employee) ON (e.name)",
+        "CREATE INDEX department_name IF NOT EXISTS FOR (d:Department) ON (d.name)",
+        "CREATE INDEX skill_name IF NOT EXISTS FOR (s:Skill) ON (s.name)",
+        "CREATE INDEX project_name IF NOT EXISTS FOR (p:Project) ON (p.name)",
+        "CREATE INDEX company_name IF NOT EXISTS FOR (c:Company) ON (c.name)",
+        "CREATE INDEX office_name IF NOT EXISTS FOR (o:Office) ON (o.name)",
+        "CREATE INDEX position_name IF NOT EXISTS FOR (pos:Position) ON (pos.name)",
+        "CREATE INDEX certificate_name IF NOT EXISTS FOR (cert:Certificate) ON (cert.name)",
+        # 추가 검색 필드 인덱스
+        "CREATE INDEX skill_category IF NOT EXISTS FOR (s:Skill) ON (s.category)",
+        "CREATE INDEX project_type IF NOT EXISTS FOR (p:Project) ON (p.type)",
+        "CREATE INDEX project_status IF NOT EXISTS FOR (p:Project) ON (p.status)",
+    ]
+
+    for idx in indexes:
+        try:
+            run_query(driver, idx)
+        except Exception:
             pass  # 이미 존재하는 경우 무시
 
     print("  ✓ 완료")
