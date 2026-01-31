@@ -1,10 +1,11 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { Trash2 } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { Button } from '@/components/ui/button';
 import { useChatStore, useGraphStore } from '@/stores';
-import { useQueryApi } from '@/api/hooks';
+import { useStreamingQuery } from '@/api/hooks';
+import type { StreamingMetadata } from '@/types/api';
 import { cn } from '@/lib/utils';
 
 interface ChatPanelProps {
@@ -24,6 +25,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
   const { setGraphData, clearGraph } = useGraphStore();
 
   const messages = getCurrentMessages();
+  const currentAssistantIdRef = useRef<string | null>(null);
 
   // 세션이 없으면 생성
   useEffect(() => {
@@ -32,41 +34,58 @@ export function ChatPanel({ className }: ChatPanelProps) {
     }
   }, [currentSessionId, createSession]);
 
-  const queryMutation = useQueryApi({
-    onSuccess: (data) => {
-      // 응답 메시지 업데이트
-      const assistantMessageId = messages.find(
-        (m) => m.role === 'assistant' && m.isLoading
-      )?.id;
-
-      if (assistantMessageId) {
-        updateMessage(assistantMessageId, {
-          content: data.response,
-          metadata: data.metadata,
-          graphData: data.explanation?.graph_data || undefined,
-          thoughtProcess: data.explanation?.thought_process || undefined,
-          isLoading: false,
-        });
-
-        // 그래프 데이터 업데이트
-        if (data.explanation?.graph_data) {
-          setGraphData(data.explanation.graph_data);
+  // 스트리밍 콜백을 useMemo로 안정화
+  const streamingCallbacks = useMemo(
+    () => ({
+      onChunk: (chunk: string, fullContent: string) => {
+        // 청크 수신 시 메시지 업데이트 (타이핑 효과)
+        if (currentAssistantIdRef.current) {
+          updateMessage(currentAssistantIdRef.current, {
+            content: fullContent,
+          });
         }
-      }
-    },
-    onError: (error) => {
-      const assistantMessageId = messages.find(
-        (m) => m.role === 'assistant' && m.isLoading
-      )?.id;
+      },
+      onMetadata: (metadata: StreamingMetadata) => {
+        // 메타데이터 수신 시 업데이트
+        if (currentAssistantIdRef.current) {
+          updateMessage(currentAssistantIdRef.current, {
+            metadata: {
+              intent: metadata.intent,
+              intent_confidence: metadata.intent_confidence,
+              entities: metadata.entities,
+              cypher_query: metadata.cypher_query,
+              result_count: metadata.result_count,
+              execution_path: metadata.execution_path,
+            },
+          });
+        }
+      },
+      onComplete: (fullResponse: string, success: boolean) => {
+        // 완료 시 최종 업데이트
+        if (currentAssistantIdRef.current) {
+          updateMessage(currentAssistantIdRef.current, {
+            content: fullResponse,
+            isLoading: false,
+          });
+          currentAssistantIdRef.current = null;
+        }
+      },
+      onError: (error: string) => {
+        // 에러 발생 시 업데이트
+        if (currentAssistantIdRef.current) {
+          updateMessage(currentAssistantIdRef.current, {
+            isLoading: false,
+            error: error || 'An error occurred',
+          });
+          currentAssistantIdRef.current = null;
+        }
+      },
+    }),
+    [updateMessage]
+  );
 
-      if (assistantMessageId) {
-        updateMessage(assistantMessageId, {
-          isLoading: false,
-          error: error.message || 'An error occurred',
-        });
-      }
-    },
-  });
+  const { state: streamingState, startStreaming } =
+    useStreamingQuery(streamingCallbacks);
 
   const handleSend = useCallback(
     (content: string) => {
@@ -77,21 +96,22 @@ export function ChatPanel({ className }: ChatPanelProps) {
       });
 
       // 로딩 상태의 어시스턴트 메시지 추가
-      addMessage({
+      const assistantId = addMessage({
         role: 'assistant',
         content: '',
         isLoading: true,
       });
 
-      // API 호출
-      queryMutation.mutate({
+      // 현재 어시스턴트 메시지 ID 저장
+      currentAssistantIdRef.current = assistantId;
+
+      // 스트리밍 API 호출
+      startStreaming({
         question: content,
         session_id: currentSessionId || undefined,
-        include_explanation: true,
-        include_graph: true,
       });
     },
-    [addMessage, queryMutation, currentSessionId]
+    [addMessage, startStreaming, currentSessionId]
   );
 
   const handleClearHistory = useCallback(() => {
@@ -115,7 +135,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
         </Button>
       </div>
       <MessageList messages={messages} />
-      <ChatInput onSend={handleSend} isLoading={queryMutation.isPending} />
+      <ChatInput onSend={handleSend} isLoading={streamingState.isStreaming} />
     </div>
   );
 }

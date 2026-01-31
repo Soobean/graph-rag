@@ -115,3 +115,42 @@ export interface HealthResponse {
   version: string;
   neo4j_connected: boolean;
 }
+
+// SSE Streaming Types
+export interface StreamingMetadata {
+  intent: string;
+  intent_confidence: number;
+  entities: Record<string, string[]>;
+  cypher_query: string;
+  result_count: number;
+  execution_path: string[];
+}
+
+export type StreamingEventType = 'metadata' | 'chunk' | 'done' | 'error';
+
+export interface StreamingMetadataEvent {
+  type: 'metadata';
+  data: StreamingMetadata;
+}
+
+export interface StreamingChunkEvent {
+  type: 'chunk';
+  text: string;
+}
+
+export interface StreamingDoneEvent {
+  type: 'done';
+  success: boolean;
+  full_response: string;
+}
+
+export interface StreamingErrorEvent {
+  type: 'error';
+  message: string;
+}
+
+export type StreamingEvent =
+  | StreamingMetadataEvent
+  | StreamingChunkEvent
+  | StreamingDoneEvent
+  | StreamingErrorEvent;
