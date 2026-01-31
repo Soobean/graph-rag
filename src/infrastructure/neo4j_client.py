@@ -36,16 +36,20 @@ logger = logging.getLogger(__name__)
 
 def _serialize_value(value: Any) -> Any:
     """
-    Neo4j 반환값을 JSON 직렬화 가능한 형태로 변환
+    Neo4j 반환값을 JSON/msgpack 직렬화 가능한 형태로 변환
 
-    Node, Relationship, Path 객체의 구조적 메타데이터를 보존합니다.
+    Node, Relationship, Path 객체의 구조적 메타데이터를 보존하고,
+    DateTime 등 Neo4j 특수 타입을 ISO 문자열로 변환합니다.
     """
+    if value is None:
+        return None
+
     if isinstance(value, Node):
         return {
             "id": value.element_id,
             "elementId": value.element_id,
             "labels": list(value.labels),
-            "properties": dict(value),
+            "properties": {k: _serialize_value(v) for k, v in dict(value).items()},
         }
     elif isinstance(value, Relationship):
         return {
@@ -54,7 +58,7 @@ def _serialize_value(value: Any) -> Any:
             "type": value.type,
             "startNodeId": value.start_node.element_id if value.start_node else None,
             "endNodeId": value.end_node.element_id if value.end_node else None,
-            "properties": dict(value),
+            "properties": {k: _serialize_value(v) for k, v in dict(value).items()},
         }
     elif isinstance(value, Path):
         return {
@@ -65,8 +69,17 @@ def _serialize_value(value: Any) -> Any:
         return [_serialize_value(item) for item in value]
     elif isinstance(value, dict):
         return {k: _serialize_value(v) for k, v in value.items()}
-    else:
-        return value
+
+    # Neo4j DateTime/Date/Time/Duration → ISO 문자열
+    type_name = type(value).__name__
+    if type_name in ("DateTime", "Date", "Time", "Duration"):
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        elif hasattr(value, "iso_format"):
+            return value.iso_format()
+        return str(value)
+
+    return value
 
 
 def _sanitize_uri(uri: str) -> str:

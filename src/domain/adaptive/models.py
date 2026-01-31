@@ -1,5 +1,4 @@
 import logging
-import warnings
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -135,29 +134,6 @@ class OntologyProposal:
     # Phase 4: 온톨로지 적용 관련 필드
     suggested_relation_type: str | None = None  # IS_A, SAME_AS, REQUIRES, PART_OF
     applied_at: datetime | None = None  # 온톨로지 실제 적용 시각
-
-    def add_evidence(self, question: str) -> None:
-        """
-        증거 질문 추가 및 빈도 증가.
-
-        .. deprecated::
-            이 메서드는 로컬 객체만 수정하며 동시성 문제가 있습니다.
-            Neo4jRepository.update_proposal_frequency()를 사용하세요.
-
-        Warning:
-            여러 요청이 동시에 호출하면 빈도가 정확하지 않을 수 있습니다.
-            DB 업데이트는 별도로 Neo4jRepository를 통해 수행해야 합니다.
-        """
-        warnings.warn(
-            "add_evidence() is deprecated and has concurrency issues. "
-            "Use Neo4jRepository.update_proposal_frequency() for atomic updates.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if question not in self.evidence_questions:
-            self.evidence_questions.append(question)
-        self.frequency += 1
-        self.updated_at = datetime.now(UTC)
 
     def approve(self, reviewer: str | None = None, auto: bool = False) -> None:
         """제안 승인"""
