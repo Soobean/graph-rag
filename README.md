@@ -8,6 +8,7 @@ Neo4j 그래프 데이터베이스와 Azure OpenAI를 활용한 RAG(Retrieval-Au
 - **온톨로지 시스템**: 동의어/계층 확장으로 검색 정확도 향상
 - **Explainable AI**: 추론 과정 시각화
 - **GDS 분석**: 커뮤니티 탐지, 유사도 분석, 팀 추천
+- **Admin Dashboard**: 시스템 모니터링, 온톨로지 관리, 데이터 적재
 
 ## 빠른 시작 (Docker)
 
@@ -36,6 +37,17 @@ docker compose down
 - **API**: http://localhost:8000
 - **API 문서**: http://localhost:8000/docs
 - **Neo4j Browser**: http://localhost:7474
+
+### 4. 프론트엔드 실행
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+- **Chat UI**: http://localhost:3000
+- **Admin Dashboard**: http://localhost:3000/admin
 
 ---
 
@@ -76,6 +88,16 @@ docker run -d --name neo4j \
 uvicorn src.main:app --reload
 ```
 
+### Frontend 개발
+
+```bash
+cd frontend
+npm install
+npm run dev      # 개발 서버 (port 3000)
+npm run build    # 프로덕션 빌드
+npm run lint     # ESLint
+```
+
 ---
 
 ## 테스트
@@ -96,19 +118,39 @@ pytest tests/ -m integration -v
 ## 프로젝트 구조
 
 ```
-graph-search/
-├── src/
-│   ├── api/           # FastAPI 라우터, 스키마
-│   ├── graph/         # LangGraph 파이프라인
-│   ├── domain/        # 도메인 모델, 온톨로지
-│   ├── repositories/  # 데이터 접근 (Neo4j, LLM)
-│   └── prompts/       # LLM 프롬프트 템플릿
-├── tests/             # 테스트
-├── docs/              # 문서
-│   ├── design/        # 설계 문서
-│   └── presentation/  # 발표 자료
-└── scripts/           # 유틸리티 스크립트
+graph-rag/
+├── src/                    # 백엔드 (Python/FastAPI)
+│   ├── api/                # FastAPI 라우터, 스키마
+│   ├── graph/              # LangGraph 파이프라인
+│   ├── domain/             # 도메인 모델, 온톨로지
+│   ├── repositories/       # 데이터 접근 (Neo4j, LLM)
+│   └── prompts/            # LLM 프롬프트 템플릿
+├── frontend/               # 프론트엔드 (React/TypeScript)
+│   └── src/
+│       ├── api/            # API 클라이언트, React Query 훅
+│       ├── components/     # UI 컴포넌트
+│       │   ├── ui/         # 공통 UI (button, table, dialog)
+│       │   ├── chat/       # 채팅 컴포넌트
+│       │   └── admin/      # Admin 대시보드 컴포넌트
+│       ├── pages/          # 페이지 컴포넌트
+│       └── stores/         # Zustand 상태 관리
+├── tests/                  # 백엔드 테스트
+├── docs/                   # 문서
+└── scripts/                # 유틸리티 스크립트
 ```
+
+---
+
+## Admin Dashboard
+
+관리자 대시보드에서 시스템 모니터링 및 관리 기능을 제공합니다.
+
+| 섹션 | 경로 | 기능 |
+|------|------|------|
+| Overview | `/admin/overview` | 시스템 헬스, Neo4j 연결 상태, 그래프 통계 |
+| Ontology | `/admin/ontology` | 온톨로지 제안 목록, 승인/거절, 배치 처리 |
+| Ingest | `/admin/ingest` | 데이터 적재 작업 제출, 진행률 모니터링 |
+| Analytics | `/admin/analytics` | 커뮤니티 탐지, 유사 직원 검색, 팀 추천 |
 
 ---
 
@@ -151,6 +193,7 @@ curl http://localhost:8000/api/v1/health
 - [API 문서](API_DOCUMENTATION.md)
 - [아키텍처 설계](docs/ARCHITECTURE.md)
 - [Adaptive Ontology 설계](docs/design/ADAPTIVE_ONTOLOGY.md)
+- [프론트엔드 가이드](frontend/README.md)
 
 ---
 
