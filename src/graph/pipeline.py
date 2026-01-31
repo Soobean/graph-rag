@@ -35,6 +35,7 @@ from src.graph.nodes import (
     EntityResolverNode,
     GraphExecutorNode,
     IntentEntityExtractorNode,
+    OntologyUpdateHandlerNode,
     QueryDecomposerNode,
     ResponseGeneratorNode,
 )
@@ -44,6 +45,7 @@ from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.repositories.query_cache_repository import QueryCacheRepository
+from src.services.ontology_service import OntologyService
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +86,7 @@ class GraphRAGPipeline:
         graph_schema: GraphSchema | None = None,
         ontology_loader: OntologyLoader | HybridOntologyLoader | None = None,
         ontology_registry: OntologyRegistry | None = None,
+        ontology_service: OntologyService | None = None,
     ):
         self._settings = settings
         self._neo4j = neo4j_repository
@@ -159,6 +162,17 @@ class GraphRAGPipeline:
             )
             logger.info("OntologyLearner initialized (Adaptive Ontology enabled)")
 
+        # Ontology Update Handler (User-driven Ontology Updates)
+        self._ontology_service = ontology_service
+        self._ontology_update_handler: OntologyUpdateHandlerNode | None = None
+        if ontology_service is not None:
+            self._ontology_update_handler = OntologyUpdateHandlerNode(
+                llm_repository=llm_repository,
+                neo4j_repository=neo4j_repository,
+                ontology_service=ontology_service,
+            )
+            logger.info("OntologyUpdateHandler initialized (user-driven updates enabled)")
+
         # 백그라운드 태스크 참조 저장 (GC 방지)
         self._background_tasks: set[asyncio.Task[Any]] = set()
 
@@ -201,6 +215,10 @@ class GraphRAGPipeline:
         if self._cache_checker:
             workflow.add_node("cache_checker", self._cache_checker)
 
+        # Ontology Update Handler 노드 추가 (User-driven Ontology Updates)
+        if self._ontology_update_handler:
+            workflow.add_node("ontology_update_handler", self._ontology_update_handler)
+
         # 시작점 설정
         workflow.set_entry_point("intent_entity_extractor")
 
@@ -208,20 +226,41 @@ class GraphRAGPipeline:
         # 엣지 정의
         # ---------------------------------------------------------
 
-        # 1. IntentEntityExtractor -> Query Decomposer 또는 Response Generator
+        # 1. IntentEntityExtractor -> Query Decomposer, Ontology Update Handler, 또는 Response Generator
+        # Ontology Update Handler가 활성화된 경우 라우팅 분기 추가
+        has_ontology_handler = self._ontology_update_handler is not None
+
         def route_after_intent(
             state: GraphRAGState,
-        ) -> Literal["query_decomposer", "response_generator"]:
-            if state.get("intent") == "unknown":
+        ) -> Literal["query_decomposer", "ontology_update_handler", "response_generator"]:
+            intent = state.get("intent")
+            if intent == "unknown":
                 logger.info("Intent is unknown. Skipping to response generator.")
                 return "response_generator"
+            if intent == "ontology_update":
+                if has_ontology_handler:
+                    logger.info("Intent is ontology_update. Routing to ontology_update_handler.")
+                    return "ontology_update_handler"
+                else:
+                    logger.warning(
+                        "Intent is ontology_update but handler not configured. "
+                        "Proceeding to query_decomposer."
+                    )
             return "query_decomposer"
 
-        workflow.add_conditional_edges(
-            "intent_entity_extractor",
-            route_after_intent,
-            ["query_decomposer", "response_generator"],
-        )
+        # 조건부 엣지에 ontology_update_handler 추가 (활성화된 경우만)
+        if has_ontology_handler:
+            workflow.add_conditional_edges(
+                "intent_entity_extractor",
+                route_after_intent,
+                ["query_decomposer", "ontology_update_handler", "response_generator"],
+            )
+        else:
+            workflow.add_conditional_edges(
+                "intent_entity_extractor",
+                route_after_intent,
+                ["query_decomposer", "response_generator"],
+            )
 
         # 2. Query Decomposer -> Cache Checker 또는 Concept Expander
         if self._cache_checker:
@@ -307,6 +346,10 @@ class GraphRAGPipeline:
 
         # 7. Response Generator -> END
         workflow.add_edge("response_generator", END)
+
+        # 8. Ontology Update Handler -> END (자체 응답 생성 후 종료)
+        if self._ontology_update_handler:
+            workflow.add_edge("ontology_update_handler", END)
 
         # Checkpointer와 함께 컴파일 (세션별 대화 기록 자동 관리)
         return workflow.compile(checkpointer=self._checkpointer)

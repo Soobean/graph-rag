@@ -341,6 +341,17 @@ class QueryDecomposerUpdate(TypedDict, total=False):
     error: str | None
 
 
+class OntologyUpdateHandlerUpdate(TypedDict, total=False):
+    """OntologyUpdateHandler 노드 반환 타입 (사용자 주도 온톨로지 업데이트)"""
+
+    response: str
+    proposal_id: str | None
+    applied: bool
+    execution_path: list[str]
+    messages: list["BaseMessage"]
+    error: str | None
+
+
 class QueryDecompositionResult(TypedDict, total=False):
     """LLM 쿼리 분해 결과"""
 
@@ -367,4 +378,5 @@ NodeUpdate = (
     | ResponseGeneratorUpdate
     | CacheCheckerUpdate
     | QueryDecomposerUpdate
+    | OntologyUpdateHandlerUpdate
 )

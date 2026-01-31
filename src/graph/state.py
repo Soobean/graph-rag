@@ -15,7 +15,7 @@ from langgraph.graph.message import add_messages
 
 from src.domain.types import GraphSchema, QueryPlan, ResolvedEntity, UnresolvedEntity
 
-# ARCHITECTURE.md에 정의된 7가지 Intent Type + unknown
+# ARCHITECTURE.md에 정의된 7가지 Intent Type + ontology_update + unknown
 IntentType = Literal[
     "personnel_search",  # A. 인력 추천
     "project_matching",  # B. 프로젝트 매칭
@@ -24,6 +24,7 @@ IntentType = Literal[
     "mentoring_network",  # E. 멘토링 네트워크
     "certificate_search",  # F. 자격증 기반 검색
     "path_analysis",  # G. 경로 기반 분석
+    "ontology_update",  # H. 온톨로지 업데이트 요청 (사용자 주도)
     "unknown",  # 분류 불가
 ]
 

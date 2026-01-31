@@ -94,7 +94,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     logger.info(f"OntologyRegistry initialized (mode={ontology_registry.mode})")
 
-    # Pipeline 초기화 (스키마 + 온톨로지 로더 주입)
+    # OntologyService 초기화 (Pipeline에 주입하여 사용자 주도 온톨로지 업데이트 지원)
+    ontology_service = OntologyService(
+        neo4j_repository=neo4j_repo,
+        ontology_registry=ontology_registry,
+    )
+    logger.info("OntologyService initialized for Pipeline injection")
+
+    # Pipeline 초기화 (스키마 + 온톨로지 로더 + 온톨로지 서비스 주입)
     pipeline = GraphRAGPipeline(
         settings=settings,
         neo4j_repository=neo4j_repo,
@@ -103,8 +110,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         graph_schema=graph_schema,
         ontology_loader=ontology_registry.get_loader(),
         ontology_registry=ontology_registry,
+        ontology_service=ontology_service,
     )
-    logger.info("Pipeline initialized with pre-loaded schema and ontology registry")
+    logger.info("Pipeline initialized with pre-loaded schema, ontology registry, and ontology service")
 
     # GDS 서비스 초기화
     gds_service = GDSService(
@@ -116,12 +124,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await gds_service.connect()
     logger.info("GDS service connected")
 
-    # OntologyService 초기화 (registry 주입으로 런타임 캐시 갱신 지원)
-    ontology_service = OntologyService(
-        neo4j_repository=neo4j_repo,
-        ontology_registry=ontology_registry,
-    )
-    logger.info("OntologyService initialized with OntologyRegistry")
+    # OntologyService는 위에서 이미 초기화됨 (Pipeline과 app.state 모두에서 사용)
 
     # ExplainabilityService 초기화 (stateless 서비스)
     explainability_service = ExplainabilityService()
