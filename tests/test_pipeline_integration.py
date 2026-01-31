@@ -286,3 +286,134 @@ class TestPipelineEmptyResults:
         assert result["success"] is True
         # 엔티티가 없어도 파이프라인은 계속 진행
         assert "cypher_generator" in result["metadata"]["execution_path"]
+
+
+class TestOntologyUpdateRouting:
+    """사용자 주도 온톨로지 업데이트 라우팅 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_ontology_update_routes_to_handler(
+        self, pipeline_with_ontology, mock_llm, mock_neo4j
+    ):
+        """ontology_update intent 시 ontology_update_handler로 라우팅"""
+        # Intent를 ontology_update로 설정
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "ontology_update",
+            "confidence": 0.95,
+            "entities": [],
+        }
+        # LLM 파싱 결과 설정
+        mock_llm.generate_json.return_value = {
+            "action": "add_concept",
+            "term": "LangGraph",
+            "category": "Skill",
+            "canonical": None,
+            "relation_type": None,
+            "target_term": None,
+            "parent": "Framework",
+            "confidence": 0.92,
+            "reasoning": "LangGraph는 AI 프레임워크입니다",
+        }
+
+        result = await pipeline_with_ontology.run("LangGraph를 스킬로 추가해줘")
+
+        assert result["success"] is True
+        path = result["metadata"]["execution_path"]
+
+        # ontology_update_handler로 라우팅됨
+        assert "ontology_update_handler" in path
+        # 기존 쿼리 파이프라인은 스킵됨
+        assert "cypher_generator" not in path
+        assert "graph_executor" not in path
+
+    @pytest.mark.asyncio
+    async def test_ontology_update_add_synonym(
+        self, pipeline_with_ontology, mock_llm, mock_neo4j, mock_ontology_service
+    ):
+        """동의어 추가 요청 처리"""
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "ontology_update",
+            "confidence": 0.92,
+            "entities": [],
+        }
+        mock_llm.generate_json.return_value = {
+            "action": "add_synonym",
+            "term": "ReactJS",
+            "category": "Skill",
+            "canonical": "React",
+            "relation_type": "SAME_AS",
+            "target_term": "React",
+            "parent": None,
+            "confidence": 0.88,
+            "reasoning": "ReactJS는 React의 다른 이름입니다",
+        }
+
+        # 승인 결과 설정
+        from datetime import UTC, datetime
+        from src.domain.adaptive.models import OntologyProposal, ProposalStatus, ProposalType
+
+        mock_ontology_service.approve_proposal.return_value = OntologyProposal(
+            proposal_type=ProposalType.NEW_SYNONYM,
+            term="ReactJS",
+            category="skills",
+            suggested_action="test",
+            suggested_canonical="React",
+            status=ProposalStatus.APPROVED,
+            applied_at=datetime.now(UTC),
+        )
+
+        result = await pipeline_with_ontology.run("ReactJS와 React는 같은 거야")
+
+        assert result["success"] is True
+        assert "ontology_update_handler" in result["metadata"]["execution_path"]
+        assert "동의어" in result["response"]
+
+    @pytest.mark.asyncio
+    async def test_ontology_update_without_service_fallback(
+        self, pipeline, mock_llm
+    ):
+        """OntologyService 없는 pipeline에서 ontology_update intent 처리"""
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "ontology_update",
+            "confidence": 0.9,
+            "entities": [],
+        }
+        mock_llm.generate_cypher.return_value = {
+            "cypher": "MATCH (n) RETURN n LIMIT 1",
+            "parameters": {},
+        }
+        mock_llm.generate_response.return_value = "쿼리 결과입니다."
+
+        result = await pipeline.run("LangGraph를 스킬로 추가해줘")
+
+        # OntologyService가 없으면 query_decomposer로 fallback (기존 쿼리 파이프라인 진행)
+        path = result["metadata"]["execution_path"]
+        assert "ontology_update_handler" not in path
+        # query_decomposer 또는 query_decomposer_skipped가 있어야 함
+        assert any("query_decomposer" in node for node in path)
+
+    @pytest.mark.asyncio
+    async def test_ontology_update_low_confidence_response(
+        self, pipeline_with_ontology, mock_llm
+    ):
+        """낮은 신뢰도 파싱 시 명확화 요청"""
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "ontology_update",
+            "confidence": 0.85,
+            "entities": [],
+        }
+        mock_llm.generate_json.return_value = {
+            "action": "add_concept",
+            "term": "??",
+            "category": "Skill",
+            "confidence": 0.4,  # 낮은 신뢰도
+            "reasoning": "요청이 불명확합니다",
+        }
+
+        result = await pipeline_with_ontology.run("모호한 요청")
+
+        assert result["success"] is True
+        path = result["metadata"]["execution_path"]
+        # ontology_update_handler 또는 ontology_update_handler_low_confidence가 있어야 함
+        assert any("ontology_update_handler" in node for node in path)
+        assert "신뢰도" in result["response"] or "명확" in result["response"]

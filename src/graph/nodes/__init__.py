@@ -14,6 +14,7 @@ from src.graph.nodes.entity_resolver import EntityResolverNode
 from src.graph.nodes.graph_executor import GraphExecutorNode
 from src.graph.nodes.intent_classifier import IntentClassifierNode
 from src.graph.nodes.intent_entity_extractor import IntentEntityExtractorNode
+from src.graph.nodes.ontology_update_handler import OntologyUpdateHandlerNode
 from src.graph.nodes.query_decomposer import QueryDecomposerNode
 from src.graph.nodes.response_generator import ResponseGeneratorNode
 
@@ -30,4 +31,5 @@ __all__ = [
     "ResponseGeneratorNode",
     "ClarificationHandlerNode",
     "CacheCheckerNode",
+    "OntologyUpdateHandlerNode",
 ]

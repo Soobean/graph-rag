@@ -25,6 +25,7 @@ class IntentClassifierNode(BaseNode[IntentClassifierUpdate]):
         "mentoring_network",
         "certificate_search",
         "path_analysis",
+        "ontology_update",  # 사용자 주도 온톨로지 업데이트
     ]
 
     def __init__(self, llm_repository: LLMRepository):

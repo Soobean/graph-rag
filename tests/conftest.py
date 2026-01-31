@@ -4,13 +4,17 @@
 파이프라인 테스트에서 사용하는 공통 Mock 객체들을 정의합니다.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from src.config import Settings
+from src.domain.adaptive.models import OntologyProposal, ProposalStatus, ProposalType
 from src.graph.pipeline import GraphRAGPipeline
 from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.services.ontology_service import OntologyService
 
 
 @pytest.fixture
@@ -77,4 +81,48 @@ def pipeline(mock_settings, mock_neo4j, mock_llm, graph_schema):
         neo4j_repository=mock_neo4j,
         llm_repository=mock_llm,
         graph_schema=graph_schema,
+    )
+
+
+@pytest.fixture
+def mock_ontology_service(mock_neo4j):
+    """Mock OntologyService for ontology_update tests"""
+    service = MagicMock(spec=OntologyService)
+
+    async def mock_approve(
+        proposal_id: str,
+        expected_version: int,
+        reviewer: str | None = None,
+        canonical: str | None = None,
+        parent: str | None = None,
+        note: str | None = None,
+    ) -> OntologyProposal:
+        return OntologyProposal(
+            id=proposal_id,
+            proposal_type=ProposalType.NEW_CONCEPT,
+            term="LangGraph",
+            category="skills",
+            suggested_action="test",
+            status=ProposalStatus.APPROVED,
+            applied_at=datetime.now(UTC),
+        )
+
+    service.approve_proposal = AsyncMock(side_effect=mock_approve)
+    return service
+
+
+@pytest.fixture
+def pipeline_with_ontology(
+    mock_settings, mock_neo4j, mock_llm, graph_schema, mock_ontology_service
+):
+    """테스트용 파이프라인 (OntologyService 포함)"""
+    # Neo4j에 proposal 저장 mock 추가
+    mock_neo4j.save_ontology_proposal = AsyncMock(side_effect=lambda p: p)
+
+    return GraphRAGPipeline(
+        settings=mock_settings,
+        neo4j_repository=mock_neo4j,
+        llm_repository=mock_llm,
+        graph_schema=graph_schema,
+        ontology_service=mock_ontology_service,
     )
