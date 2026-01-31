@@ -7,6 +7,8 @@ LangGraph를 사용한 RAG 파이프라인 정의
 - 스키마는 초기화 시 주입 (런타임 조회 제거)
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import AsyncIterator
@@ -19,7 +21,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 if TYPE_CHECKING:
-    from langgraph.graph.state import CompiledStateGraph
+    from src.domain.ontology.registry import OntologyRegistry
 
 from src.config import Settings
 from src.domain.ontology.hybrid_loader import HybridOntologyLoader
@@ -80,6 +82,8 @@ class GraphRAGPipeline:
         llm_repository: LLMRepository,
         neo4j_client: Neo4jClient | None = None,
         graph_schema: GraphSchema | None = None,
+        ontology_loader: OntologyLoader | HybridOntologyLoader | None = None,
+        ontology_registry: OntologyRegistry | None = None,
     ):
         self._settings = settings
         self._neo4j = neo4j_repository
@@ -94,7 +98,12 @@ class GraphRAGPipeline:
 
         # 온톨로지 로더 초기화 (개념 확장용)
         self._ontology_loader: OntologyLoader | HybridOntologyLoader
-        if settings.ontology_mode in ("neo4j", "hybrid"):
+        self._ontology_registry = ontology_registry
+
+        if ontology_loader is not None:
+            self._ontology_loader = ontology_loader
+            logger.info("Using injected ontology loader from OntologyRegistry")
+        elif settings.ontology_mode in ("neo4j", "hybrid"):
             if neo4j_client is None:
                 logger.warning(
                     f"ontology_mode={settings.ontology_mode} but neo4j_client is None. "
@@ -146,6 +155,7 @@ class GraphRAGPipeline:
                 llm_repository=llm_repository,
                 neo4j_repository=neo4j_repository,
                 ontology_loader=self._ontology_loader,
+                ontology_registry=self._ontology_registry,
             )
             logger.info("OntologyLearner initialized (Adaptive Ontology enabled)")
 

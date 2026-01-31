@@ -403,3 +403,11 @@ class Neo4jOntologyLoader:
         except Exception as e:
             logger.error(f"health_check failed: {e}")
             return {"status": "unhealthy", "error": str(e)}
+
+    async def clear_cache(self) -> None:
+        """
+        내부 캐시 클리어
+
+        향후 캐시 추가 시 이 메서드에서 클리어합니다.
+        """
+        pass

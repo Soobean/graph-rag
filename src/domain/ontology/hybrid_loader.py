@@ -243,6 +243,19 @@ class HybridOntologyLoader:
         assert self._yaml_loader is not None
         return self._yaml_loader.expand_concept(term, category, config)
 
+    async def clear_cache(self) -> None:
+        """
+        내부 캐시 클리어
+
+        OntologyRegistry.refresh() 호출 시 사용됩니다.
+        YAML 로더와 Neo4j 로더의 캐시를 모두 클리어합니다.
+        """
+        if self._yaml_loader is not None:
+            self._yaml_loader.clear_cache()
+
+        if self._neo4j_loader is not None and hasattr(self._neo4j_loader, "clear_cache"):
+            await self._neo4j_loader.clear_cache()
+
     async def health_check(self) -> dict[str, Any]:
         """
         로더 상태 확인

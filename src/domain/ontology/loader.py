@@ -290,6 +290,17 @@ class OntologyLoader:
             self._build_reverse_index()
         return self._synonyms
 
+    def clear_cache(self) -> None:
+        """
+        내부 캐시 클리어
+
+        OntologyRegistry.refresh() 호출 시 사용됩니다.
+        스키마, 동의어, 역방향 인덱스를 모두 초기화합니다.
+        """
+        self._schema = None
+        self._synonyms = None
+        self._reverse_index = None
+
     def _build_reverse_index(self) -> None:
         """
         역방향 조회 인덱스 빌드 (alias → canonical)

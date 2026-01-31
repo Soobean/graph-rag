@@ -9,10 +9,12 @@ Admin API의 비즈니스 로직을 담당합니다.
 - 온톨로지 적용 (Phase 4)
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.domain.adaptive.models import (
     OntologyProposal,
@@ -26,6 +28,10 @@ from src.domain.exceptions import (
     ValidationError,
 )
 from src.repositories.neo4j_repository import Neo4jRepository
+from src.utils.ontology_utils import safe_refresh_ontology_cache
+
+if TYPE_CHECKING:
+    from src.domain.ontology.registry import OntologyRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +54,13 @@ class OntologyService:
     비즈니스 규칙(상태 전이, 버전 검증 등)을 적용합니다.
     """
 
-    def __init__(self, neo4j_repository: Neo4jRepository):
+    def __init__(
+        self,
+        neo4j_repository: Neo4jRepository,
+        ontology_registry: OntologyRegistry | None = None,
+    ):
         self._neo4j = neo4j_repository
+        self._registry = ontology_registry
 
     # ============================================
     # 조회
@@ -314,6 +325,9 @@ class OntologyService:
                 # 응답에 applied_at 반영
                 result.applied_at = datetime.now(UTC)
                 logger.info(f"Proposal {proposal_id} applied to ontology successfully")
+
+                # 런타임 캐시 새로고침 (즉시 쿼리 반영)
+                await safe_refresh_ontology_cache(self._registry, "approve")
         except Exception as e:
             # 적용 실패해도 승인 상태는 유지
             logger.error(f"Failed to apply proposal {proposal_id} to ontology: {e}")
@@ -420,6 +434,10 @@ class OntologyService:
         ]
 
         logger.info(f"Batch approve: {success_count} success, {len(failed_ids)} failed")
+
+        # 배치 승인 후 캐시 새로고침 (1회만)
+        if success_count > 0:
+            await safe_refresh_ontology_cache(self._registry, "batch-approve")
 
         return BatchResult(
             success_count=success_count,

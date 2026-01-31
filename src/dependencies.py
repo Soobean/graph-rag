@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import Request
 
+from src.domain.ontology.registry import OntologyRegistry
 from src.graph.pipeline import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories.llm_repository import LLMRepository
@@ -96,6 +97,20 @@ def get_ontology_service(request: Request) -> OntologyService:
     app.state에서 초기화된 인스턴스를 가져옵니다.
     """
     return request.app.state.ontology_service
+
+
+def get_ontology_registry(request: Request) -> OntologyRegistry:
+    """
+    OntologyRegistry 의존성 주입
+    app.state에서 초기화된 인스턴스를 가져옵니다.
+
+    Raises:
+        RuntimeError: registry가 초기화되지 않은 경우
+    """
+    registry = getattr(request.app.state, "ontology_registry", None)
+    if registry is None:
+        raise RuntimeError("OntologyRegistry not initialized")
+    return registry
 
 
 # ============================================

@@ -28,6 +28,7 @@ from src.domain.exceptions import (
     GraphRAGError,
     InvalidStateError,
 )
+from src.domain.ontology.registry import OntologyRegistry
 from src.graph import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
@@ -86,15 +87,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "Schema loading is required for pipeline initialization"
         ) from e
 
-    # Pipeline 초기화 (스키마 주입)
+    # OntologyRegistry 초기화 (Pipeline/OntologyService에 주입)
+    ontology_registry = OntologyRegistry(
+        neo4j_client=neo4j_client,
+        settings=settings,
+    )
+    logger.info(f"OntologyRegistry initialized (mode={ontology_registry.mode})")
+
+    # Pipeline 초기화 (스키마 + 온톨로지 로더 주입)
     pipeline = GraphRAGPipeline(
         settings=settings,
         neo4j_repository=neo4j_repo,
         llm_repository=llm_repo,
         neo4j_client=neo4j_client,
         graph_schema=graph_schema,
+        ontology_loader=ontology_registry.get_loader(),
+        ontology_registry=ontology_registry,
     )
-    logger.info("Pipeline initialized with pre-loaded schema")
+    logger.info("Pipeline initialized with pre-loaded schema and ontology registry")
 
     # GDS 서비스 초기화
     gds_service = GDSService(
@@ -106,9 +116,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await gds_service.connect()
     logger.info("GDS service connected")
 
-    # OntologyService 초기화
-    ontology_service = OntologyService(neo4j_repository=neo4j_repo)
-    logger.info("OntologyService initialized")
+    # OntologyService 초기화 (registry 주입으로 런타임 캐시 갱신 지원)
+    ontology_service = OntologyService(
+        neo4j_repository=neo4j_repo,
+        ontology_registry=ontology_registry,
+    )
+    logger.info("OntologyService initialized with OntologyRegistry")
 
     # ExplainabilityService 초기화 (stateless 서비스)
     explainability_service = ExplainabilityService()
@@ -121,6 +134,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.pipeline = pipeline
     app.state.gds_service = gds_service
     app.state.ontology_service = ontology_service
+    app.state.ontology_registry = ontology_registry
     app.state.explainability_service = explainability_service
 
     yield

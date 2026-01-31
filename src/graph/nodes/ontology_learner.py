@@ -31,11 +31,13 @@ from src.domain.adaptive.models import (
 )
 from src.domain.types import UnresolvedEntity
 from src.repositories.llm_repository import LLMRepository, ModelTier
+from src.utils.ontology_utils import safe_refresh_ontology_cache
 from src.utils.prompt_manager import PromptManager
 
 if TYPE_CHECKING:
     from src.domain.ontology.hybrid_loader import HybridOntologyLoader
     from src.domain.ontology.loader import OntologyLoader
+    from src.domain.ontology.registry import OntologyRegistry
     from src.repositories.neo4j_repository import Neo4jRepository
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,7 @@ class OntologyLearner:
         llm_repository: LLMRepository,
         neo4j_repository: Neo4jRepository,
         ontology_loader: OntologyLoader | HybridOntologyLoader | None = None,
+        ontology_registry: OntologyRegistry | None = None,
     ):
         """
         Args:
@@ -75,11 +78,13 @@ class OntologyLearner:
             llm_repository: LLM API 접근 레포지토리
             neo4j_repository: Neo4j 접근 레포지토리
             ontology_loader: 현재 온톨로지 로더 (컨텍스트 제공용)
+            ontology_registry: 온톨로지 레지스트리 (auto-approve 후 캐시 갱신용)
         """
         self._settings = settings
         self._llm = llm_repository
         self._neo4j = neo4j_repository
         self._ontology = ontology_loader
+        self._registry = ontology_registry
         self._prompt_manager = PromptManager()
 
         logger.info(
@@ -473,6 +478,9 @@ class OntologyLearner:
                 f"Auto-approved proposal: '{proposal.term}' "
                 f"(type={proposal.proposal_type.value}, freq={proposal.frequency})"
             )
+
+            # 런타임 캐시 새로고침 (즉시 쿼리 반영)
+            await safe_refresh_ontology_cache(self._registry, "auto-approve")
         else:
             logger.debug(
                 f"Auto-approve skipped for '{proposal.term}': "
