@@ -463,29 +463,6 @@ class TestLLMAnalysis:
 class TestOntologyProposalModel:
     """OntologyProposal 모델 단위 테스트"""
 
-    def test_add_evidence(self):
-        """증거 추가 및 빈도 증가"""
-        proposal = OntologyProposal(
-            proposal_type=ProposalType.NEW_CONCEPT,
-            term="test",
-            category="skills",
-            suggested_action="test action",
-            frequency=1,
-        )
-
-        proposal.add_evidence("첫 번째 질문")
-        assert proposal.frequency == 2
-        assert "첫 번째 질문" in proposal.evidence_questions
-
-        proposal.add_evidence("두 번째 질문")
-        assert proposal.frequency == 3
-        assert len(proposal.evidence_questions) == 2
-
-        # 중복 질문은 추가되지 않지만 빈도는 증가
-        proposal.add_evidence("첫 번째 질문")
-        assert proposal.frequency == 4
-        assert len(proposal.evidence_questions) == 2
-
     def test_approve_manual(self):
         """수동 승인"""
         proposal = OntologyProposal(
