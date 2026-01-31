@@ -5,8 +5,41 @@ import { ChatInput } from './ChatInput';
 import { Button } from '@/components/ui/button';
 import { useChatStore, useGraphStore } from '@/stores';
 import { useStreamingQuery } from '@/api/hooks';
-import type { StreamingMetadata } from '@/types/api';
+import type { StreamingMetadata, StepType } from '@/types/api';
 import { cn } from '@/lib/utils';
+
+// 노드 이름을 스텝 타입으로 변환
+function getStepType(nodeName: string): StepType {
+  const typeMap: Record<string, StepType> = {
+    intent_entity_extractor: 'classification',
+    query_decomposer: 'decomposition',
+    concept_expander: 'expansion',
+    entity_resolver: 'resolution',
+    cache_checker: 'cache',
+    cypher_generator: 'generation',
+    graph_executor: 'execution',
+    response_generator: 'response',
+    clarification_handler: 'response',
+  };
+  return typeMap[nodeName] || 'extraction';
+}
+
+// 노드 이름을 설명으로 변환
+function getStepDescription(nodeName: string, metadata: StreamingMetadata): string {
+  const descMap: Record<string, string> = {
+    intent_entity_extractor: `의도: ${metadata.intent} (${(metadata.intent_confidence * 100).toFixed(0)}%)`,
+    query_decomposer: '쿼리 분해 및 계획 수립',
+    concept_expander: `엔티티 확장: ${Object.values(metadata.entities).flat().length}개`,
+    entity_resolver: '그래프에서 엔티티 매칭',
+    cache_checker: '캐시 확인',
+    cypher_generator: 'Cypher 쿼리 생성',
+    graph_executor: `쿼리 실행: ${metadata.result_count}건 조회`,
+    response_generator: '응답 생성',
+    response_generator_empty: '결과 없음 - 기본 응답',
+    clarification_handler: '명확화 요청',
+  };
+  return descMap[nodeName] || nodeName;
+}
 
 interface ChatPanelProps {
   className?: string;
@@ -48,6 +81,25 @@ export function ChatPanel({ className }: ChatPanelProps) {
       onMetadata: (metadata: StreamingMetadata) => {
         // 메타데이터 수신 시 업데이트
         if (currentAssistantIdRef.current) {
+          // execution_path로 기본 thoughtProcess 생성
+          const thoughtProcess = {
+            steps: metadata.execution_path.map((nodeName, idx) => ({
+              step_number: idx + 1,
+              node_name: nodeName,
+              step_type: getStepType(nodeName),
+              description: getStepDescription(nodeName, metadata),
+              details: {},
+            })),
+            concept_expansions: Object.entries(metadata.entities).map(([entityType, concepts]) => ({
+              original_concept: concepts[0] || '',
+              entity_type: entityType,
+              expansion_strategy: 'normal' as const,
+              expanded_concepts: concepts,
+              expansion_path: [],
+            })),
+            execution_path: metadata.execution_path,
+          };
+
           updateMessage(currentAssistantIdRef.current, {
             metadata: {
               intent: metadata.intent,
@@ -57,7 +109,13 @@ export function ChatPanel({ className }: ChatPanelProps) {
               result_count: metadata.result_count,
               execution_path: metadata.execution_path,
             },
+            thoughtProcess,
           });
+
+          // Graph 데이터가 있으면 graphStore에 설정
+          if (metadata.graph_data) {
+            setGraphData(metadata.graph_data);
+          }
         }
       },
       onComplete: (fullResponse: string, success: boolean) => {
@@ -81,7 +139,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
         }
       },
     }),
-    [updateMessage]
+    [updateMessage, setGraphData]
   );
 
   const { state: streamingState, startStreaming } =

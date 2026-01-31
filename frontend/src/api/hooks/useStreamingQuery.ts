@@ -5,8 +5,7 @@ import type {
   StreamingEvent,
 } from '../../types/api';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 export interface StreamingQueryState {
   isStreaming: boolean;
@@ -97,6 +96,7 @@ export function useStreamingQuery(
 
         const decoder = new TextDecoder();
         let buffer = '';
+        let currentEvent: { event?: string; data: string[] } = { data: [] };
 
         while (true) {
           const { done, value } = await reader.read();
@@ -111,17 +111,25 @@ export function useStreamingQuery(
           const lines = buffer.split('\n');
           buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-          let currentEvent: { event?: string; data?: string } = {};
+          for (let line of lines) {
+            // Handle \r\n line endings
+            line = line.replace(/\r$/, '');
 
-          for (const line of lines) {
+            // Skip SSE comments (lines starting with :)
+            if (line.startsWith(':')) {
+              continue;
+            }
+
             if (line.startsWith('event:')) {
               currentEvent.event = line.slice(6).trim();
             } else if (line.startsWith('data:')) {
-              currentEvent.data = line.slice(5).trim();
-            } else if (line === '' && currentEvent.event && currentEvent.data) {
+              // SSE spec: multiple data: lines should be joined with newlines
+              currentEvent.data.push(line.slice(5));
+            } else if (line.trim() === '' && currentEvent.event && currentEvent.data.length > 0) {
               // Process complete event
               const eventType = currentEvent.event;
-              const eventData = currentEvent.data;
+              // SSE spec: join multiple data lines with newlines
+              const eventData = currentEvent.data.join('\n');
 
               if (eventType === 'metadata') {
                 try {
@@ -182,7 +190,7 @@ export function useStreamingQuery(
               }
 
               // Reset for next event
-              currentEvent = {};
+              currentEvent = { data: [] };
             }
           }
         }

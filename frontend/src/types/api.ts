@@ -124,6 +124,7 @@ export interface StreamingMetadata {
   cypher_query: string;
   result_count: number;
   execution_path: string[];
+  graph_data?: ExplainableGraphData;
 }
 
 export type StreamingEventType = 'metadata' | 'chunk' | 'done' | 'error';
