@@ -170,7 +170,6 @@ class GraphRAGPipeline:
                 llm_repository=llm_repository,
                 neo4j_repository=neo4j_repository,
                 ontology_service=ontology_service,
-                ontology_registry=self._ontology_registry,
             )
             logger.info("OntologyUpdateHandler initialized (user-driven updates enabled)")
 

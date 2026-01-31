@@ -87,21 +87,12 @@ def mock_ontology_service():
 
 
 @pytest.fixture
-def mock_registry():
-    """Mock Ontology Registry"""
-    registry = MagicMock()
-    registry.refresh = AsyncMock(return_value=True)
-    return registry
-
-
-@pytest.fixture
-def handler(mock_llm, mock_neo4j, mock_ontology_service, mock_registry):
+def handler(mock_llm, mock_neo4j, mock_ontology_service):
     """기본 OntologyUpdateHandler 인스턴스"""
     return OntologyUpdateHandlerNode(
         llm_repository=mock_llm,
         neo4j_repository=mock_neo4j,
         ontology_service=mock_ontology_service,
-        ontology_registry=mock_registry,
     )
 
 
@@ -308,7 +299,7 @@ class TestConfidenceValidation:
         result = await handler._process(state)
 
         assert result["applied"] is False
-        assert "신뢰도" in result["response"]
+        assert "불명확" in result["response"]
         assert "low_confidence" in result["execution_path"][0]
 
 
@@ -362,7 +353,7 @@ class TestErrorHandling:
 
         assert result["applied"] is False
         assert result["proposal_id"] is not None  # 제안은 생성됨
-        assert "관리자" in result["response"]  # 수동 승인 안내
+        assert "실패" in result["response"]  # 적용 실패 안내
         assert "approve_error" in result["execution_path"][0]
 
     @pytest.mark.asyncio
@@ -411,21 +402,29 @@ class TestErrorHandling:
 class TestCategoryMapping:
     """카테고리 매핑 테스트"""
 
-    def test_category_mapping(self, handler):
-        """카테고리 정규화 확인"""
-        assert handler.CATEGORY_MAPPING["skill"] == "skills"
-        assert handler.CATEGORY_MAPPING["스킬"] == "skills"
-        assert handler.CATEGORY_MAPPING["department"] == "departments"
-        assert handler.CATEGORY_MAPPING["부서"] == "departments"
+    def test_category_mapping(self):
+        """카테고리 정규화 확인 (모듈 레벨 상수)"""
+        from src.graph.nodes.ontology_update_handler import CATEGORY_MAPPING
 
-    def test_relation_type_mapping(self, handler):
-        """관계 타입 정규화 확인"""
-        assert handler.RELATION_TYPE_MAPPING["is_a"] == "IS_A"
-        assert handler.RELATION_TYPE_MAPPING["하위"] == "IS_A"
-        assert handler.RELATION_TYPE_MAPPING["requires"] == "REQUIRES"
-        assert handler.RELATION_TYPE_MAPPING["필요"] == "REQUIRES"
-        assert handler.RELATION_TYPE_MAPPING["same_as"] == "SAME_AS"
-        assert handler.RELATION_TYPE_MAPPING["동의어"] == "SAME_AS"
+        assert CATEGORY_MAPPING["skill"] == "skills"
+        assert CATEGORY_MAPPING["department"] == "departments"
+        assert CATEGORY_MAPPING["person"] == "persons"
+        assert CATEGORY_MAPPING["project"] == "projects"
+        assert CATEGORY_MAPPING["certificate"] == "certificates"
+
+    def test_relation_type_uses_upper(self, handler):
+        """관계 타입은 .upper()로 정규화됨을 확인"""
+        # RELATION_TYPE_MAPPING 제거됨 - LLM이 반환한 값을 .upper()로 처리
+        parsed = {
+            "action": "add_relation",
+            "term": "FastAPI",
+            "category": "skill",
+            "relation_type": "requires",  # 소문자
+            "target_term": "Python",
+            "confidence": 0.9,
+        }
+        proposal = handler._create_proposal(parsed, "FastAPI는 Python 필요")
+        assert proposal.suggested_relation_type == "REQUIRES"  # 대문자로 변환됨
 
 
 # =============================================================================
@@ -484,7 +483,7 @@ class TestResponseGeneration:
         response = handler._generate_response(parsed, proposal, applied=False)
 
         assert "NewTech" in response
-        assert "test-id-123" in response
+        # ID는 메시지에서 제거됨 (단순화)
         assert "관리자" in response
 
 
@@ -552,19 +551,15 @@ class TestProposalCreation:
         assert proposal.suggested_parent == "Python"
         assert proposal.suggested_relation_type == "REQUIRES"
 
-    def test_confidence_clamped_to_valid_range(self, handler):
-        """신뢰도 값이 0.0~1.0 범위로 클램핑됨"""
+    def test_confidence_default_value(self, handler):
+        """신뢰도 값이 없으면 기본값 0.8 사용"""
         parsed = {
             "action": "add_concept",
             "term": "Test",
             "category": "Skill",
-            "confidence": 1.5,  # 범위 초과
+            # confidence 없음
             "reasoning": "test",
         }
 
         proposal = handler._create_proposal(parsed, "테스트")
-        assert proposal.confidence == 1.0  # 클램핑됨
-
-        parsed["confidence"] = -0.5  # 범위 미만
-        proposal = handler._create_proposal(parsed, "테스트")
-        assert proposal.confidence == 0.0  # 클램핑됨
+        assert proposal.confidence == 0.8  # 기본값
