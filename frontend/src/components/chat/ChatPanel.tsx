@@ -70,7 +70,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
   // 스트리밍 콜백을 useMemo로 안정화
   const streamingCallbacks = useMemo(
     () => ({
-      onChunk: (chunk: string, fullContent: string) => {
+      onChunk: (_chunk: string, fullContent: string) => {
         // 청크 수신 시 메시지 업데이트 (타이핑 효과)
         if (currentAssistantIdRef.current) {
           updateMessage(currentAssistantIdRef.current, {
@@ -118,7 +118,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
           }
         }
       },
-      onComplete: (fullResponse: string, success: boolean) => {
+      onComplete: (fullResponse: string, _success: boolean) => {
         // 완료 시 최종 업데이트
         if (currentAssistantIdRef.current) {
           updateMessage(currentAssistantIdRef.current, {
