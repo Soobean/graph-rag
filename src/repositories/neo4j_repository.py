@@ -807,6 +807,7 @@ class Neo4jRepository:
             p.frequency = $frequency,
             p.confidence = $confidence,
             p.status = $status,
+            p.source = $source,
             p.created_at = datetime(),
             p.updated_at = datetime()
         ON MATCH SET
@@ -831,6 +832,7 @@ class Neo4jRepository:
             p.frequency as frequency,
             p.confidence as confidence,
             p.status as status,
+            p.source as source,
             p.created_at as created_at,
             p.updated_at as updated_at,
             p.reviewed_at as reviewed_at,
@@ -857,6 +859,7 @@ class Neo4jRepository:
                     "frequency": data["frequency"],
                     "confidence": data["confidence"],
                     "status": data["status"],
+                    "source": data["source"],
                     "question": question,
                 },
             )
@@ -897,14 +900,18 @@ class Neo4jRepository:
             p.suggested_action as suggested_action,
             p.suggested_parent as suggested_parent,
             p.suggested_canonical as suggested_canonical,
+            p.suggested_relation_type as suggested_relation_type,
             p.evidence_questions as evidence_questions,
             p.frequency as frequency,
             p.confidence as confidence,
             p.status as status,
+            p.source as source,
             p.created_at as created_at,
             p.updated_at as updated_at,
             p.reviewed_at as reviewed_at,
-            p.reviewed_by as reviewed_by
+            p.reviewed_by as reviewed_by,
+            p.rejection_reason as rejection_reason,
+            p.applied_at as applied_at
         """
 
         try:
@@ -1175,6 +1182,7 @@ class Neo4jRepository:
             p.frequency as frequency,
             p.confidence as confidence,
             p.status as status,
+            p.source as source,
             p.created_at as created_at,
             p.updated_at as updated_at,
             p.reviewed_at as reviewed_at,
@@ -1231,6 +1239,7 @@ class Neo4jRepository:
             p.frequency as frequency,
             p.confidence as confidence,
             p.status as status,
+            p.source as source,
             p.created_at as created_at,
             p.updated_at as updated_at,
             p.reviewed_at as reviewed_at,
@@ -1254,6 +1263,7 @@ class Neo4jRepository:
         self,
         status: str | None = None,
         proposal_type: str | None = None,
+        source: str | None = None,
         category: str | None = None,
         term_search: str | None = None,
         sort_by: str = "created_at",
@@ -1267,6 +1277,7 @@ class Neo4jRepository:
         Args:
             status: 필터링할 상태 (None이면 전체)
             proposal_type: 필터링할 제안 유형 (None이면 전체)
+            source: 필터링할 출처 (chat, background, admin, None이면 전체)
             category: 필터링할 카테고리 (None이면 전체)
             term_search: 용어 검색어 (CONTAINS 매칭)
             sort_by: 정렬 필드 (created_at, frequency, confidence)
@@ -1291,6 +1302,7 @@ class Neo4jRepository:
         MATCH (p:OntologyProposal)
         WHERE ($status IS NULL OR p.status = $status)
           AND ($proposal_type IS NULL OR p.proposal_type = $proposal_type)
+          AND ($source IS NULL OR p.source = $source)
           AND ($category IS NULL OR p.category = $category)
           AND ($term_search IS NULL OR toLower(p.term) CONTAINS toLower($term_search))
         RETURN count(p) as total
@@ -1302,6 +1314,7 @@ class Neo4jRepository:
         MATCH (p:OntologyProposal)
         WHERE ($status IS NULL OR p.status = $status)
           AND ($proposal_type IS NULL OR p.proposal_type = $proposal_type)
+          AND ($source IS NULL OR p.source = $source)
           AND ($category IS NULL OR p.category = $category)
           AND ($term_search IS NULL OR toLower(p.term) CONTAINS toLower($term_search))
         RETURN
@@ -1318,6 +1331,7 @@ class Neo4jRepository:
             p.frequency as frequency,
             p.confidence as confidence,
             p.status as status,
+            p.source as source,
             p.created_at as created_at,
             p.updated_at as updated_at,
             p.reviewed_at as reviewed_at,
@@ -1332,6 +1346,7 @@ class Neo4jRepository:
         params = {
             "status": status,
             "proposal_type": proposal_type,
+            "source": source,
             "category": category,
             "term_search": term_search,
             "offset": offset,
@@ -1578,6 +1593,7 @@ class Neo4jRepository:
             p.frequency as frequency,
             p.confidence as confidence,
             p.status as status,
+            p.source as source,
             p.created_at as created_at,
             p.updated_at as updated_at,
             p.reviewed_at as reviewed_at,
@@ -1628,6 +1644,7 @@ class Neo4jRepository:
             frequency: $frequency,
             confidence: $confidence,
             status: $status,
+            source: $source,
             created_at: datetime(),
             updated_at: datetime(),
             reviewed_at: null,
@@ -1649,6 +1666,7 @@ class Neo4jRepository:
             p.frequency as frequency,
             p.confidence as confidence,
             p.status as status,
+            p.source as source,
             p.created_at as created_at,
             p.updated_at as updated_at,
             p.reviewed_at as reviewed_at,
@@ -1675,6 +1693,7 @@ class Neo4jRepository:
                     "frequency": data["frequency"],
                     "confidence": data["confidence"],
                     "status": data["status"],
+                    "source": data["source"],
                 },
             )
 

@@ -65,6 +65,7 @@ def _proposal_to_response(proposal: OntologyProposal) -> ProposalResponse:
         frequency=proposal.frequency,
         confidence=proposal.confidence,
         status=proposal.status.value,
+        source=proposal.source.value,
         evidence_questions=recent_questions,
         created_at=proposal.created_at,
         reviewed_at=proposal.reviewed_at,
@@ -88,6 +89,7 @@ def _proposal_to_detail_response(proposal: OntologyProposal) -> ProposalDetailRe
         frequency=proposal.frequency,
         confidence=proposal.confidence,
         status=proposal.status.value,
+        source=proposal.source.value,
         evidence_questions=proposal.evidence_questions[-5:],
         created_at=proposal.created_at,
         reviewed_at=proposal.reviewed_at,
@@ -108,6 +110,7 @@ async def list_proposals(
     service: Annotated[OntologyService, Depends(get_ontology_service)],
     status: Literal["pending", "approved", "rejected", "auto_approved", "all"] = "pending",
     proposal_type: Literal["NEW_CONCEPT", "NEW_SYNONYM", "NEW_RELATION", "all"] = "all",
+    source: Literal["chat", "background", "admin", "all"] = "all",
     category: str | None = Query(default=None, max_length=50),
     term_search: str | None = Query(default=None, max_length=100),
     sort_by: Literal["created_at", "frequency", "confidence"] = "created_at",
@@ -120,6 +123,7 @@ async def list_proposals(
 
     - **status**: 상태 필터 (기본값: pending)
     - **proposal_type**: 유형 필터
+    - **source**: 출처 필터 (chat, background, admin)
     - **category**: 카테고리 필터
     - **term_search**: 용어 검색 (부분 일치)
     - **sort_by**: 정렬 필드
@@ -130,6 +134,7 @@ async def list_proposals(
     proposals, total = await service.list_proposals(
         status=status,
         proposal_type=proposal_type,
+        source=source,
         category=category,
         term_search=term_search,
         sort_by=sort_by,

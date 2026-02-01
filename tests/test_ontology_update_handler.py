@@ -215,7 +215,7 @@ class TestRequestParsing:
                 "relation_type": "REQUIRES",
                 "target_term": "Python",
                 "parent": None,
-                "confidence": 0.88,
+                "confidence": 0.95,  # >= 0.9 for auto-approve
                 "reasoning": "FastAPI는 Python이 필요합니다",
             }
         )

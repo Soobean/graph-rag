@@ -14,9 +14,13 @@ from langchain_core.messages import AIMessage
 
 from src.domain.adaptive.models import (
     OntologyProposal,
+    ProposalSource,
     ProposalStatus,
     ProposalType,
 )
+
+# 채팅 요청 자동 승인 신뢰도 임계값
+CHAT_AUTO_APPROVE_THRESHOLD = 0.9
 from src.domain.types import OntologyUpdateHandlerUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
@@ -60,15 +64,19 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
 
     @property
     def input_keys(self) -> list[str]:
-        return ["question"]
+        return ["question", "messages"]
 
     async def _process(self, state: GraphRAGState) -> OntologyUpdateHandlerUpdate:
         """사용자 온톨로지 업데이트 요청 처리"""
         question = state.get("question", "")
+        messages = state.get("messages", [])
         self._logger.info(f"Processing ontology update request: {question[:50]}...")
 
-        # 1. LLM으로 요청 파싱
-        parsed = await self._parse_update_request(question)
+        # 채팅 히스토리 포맷팅 (최근 4개 메시지만)
+        chat_history = self._format_chat_history(messages[:-1][-4:]) if len(messages) > 1 else ""
+
+        # 1. LLM으로 요청 파싱 (채팅 히스토리 포함)
+        parsed = await self._parse_update_request(question, chat_history)
 
         if not parsed:
             return self._error_response(
@@ -77,15 +85,19 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
                 "parse_failed",
             )
 
-        if parsed.get("confidence", 0.0) < 0.7:
+        confidence = parsed.get("confidence", 0.0)
+        term = parsed.get("term", "?")
+
+        if confidence < 0.7:
             return self._error_response(
-                f"요청이 불명확합니다. '{parsed.get('term', '?')}'에 대해 더 명확하게 설명해주세요.",
+                f"요청이 불명확합니다. '{term}'에 대해 더 명확하게 설명해주세요.",
                 "low_confidence",
             )
 
-        # 2. OntologyProposal 생성
+        # 2. OntologyProposal 생성 (source=CHAT)
         try:
             proposal = self._create_proposal(parsed, question)
+            proposal.source = ProposalSource.CHAT  # 채팅 출처 표시
             saved = await self._neo4j.save_ontology_proposal(proposal)
         except Exception as e:
             self._logger.error(f"Failed to create proposal: {e}")
@@ -93,37 +105,52 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
                 "온톨로지 제안 생성 중 오류가 발생했습니다.", "proposal_error", str(e)
             )
 
-        # 3. 즉시 승인 및 적용
-        try:
-            approved = await self._ontology_service.approve_proposal(
-                proposal_id=saved.id,
-                expected_version=saved.version,
-                reviewer="chat_user",
+        # 3. 신뢰도 기반 분기: 높으면 즉시 적용, 낮으면 관리자 검토
+        if confidence >= CHAT_AUTO_APPROVE_THRESHOLD:
+            # 높은 신뢰도 → 즉시 승인 및 적용
+            try:
+                approved = await self._ontology_service.approve_proposal(
+                    proposal_id=saved.id,
+                    expected_version=saved.version,
+                    reviewer="chat_user",
+                )
+                applied = approved.applied_at is not None
+                response = self._generate_response(parsed, approved, applied)
+                self._logger.info(f"Ontology update auto-approved: '{term}' (confidence={confidence:.2f})")
+
+                return OntologyUpdateHandlerUpdate(
+                    response=response,
+                    proposal_id=approved.id,
+                    applied=applied,
+                    execution_path=[self.name],
+                    messages=[AIMessage(content=response)],
+                )
+            except Exception as e:
+                self._logger.error(f"Failed to approve proposal: {e}")
+                msg = f"'{term}' 제안이 생성되었지만 자동 적용에 실패했습니다."
+                return OntologyUpdateHandlerUpdate(
+                    response=msg,
+                    proposal_id=saved.id,
+                    applied=False,
+                    error=str(e),
+                    execution_path=[f"{self.name}_approve_error"],
+                    messages=[AIMessage(content=msg)],
+                )
+        else:
+            # 낮은 신뢰도 → 관리자 검토 대기 (pending 상태 유지)
+            msg = (
+                f"'{term}' 추가 요청이 접수되었습니다. "
+                f"관리자 검토 후 적용됩니다. (신뢰도: {confidence:.0%})"
             )
-            applied = approved.applied_at is not None
-        except Exception as e:
-            self._logger.error(f"Failed to approve proposal: {e}")
-            msg = f"'{saved.term}' 제안이 생성되었지만 자동 적용에 실패했습니다."
+            self._logger.info(f"Ontology update pending review: '{term}' (confidence={confidence:.2f})")
+
             return OntologyUpdateHandlerUpdate(
                 response=msg,
                 proposal_id=saved.id,
                 applied=False,
-                error=str(e),
-                execution_path=[f"{self.name}_approve_error"],
+                execution_path=[f"{self.name}_pending"],
                 messages=[AIMessage(content=msg)],
             )
-
-        # 4. 응답 생성
-        response = self._generate_response(parsed, approved, applied)
-        self._logger.info(f"Ontology update completed: {parsed.get('action')} '{parsed.get('term')}'")
-
-        return OntologyUpdateHandlerUpdate(
-            response=response,
-            proposal_id=approved.id,
-            applied=applied,
-            execution_path=[self.name],
-            messages=[AIMessage(content=response)],
-        )
 
     def _error_response(
         self, message: str, suffix: str, error: str | None = None
@@ -137,13 +164,28 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
             messages=[AIMessage(content=message)],
         )
 
-    async def _parse_update_request(self, question: str) -> dict[str, Any] | None:
+    def _format_chat_history(self, messages: list[Any]) -> str:
+        """채팅 히스토리를 문자열로 포맷팅"""
+        if not messages:
+            return "없음"
+
+        lines = []
+        for msg in messages:
+            role = "사용자" if msg.type == "human" else "시스템"
+            content = msg.content[:200] if len(msg.content) > 200 else msg.content
+            lines.append(f"{role}: {content}")
+        return "\n".join(lines)
+
+    async def _parse_update_request(self, question: str, chat_history: str = "") -> dict[str, Any] | None:
         """LLM으로 사용자 요청 파싱"""
         try:
             prompt = self._prompt_manager.load_prompt("ontology_update_parser")
             result = await self._llm.generate_json(
                 system_prompt=prompt["system"],
-                user_prompt=prompt["user"].format(question=question),
+                user_prompt=prompt["user"].format(
+                    question=question,
+                    chat_history=chat_history or "없음",
+                ),
                 model_tier=ModelTier.LIGHT,
             )
             return result if result and result.get("action") else None
