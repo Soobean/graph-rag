@@ -2,6 +2,7 @@
 
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'auto_approved';
 export type ProposalType = 'NEW_CONCEPT' | 'NEW_SYNONYM' | 'NEW_RELATION';
+export type ProposalSource = 'chat' | 'background' | 'admin';
 
 export interface Proposal {
   id: string;
@@ -16,6 +17,7 @@ export interface Proposal {
   frequency: number;
   confidence: number;
   status: ProposalStatus;
+  source: ProposalSource;
   evidence_questions: string[];
   created_at: string;
   reviewed_at: string | null;

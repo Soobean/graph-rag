@@ -13,6 +13,7 @@ import type {
 export interface ProposalListParams {
   status?: 'pending' | 'approved' | 'rejected' | 'auto_approved' | 'all';
   proposal_type?: 'NEW_CONCEPT' | 'NEW_SYNONYM' | 'NEW_RELATION' | 'all';
+  source?: 'chat' | 'background' | 'admin' | 'all';
   category?: string;
   term_search?: string;
   sort_by?: 'created_at' | 'frequency' | 'confidence';
