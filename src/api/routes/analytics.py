@@ -40,7 +40,7 @@ router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 @router.post("/projection/create", response_model=ProjectionStatusResponse)
 async def create_projection(
     gds: Annotated[GDSService, Depends(get_gds_service)],
-    min_shared_skills: int = 2,
+    min_shared_skills: int = 3,
 ) -> ProjectionStatusResponse:
     """
     스킬 유사도 그래프 프로젝션 생성
@@ -122,6 +122,34 @@ async def delete_projection(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"프로젝션 삭제 실패: {e}",
+        ) from e
+
+
+@router.delete("/projection/cleanup-all", response_model=dict)
+async def cleanup_all_projections(
+    gds: Annotated[GDSService, Depends(get_gds_service)],
+) -> dict:
+    """
+    모든 GDS 프로젝션 정리
+
+    메모리 문제 발생 시 모든 인메모리 프로젝션을 삭제합니다.
+    실패한 프로젝션 생성 후 잔여 데이터 정리에 유용합니다.
+    """
+    try:
+        dropped_count = await gds.cleanup_all_projections()
+        return {
+            "success": True,
+            "dropped_count": dropped_count,
+            "message": f"{dropped_count}개의 프로젝션이 정리되었습니다."
+            if dropped_count > 0
+            else "정리할 프로젝션이 없습니다.",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to cleanup projections: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"프로젝션 정리 실패: {e}",
         ) from e
 
 

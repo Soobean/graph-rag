@@ -126,20 +126,46 @@ class GDSService:
     # 그래프 프로젝션
     # =========================================================================
 
+    async def cleanup_all_projections(self) -> int:
+        """
+        모든 GDS projection 정리 (메모리 해제)
+
+        Returns:
+            삭제된 projection 수
+        """
+        def _cleanup():
+            dropped = 0
+            try:
+                result = self.gds.graph.list()
+                for row in result.itertuples():
+                    graph_name = row.graphName
+                    try:
+                        self.gds.graph.drop(self.gds.graph.get(graph_name))
+                        logger.info(f"Dropped projection: {graph_name}")
+                        dropped += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to drop {graph_name}: {e}")
+            except Exception as e:
+                logger.error(f"Failed to list projections: {e}")
+            return dropped
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._executor, _cleanup)
+
     async def create_skill_similarity_projection(
         self,
         projection_name: str | None = None,
-        min_shared_skills: int = 1,
+        min_shared_skills: int = 3,
     ) -> dict[str, Any]:
         """
         스킬 기반 직원 유사도 그래프 프로젝션 생성
 
-        1단계: Employee-Skill bipartite 그래프 생성
-        2단계: Node Similarity로 Employee 간 유사도 관계 생성
+        1단계: Person-Skill bipartite 그래프 생성
+        2단계: Node Similarity로 Person 간 유사도 관계 생성
 
         Args:
             projection_name: 프로젝션 이름 (기본: employee_skill_graph)
-            min_shared_skills: 최소 공유 스킬 수
+            min_shared_skills: 최소 공유 스킬 수 (기본: 3, 메모리 최적화)
 
         Returns:
             프로젝션 생성 결과
@@ -147,69 +173,82 @@ class GDSService:
         name = projection_name or self.SKILL_PROJECTION
         bipartite_name = f"{name}_bipartite"
 
+        def _cleanup_projections():
+            """중간 projection 정리"""
+            for proj_name in [name, bipartite_name]:
+                try:
+                    if self.gds.graph.exists(proj_name).exists:
+                        self.gds.graph.drop(self.gds.graph.get(proj_name))
+                        logger.info(f"Cleaned up projection: {proj_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup {proj_name}: {e}")
+
         def _create():
             # 기존 프로젝션 삭제
-            for proj_name in [name, bipartite_name]:
-                if self.gds.graph.exists(proj_name).exists:
-                    self.gds.graph.drop(self.gds.graph.get(proj_name))
-                    logger.info(f"Dropped existing projection: {proj_name}")
+            _cleanup_projections()
 
-            # 기존 SIMILAR 관계 삭제 (이전 실행의 잔여 데이터)
-            self.gds.run_cypher("MATCH ()-[r:SIMILAR]->() DELETE r")
-            logger.info("Cleaned up existing SIMILAR relationships")
+            try:
+                # 기존 SIMILAR 관계 삭제 (이전 실행의 잔여 데이터)
+                self.gds.run_cypher("MATCH ()-[r:SIMILAR]->() DELETE r")
+                logger.info("Cleaned up existing SIMILAR relationships")
 
-            # 1단계: Bipartite 그래프 프로젝션 (Employee-Skill)
-            G_bipartite, bipartite_result = self.gds.graph.project(
-                bipartite_name,
-                ["Employee", "Skill"],
-                {
-                    "HAS_SKILL": {
-                        "orientation": "UNDIRECTED",
-                    }
-                },
-            )
+                # 1단계: Bipartite 그래프 프로젝션 (Person-Skill)
+                G_bipartite, bipartite_result = self.gds.graph.project(
+                    bipartite_name,
+                    ["Person", "Skill"],
+                    {
+                        "HAS_SKILL": {
+                            "orientation": "UNDIRECTED",
+                        }
+                    },
+                )
 
-            logger.info(
-                f"Bipartite projection: {bipartite_result['nodeCount']} nodes, "
-                f"{bipartite_result['relationshipCount']} relationships"
-            )
+                logger.info(
+                    f"Bipartite projection: {bipartite_result['nodeCount']} nodes, "
+                    f"{bipartite_result['relationshipCount']} relationships"
+                )
 
-            # 2단계: Node Similarity로 유사도 계산 후 DB에 저장
-            # Jaccard 유사도 기반 (공유 스킬 비율)
-            similarity_result = self.gds.nodeSimilarity.write(
-                G_bipartite,
-                writeRelationshipType="SIMILAR",
-                writeProperty="similarity",
-                similarityCutoff=0.0,  # 모든 유사도 포함
-                degreeCutoff=min_shared_skills,  # 최소 공유 스킬
-                topK=50,  # 상위 50개 유사 노드만
-            )
+                # 2단계: Node Similarity로 유사도 계산 후 DB에 저장
+                # Jaccard 유사도 기반 (공유 스킬 비율)
+                similarity_result = self.gds.nodeSimilarity.write(
+                    G_bipartite,
+                    writeRelationshipType="SIMILAR",
+                    writeProperty="similarity",
+                    similarityCutoff=0.0,  # 모든 유사도 포함
+                    degreeCutoff=min_shared_skills,  # 최소 공유 스킬
+                    topK=50,  # 상위 50개 유사 노드만
+                )
 
-            logger.info(
-                f"Node Similarity: {similarity_result['relationshipsWritten']} "
-                f"similarity relationships written to DB"
-            )
+                logger.info(
+                    f"Node Similarity: {similarity_result['relationshipsWritten']} "
+                    f"similarity relationships written to DB"
+                )
 
-            # Bipartite 프로젝션 삭제 (더 이상 필요 없음)
-            self.gds.graph.drop(G_bipartite)
+                # Bipartite 프로젝션 삭제 (더 이상 필요 없음)
+                self.gds.graph.drop(G_bipartite)
 
-            # 3단계: Employee + SIMILAR 관계로 새 프로젝션 생성 (UNDIRECTED)
-            G_final, final_result = self.gds.graph.project(
-                name,
-                ["Employee"],
-                {
-                    "SIMILAR": {
-                        "orientation": "UNDIRECTED",
-                        "properties": ["similarity"],
-                    }
-                },
-            )
+                # 3단계: Person + SIMILAR 관계로 새 프로젝션 생성 (UNDIRECTED)
+                G_final, final_result = self.gds.graph.project(
+                    name,
+                    ["Person"],
+                    {
+                        "SIMILAR": {
+                            "orientation": "UNDIRECTED",
+                            "properties": ["similarity"],
+                        }
+                    },
+                )
 
-            return {
-                "name": name,
-                "node_count": final_result["nodeCount"],
-                "relationship_count": final_result["relationshipCount"],
-            }
+                return {
+                    "name": name,
+                    "node_count": final_result["nodeCount"],
+                    "relationship_count": final_result["relationshipCount"],
+                }
+            except Exception as e:
+                # 오류 발생 시 중간 프로젝션 정리
+                logger.error(f"Projection creation failed: {e}")
+                _cleanup_projections()
+                raise
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(self._executor, _create)
@@ -256,8 +295,8 @@ class GDSService:
             G = self.gds.graph.get(name)
             return True, {
                 "name": G.name(),
-                "nodeCount": G.node_count(),
-                "relationshipCount": G.relationship_count(),
+                "nodeCount": int(G.node_count()),
+                "relationshipCount": int(G.relationship_count()),
                 "nodeLabels": list(G.node_labels()),
                 "relationshipTypes": list(G.relationship_types()),
             }
@@ -318,7 +357,7 @@ class GDSService:
             # 커뮤니티별 통계 조회
             communities = self.gds.run_cypher(
                 f"""
-                MATCH (e:Employee)
+                MATCH (e:Person)
                 WHERE e.{write_property} IS NOT NULL
                 RETURN e.{write_property} AS community_id,
                        count(*) AS member_count,
@@ -370,9 +409,9 @@ class GDSService:
             # Jaccard 유사도 기반 검색
             result = self.gds.run_cypher(
                 """
-                MATCH (target:Employee {name: $name})-[:HAS_SKILL]->(s:Skill)
+                MATCH (target:Person {name: $name})-[:HAS_SKILL]->(s:Skill)
                 WITH target, collect(s) AS targetSkills
-                MATCH (other:Employee)-[:HAS_SKILL]->(s2:Skill)
+                MATCH (other:Person)-[:HAS_SKILL]->(s2:Skill)
                 WHERE other <> target
                 WITH target, targetSkills, other, collect(s2) AS otherSkills
                 WITH target, other,
@@ -430,7 +469,7 @@ class GDSService:
             candidates = self.gds.run_cypher(
                 """
                 UNWIND $skills AS skillName
-                MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
+                MATCH (e:Person)-[r:HAS_SKILL]->(s:Skill)
                 WHERE toLower(s.name) = toLower(skillName)
                 WITH e, collect(DISTINCT s.name) AS matchedSkills,
                      count(DISTINCT s) AS skillCount
@@ -551,7 +590,7 @@ class GDSService:
             # 멤버 조회
             members = self.gds.run_cypher(
                 """
-                MATCH (e:Employee {communityId: $community_id})
+                MATCH (e:Person {communityId: $community_id})
                 OPTIONAL MATCH (e)-[:HAS_SKILL]->(s:Skill)
                 WITH e, collect(s.name) AS skills
                 RETURN e.employee_id AS id,
@@ -567,7 +606,7 @@ class GDSService:
             # 주요 스킬 통계
             skill_stats = self.gds.run_cypher(
                 """
-                MATCH (e:Employee {communityId: $community_id})-[:HAS_SKILL]->(s:Skill)
+                MATCH (e:Person {communityId: $community_id})-[:HAS_SKILL]->(s:Skill)
                 RETURN s.name AS skill,
                        count(*) AS count,
                        round(100.0 * count(*) / $member_count, 1) AS percentage
