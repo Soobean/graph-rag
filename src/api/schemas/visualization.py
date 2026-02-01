@@ -21,7 +21,7 @@ class GraphNode(BaseModel):
     """그래프 노드"""
 
     id: str = Field(..., description="노드 고유 ID")
-    label: str = Field(..., description="노드 라벨 (Employee, Skill, etc.)")
+    label: str = Field(..., description="노드 라벨 (Person, Skill, etc.)")
     name: str = Field(..., description="노드 이름")
     properties: dict[str, Any] = Field(default_factory=dict, description="추가 속성")
     group: str | None = Field(default=None, description="시각화 그룹 (색상 구분용)")

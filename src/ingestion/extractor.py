@@ -188,12 +188,12 @@ Target: Extract structured knowledge (Nodes and Edges) from the text.
 {node_rules_str}
 
 ## ALLOWED RELATIONSHIPS
-- WORKS_ON: Employee -> Project
-- HAS_SKILL: Employee -> Skill
-- BELONGS_TO: Employee -> Department
-- HAS_POSITION: Employee -> Position
-- HAS_CERTIFICATE: Employee -> Certificate
-- MENTORS: Employee(Mentor) -> Employee(Mentee)
+- WORKS_ON: Person -> Project
+- HAS_SKILL: Person -> Skill
+- BELONGS_TO: Person -> Department
+- HAS_POSITION: Person -> Position
+- HAS_CERTIFICATE: Person -> Certificate
+- MENTORS: Person(Mentor) -> Person(Mentee)
 - REQUIRES: Project -> Skill
 - OWNED_BY: Project -> Department
 

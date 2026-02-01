@@ -236,7 +236,7 @@ class ExplainabilityService:
                 depth = 1
                 expanded_entity_ids.append(node_id)
             else:
-                # Employee, Skill 등 모든 결과 노드
+                # Person, Skill 등 모든 결과 노드
                 role = "end"
                 depth = 2
                 result_entity_ids.append(node_id)

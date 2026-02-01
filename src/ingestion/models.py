@@ -38,7 +38,7 @@ def generate_entity_id(
         - 같은 엔티티가 여러 소스에서 등장해도 동일한 UUID 보장
 
     Args:
-        label: 노드 타입 (Employee, Project 등)
+        label: 노드 타입 (Person, Project 등)
         properties: 노드 속성
 
     Returns:
@@ -46,7 +46,7 @@ def generate_entity_id(
     """
     # 강한 식별자: 단독으로 엔티티를 구분할 수 있는 필드
     strong_identifiers = [
-        "id", "employee_id", "project_id", "department_id",
+        "id", "person_id", "employee_id", "project_id", "department_id",
         "position_id", "skill_id", "certificate_id",
         "email", "code",
     ]

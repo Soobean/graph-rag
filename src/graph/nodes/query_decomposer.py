@@ -3,9 +3,9 @@ Query Decomposer Node
 
 Multi-hop 쿼리를 분해하여 단계별 실행 계획을 생성합니다.
 예: "Python 잘하는 사람의 멘토 중 AWS 경험자는?"
-    → hop1: Employee-[:HAS_SKILL]->Skill(Python)
-    → hop2: Employee<-[:MENTOR_OF]-Employee
-    → hop3: Employee-[:HAS_SKILL]->Skill(AWS)
+    → hop1: Person-[:HAS_SKILL]->Skill(Python)
+    → hop2: Person<-[:MENTOR_OF]-Person
+    → hop3: Person-[:HAS_SKILL]->Skill(AWS)
 """
 
 from src.domain.types import QueryDecomposerUpdate, QueryPlan

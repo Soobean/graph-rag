@@ -218,7 +218,7 @@ async def get_community_graph(
         # 커뮤니티 멤버 조회
         if request.include_skills:
             query = """
-            MATCH (e:Employee)
+            MATCH (e:Person)
             WHERE e.communityId = $community_id
             OPTIONAL MATCH (e)-[r:HAS_SKILL]->(s:Skill)
             RETURN elementId(e) as emp_id, properties(e) as emp_props,
@@ -231,7 +231,7 @@ async def get_community_graph(
             """
         else:
             query = """
-            MATCH (e:Employee)
+            MATCH (e:Person)
             WHERE e.communityId = $community_id
             RETURN elementId(e) as emp_id, properties(e) as emp_props, [] as skills
             LIMIT $limit
@@ -257,13 +257,13 @@ async def get_community_graph(
 
             # 직원 노드 추가
             if emp_id not in nodes_map:
-                emp_style = get_node_style("Employee")
+                emp_style = get_node_style("Person")
                 nodes_map[emp_id] = GraphNode(
                     id=emp_id,
-                    label="Employee",
+                    label="Person",
                     name=emp_props.get("name", "Unknown"),
                     properties=emp_props,
-                    group="Employee",
+                    group="Person",
                     style=emp_style,
                 )
 
@@ -556,15 +556,15 @@ async def visualize_query_path(
                     if not end_label:
                         intent = metadata.get("intent", "")
                         intent_to_end_label = {
-                            "personnel_search": "Employee",
+                            "personnel_search": "Person",
                             "skill_search": "Skill",
                             "team_structure": "Department",
                             "project_search": "Project",
-                            "mentoring_network": "Employee",
+                            "mentoring_network": "Person",
                             "career_path": "Position",
                             "certification_search": "Certificate",
                             "expertise_analysis": "Skill",
-                            "collaboration_network": "Employee",
+                            "collaboration_network": "Person",
                         }
                         end_label = intent_to_end_label.get(intent)
 
