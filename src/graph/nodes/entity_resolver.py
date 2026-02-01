@@ -31,16 +31,32 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
         """
         엔티티 해석 (그래프 노드 매칭)
 
+        concept_expander를 거친 경우 (expanded_entities + original_entities 존재):
+        - 확장된 동의어 중 하나라도 DB에서 찾으면 해당 원본 엔티티는 resolved로 처리
+
+        concept_expander를 거치지 않은 경우:
+        - 각 엔티티를 개별적으로 처리
+
         Args:
             state: 현재 파이프라인 상태
 
         Returns:
             업데이트할 상태 딕셔너리 (resolved + unresolved 엔티티 포함)
         """
-        # expanded_entities 우선, 없으면 entities 사용 (명시적 None 체크)
-        entities_map = state.get("expanded_entities")
-        if entities_map is None:
+        expanded_map = state.get("expanded_entities")
+        original_map = state.get("original_entities")
+
+        # concept_expander를 거쳤는지 확인
+        has_expansion = expanded_map is not None and original_map is not None
+
+        # entities_map: 실제 DB 검색에 사용할 맵
+        # reference_map: unresolved 판단 기준이 되는 원본 맵
+        if has_expansion:
+            entities_map = expanded_map
+            reference_map = original_map
+        else:
             entities_map = state.get("entities", {})
+            reference_map = entities_map
 
         if not entities_map:
             self._logger.info("No entities to resolve")
@@ -50,14 +66,16 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
                 execution_path=[f"{self.name}_skipped"],
             )
 
-        total_entities_count = sum(len(values) for values in entities_map.values())
-        self._logger.info(f"Resolving {total_entities_count} entities...")
+        reference_count = sum(len(values) for values in reference_map.values())
+        self._logger.info(f"Resolving {reference_count} entities...")
 
         resolved: list[ResolvedEntity] = []
         unresolved: list[UnresolvedEntity] = []
+        resolved_originals: set[tuple[str, str]] = set()  # (entity_type, original_value)
         question = state.get("question", "")
         now = datetime.now(UTC).isoformat()
 
+        # 1단계: 엔티티 검색
         for entity_type, values in entities_map.items():
             for value in values:
                 value = value.strip()
@@ -65,7 +83,6 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
                     continue
 
                 try:
-                    # 이름으로 노드 검색
                     matches = await self._neo4j.find_entities_by_name(
                         name=value,
                         labels=[entity_type]
@@ -76,41 +93,53 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
 
                     if matches:
                         best_match = matches[0]
-                        resolved.append(
-                            {
-                                "id": best_match.id,
-                                "labels": best_match.labels,
-                                "name": best_match.properties.get("name", value),
-                                "properties": best_match.properties,
-                                "match_score": 1.0,
-                                "original_value": value,
-                            }
-                        )
+                        # 중복 방지
+                        existing_ids = {r["id"] for r in resolved}
+                        if best_match.id not in existing_ids:
+                            resolved.append(
+                                {
+                                    "id": best_match.id,
+                                    "labels": best_match.labels,
+                                    "name": best_match.properties.get("name", value),
+                                    "properties": best_match.properties,
+                                    "match_score": 1.0,
+                                    "original_value": value,
+                                }
+                            )
                         self._logger.debug(
                             f"Resolved '{value}' to node {best_match.id}"
                         )
-                    else:
-                        unresolved.append(
-                            UnresolvedEntity(
-                                term=value,
-                                category=entity_type,
-                                question=question,
-                                timestamp=now,
-                            )
-                        )
-                        self._logger.info(
-                            f"Unresolved entity: '{value}' (category: {entity_type})"
-                        )
+
+                        if has_expansion:
+                            # concept_expander 거친 경우: 모든 원본을 resolved로 마킹
+                            # (같은 타입의 원본들은 같은 그룹의 확장으로 간주)
+                            for orig in reference_map.get(entity_type, []):
+                                resolved_originals.add((entity_type, orig))
+                        else:
+                            # 개별 처리: 찾은 값만 resolved로 마킹
+                            resolved_originals.add((entity_type, value))
 
                 except Exception as e:
                     self._logger.warning(f"Failed to resolve entity '{value}': {e}")
+
+        # 2단계: reference_map 기준으로 unresolved 판단
+        for entity_type, ref_values in reference_map.items():
+            for ref_value in ref_values:
+                ref_value = ref_value.strip()
+                if not ref_value:
+                    continue
+
+                if (entity_type, ref_value) not in resolved_originals:
                     unresolved.append(
                         UnresolvedEntity(
-                            term=value,
+                            term=ref_value,
                             category=entity_type,
                             question=question,
                             timestamp=now,
                         )
+                    )
+                    self._logger.info(
+                        f"Unresolved entity: '{ref_value}' (category: {entity_type})"
                     )
 
         self._logger.info(

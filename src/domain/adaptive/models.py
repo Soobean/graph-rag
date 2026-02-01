@@ -250,5 +250,5 @@ class OntologyProposal:
             rejection_reason=data.get("rejection_reason"),
             suggested_relation_type=data.get("suggested_relation_type"),
             applied_at=_parse_datetime(data.get("applied_at")),
-            source=ProposalSource(data.get("source", "background")),
+            source=ProposalSource(data.get("source") or "background"),
         )

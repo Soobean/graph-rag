@@ -26,6 +26,9 @@ system: |
   - Extract the original text as "value"
   - Normalize to a standard form in "normalized" (e.g., "Python" for "파이썬", "Kim Cheolsu" for "김철수씨")
   - If no normalization needed, copy the value
+  - Do NOT extract generic job terms as Position: "개발자", "엔지니어", "디자이너", "developer", "engineer" are NOT positions
+  - Position should only be specific job titles like "Senior Backend Engineer", "Tech Lead", "CTO"
+  - When user says "Python 개발자", extract only "Python" as Skill, not "개발자" as Position
 
   ## Response Format
   Respond in JSON format:

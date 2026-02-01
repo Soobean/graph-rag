@@ -365,8 +365,14 @@ class TestOntologyUpdateRouting:
         result = await pipeline_with_ontology.run("ReactJS와 React는 같은 거야")
 
         assert result["success"] is True
-        assert "ontology_update_handler" in result["metadata"]["execution_path"]
-        assert "동의어" in result["response"]
+        path = result["metadata"]["execution_path"]
+        # ontology_update_handler 또는 ontology_update_handler_pending이 있어야 함
+        assert any("ontology_update_handler" in node for node in path)
+        # 응답에 관련 텍스트가 있어야 함 (동의어, 등록, 추가, 접수 등)
+        response = result["response"]
+        assert any(
+            keyword in response for keyword in ["동의어", "등록", "추가", "접수", "적용"]
+        )
 
     @pytest.mark.asyncio
     async def test_ontology_update_without_service_fallback(

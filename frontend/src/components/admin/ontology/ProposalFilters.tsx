@@ -83,12 +83,12 @@ export function ProposalFilters({ filters, onFiltersChange }: ProposalFiltersPro
         <label htmlFor="status" className="text-sm font-medium">
           Status:
         </label>
-        <Select id="status" value={filters.status || 'pending'} onChange={handleStatusChange} className="w-32">
+        <Select id="status" value={filters.status || 'all'} onChange={handleStatusChange} className="w-32">
+          <option value="all">All</option>
           <option value="pending">Pending</option>
           <option value="approved">Approved</option>
           <option value="auto_approved">Auto-Approved</option>
           <option value="rejected">Rejected</option>
-          <option value="all">All</option>
         </Select>
       </div>
 

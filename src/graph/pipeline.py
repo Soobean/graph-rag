@@ -170,6 +170,7 @@ class GraphRAGPipeline:
                 llm_repository=llm_repository,
                 neo4j_repository=neo4j_repository,
                 ontology_service=ontology_service,
+                settings=settings,
             )
             logger.info("OntologyUpdateHandler initialized (user-driven updates enabled)")
 
@@ -566,9 +567,9 @@ class GraphRAGPipeline:
                             node_output = {**node_output, "execution_path": accumulated_path.copy()}
                         final_state.update(node_output)
 
-                    # response_generator 노드 도달 전까지 진행
-                    # (response_generator는 마지막 노드)
-                    if node_name == "response_generator":
+                    # 응답 생성 노드 도달 시 처리
+                    # (response_generator, clarification_handler, ontology_update_handler)
+                    if node_name in ("response_generator", "clarification_handler", "ontology_update_handler"):
                         # 이미 응답이 생성된 상태 → 비스트리밍 응답 (fallback)
                         response = final_state.get("response", "")
                         if response:
@@ -586,7 +587,14 @@ class GraphRAGPipeline:
                             return
 
             # 파이프라인 완료 후 스트리밍 응답 생성
-            # (response_generator 노드 대신 직접 스트리밍)
+
+            # 이미 응답이 있으면 사용 (clarification 등에서 생성된 경우)
+            existing_response = final_state.get("response", "")
+            if existing_response:
+                yield {"type": "metadata", "data": self._build_metadata(final_state)}
+                yield {"type": "chunk", "text": existing_response}
+                yield {"type": "done", "full_response": existing_response, "success": True}
+                return
 
             # 메타데이터 먼저 전송
             metadata = self._build_metadata(final_state)
