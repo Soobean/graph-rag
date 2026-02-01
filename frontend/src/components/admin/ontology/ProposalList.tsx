@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Check, X, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Proposal, PaginationMeta, ProposalStatus, ProposalType } from '@/types/admin';
+import type { Proposal, PaginationMeta, ProposalStatus, ProposalType, ProposalSource } from '@/types/admin';
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString('ko-KR', {
@@ -38,6 +38,19 @@ function getTypeBadge(type: ProposalType | string) {
       return <Badge variant="outline">Relation</Badge>;
     default:
       return <Badge variant="outline">{type}</Badge>;
+  }
+}
+
+function getSourceBadge(source: ProposalSource | string) {
+  switch (source) {
+    case 'chat':
+      return <Badge variant="default" className="bg-blue-500">Chat</Badge>;
+    case 'background':
+      return <Badge variant="secondary">Background</Badge>;
+    case 'admin':
+      return <Badge variant="outline" className="border-purple-500 text-purple-600">Admin</Badge>;
+    default:
+      return <Badge variant="outline">{source}</Badge>;
   }
 }
 
@@ -111,6 +124,7 @@ export function ProposalList({
             <TableHead>Term</TableHead>
             <TableHead>Category</TableHead>
             <TableHead>Type</TableHead>
+            <TableHead>Source</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Frequency</TableHead>
             <TableHead className="text-right">Confidence</TableHead>
@@ -134,6 +148,7 @@ export function ProposalList({
                 <span className="text-sm text-muted-foreground">{proposal.category}</span>
               </TableCell>
               <TableCell>{getTypeBadge(proposal.proposal_type)}</TableCell>
+              <TableCell>{getSourceBadge(proposal.source)}</TableCell>
               <TableCell>{getStatusBadge(proposal.status)}</TableCell>
               <TableCell className="text-right tabular-nums">{proposal.frequency}</TableCell>
               <TableCell className="text-right tabular-nums">{(proposal.confidence * 100).toFixed(0)}%</TableCell>

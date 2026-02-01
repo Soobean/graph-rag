@@ -50,6 +50,14 @@ export function ProposalFilters({ filters, onFiltersChange }: ProposalFiltersPro
     });
   };
 
+  const handleSourceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    onFiltersChange({
+      ...filters,
+      source: e.target.value as ProposalListParams['source'],
+      page: 1,
+    });
+  };
+
   const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const [sort_by, sort_order] = e.target.value.split(':') as [
       ProposalListParams['sort_by'],
@@ -94,6 +102,19 @@ export function ProposalFilters({ filters, onFiltersChange }: ProposalFiltersPro
           <option value="NEW_CONCEPT">New Concept</option>
           <option value="NEW_SYNONYM">New Synonym</option>
           <option value="NEW_RELATION">New Relation</option>
+        </Select>
+      </div>
+
+      {/* Source Filter */}
+      <div className="flex items-center gap-2">
+        <label htmlFor="source" className="text-sm font-medium">
+          Source:
+        </label>
+        <Select id="source" value={filters.source || 'all'} onChange={handleSourceChange} className="w-32">
+          <option value="all">All Sources</option>
+          <option value="chat">Chat</option>
+          <option value="background">Background</option>
+          <option value="admin">Admin</option>
         </Select>
       </div>
 
