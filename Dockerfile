@@ -1,4 +1,24 @@
-FROM python:3.12-slim AS builder
+# ==============================================
+# Stage 1: Frontend Build
+# ==============================================
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app/frontend
+
+# 의존성 파일 복사 (캐시 최적화)
+COPY frontend/package*.json ./
+
+# 의존성 설치
+RUN npm ci
+
+# 소스 코드 복사 및 빌드
+COPY frontend/ ./
+RUN npm run build
+
+# ==============================================
+# Stage 2: Backend Build
+# ==============================================
+FROM python:3.12-slim AS backend-builder
 
 # uv 설치 (Rust 기반 초고속 패키지 매니저)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -22,9 +42,9 @@ RUN uv venv /app/.venv && \
 COPY src/ ./src/
 RUN uv pip install --no-cache .
 
-# ---------------------------------------------
-# Stage 2: Runtime
-# ---------------------------------------------
+# ==============================================
+# Stage 3: Runtime
+# ==============================================
 FROM python:3.12-slim AS runtime
 
 # 런타임에 필요한 최소 패키지만 설치
@@ -37,13 +57,16 @@ RUN useradd --create-home --shell /bin/bash appuser
 
 WORKDIR /app
 
-# 가상환경 복사
-COPY --from=builder /app/.venv /app/.venv
+# Backend: 가상환경 복사
+COPY --from=backend-builder /app/.venv /app/.venv
 
-# 소스 코드 복사
-COPY --from=builder /app/src ./src/
+# Backend: 소스 코드 복사
+COPY --from=backend-builder /app/src ./src/
 COPY src/domain/ontology/*.yaml ./src/domain/ontology/
 COPY src/prompts/ ./src/prompts/
+
+# Frontend: 빌드된 정적 파일 복사
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist/
 
 # 환경 변수 설정
 ENV PATH="/app/.venv/bin:$PATH" \

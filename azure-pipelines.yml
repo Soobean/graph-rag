@@ -1,0 +1,33 @@
+# Azure DevOps Pipeline for Graph RAG (Prototype)
+trigger:
+  - main
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  sshServiceConnection: "vm-ssh-connection"
+  appDirectory: "/home/azureuser/graph-rag"
+
+steps:
+  - task: SSH@0
+    displayName: "Deploy to VM"
+    inputs:
+      sshEndpoint: "$(sshServiceConnection)"
+      runOptions: "commands"
+      commands: |
+        cd $(appDirectory)
+
+        # 최신 코드 가져오기
+        git fetch origin main
+        git reset --hard origin/main
+
+        # Docker Compose로 빌드 및 실행
+        docker compose down
+        docker compose build --no-cache
+        docker compose up -d
+
+        # 배포 확인
+        echo "=== Deployment Complete ==="
+        docker compose ps
+      readyTimeout: "20000"

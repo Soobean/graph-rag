@@ -7,10 +7,12 @@ FastAPI 애플리케이션 진입점
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api import (
     analytics_router,
@@ -245,15 +247,52 @@ app.include_router(visualization_router)
 app.include_router(ontology_router)
 app.include_router(ontology_admin_router)
 
+# Frontend 정적 파일 경로
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 
-@app.get("/")
-async def root() -> dict[str, str]:
-    """루트 엔드포인트"""
-    return {
-        "name": settings.app_name,
-        "version": settings.app_version,
-        "docs": "/docs",
-    }
+@app.get("/api/v1/health")
+async def health_check():
+    """헬스체크 엔드포인트"""
+    return {"status": "healthy", "version": settings.app_version}
+
+
+# Frontend 정적 파일 서빙 (프로덕션용)
+if FRONTEND_DIR.exists():
+    # assets 폴더 마운트 (JS, CSS, 이미지 등)
+    assets_dir = FRONTEND_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/")
+    async def serve_index():
+        """메인 페이지 - React index.html 반환"""
+        return FileResponse(FRONTEND_DIR / "index.html")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """
+        React SPA fallback
+
+        - 정적 파일이 있으면 해당 파일 반환
+        - 없으면 index.html 반환 (React Router가 처리)
+        """
+        # API 경로는 여기 도달하지 않음 (위에서 먼저 매칭)
+        file_path = FRONTEND_DIR / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(FRONTEND_DIR / "index.html")
+
+else:
+    # Frontend 빌드가 없을 때 (개발 환경)
+    @app.get("/")
+    async def root():
+        """루트 엔드포인트 (API 전용 모드)"""
+        return {
+            "name": settings.app_name,
+            "version": settings.app_version,
+            "docs": "/docs",
+            "note": "Frontend not built. Run 'npm run build' in frontend directory.",
+        }
 
 
 if __name__ == "__main__":
