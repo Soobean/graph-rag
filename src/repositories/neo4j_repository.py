@@ -154,21 +154,22 @@ class Neo4jRepository:
         limit: int = 10,
     ) -> list[NodeResult]:
         """
-        이름으로 엔티티 검색
+        이름으로 엔티티 검색 (정확 일치 우선)
 
         Args:
-            name: 검색할 이름 (부분 일치)
+            name: 검색할 이름
             labels: 필터링할 노드 레이블 (선택)
             limit: 최대 결과 수
 
         Returns:
-            매칭된 노드 리스트
+            매칭된 노드 리스트 (정확 일치 우선, 없으면 대소문자 무시 일치)
         """
         label_filter = self._build_label_filter(labels)
 
+        # 1단계: 정확 일치 (대소문자 무시)
         query = f"""
         MATCH (n{label_filter})
-        WHERE n.name CONTAINS $name
+        WHERE toLower(n.name) = toLower($name)
         RETURN elementId(n) as id, labels(n) as labels, properties(n) as properties
         LIMIT $limit
         """

@@ -299,8 +299,8 @@ class GraphRAGPipeline:
                 return "response_generator"
 
             # 미해결 엔티티가 있는 경우 명확화 요청
-            resolved_entities = state.get("resolved_entities", [])
-            has_unresolved = any(not entity.get("id") for entity in resolved_entities)
+            unresolved_entities = state.get("unresolved_entities", [])
+            has_unresolved = len(unresolved_entities) > 0
             if has_unresolved:
                 logger.info(
                     "Unresolved entities found. Routing to clarification_handler."
