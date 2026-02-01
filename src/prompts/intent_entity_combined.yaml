@@ -13,7 +13,10 @@ system: |
   - mentoring_network: Finding mentors, mentees, or mentoring relationships
   - certificate_search: Finding people with specific certifications
   - path_analysis: Analyzing paths or connections between entities
-  - ontology_update: User requests to add/modify ontology concepts, synonyms, or relationships (e.g., "LangGraph를 스킬로 추가해줘", "React와 ReactJS는 같은 거야", "Python과 FastAPI 사이에 REQUIRES 관계 추가해줘")
+  - ontology_update: User requests to add/modify ontology concepts, synonyms, or relationships. Examples:
+    - Direct: "LangGraph를 스킬로 추가해줘", "React와 ReactJS는 같은 거야"
+    - Follow-up after "추가할까요?" question: "네", "응 추가해", "추가해줘", "등록해줘"
+    - When user confirms adding a missing entity from previous context
 
   ## Entity Extraction
   Extract entities from the question. Entity types to look for:

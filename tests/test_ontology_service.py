@@ -11,6 +11,7 @@ import pytest
 
 from src.domain.adaptive.models import (
     OntologyProposal,
+    ProposalSource,
     ProposalStatus,
     ProposalType,
 )
@@ -70,6 +71,7 @@ def sample_proposal():
         frequency=3,
         confidence=0.85,
         status=ProposalStatus.PENDING,
+        source=ProposalSource.BACKGROUND,
         evidence_questions=["LangGraph를 사용하는 개발자는?"],
     )
 

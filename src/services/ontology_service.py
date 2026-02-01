@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.domain.adaptive.models import (
     OntologyProposal,
+    ProposalSource,
     ProposalStatus,
     ProposalType,
 )
@@ -90,6 +91,7 @@ class OntologyService:
         self,
         status: str | None = None,
         proposal_type: str | None = None,
+        source: str | None = None,
         category: str | None = None,
         term_search: str | None = None,
         sort_by: str = "created_at",
@@ -103,6 +105,7 @@ class OntologyService:
         Args:
             status: 상태 필터 (pending, approved, rejected, auto_approved, all)
             proposal_type: 유형 필터 (NEW_CONCEPT, NEW_SYNONYM, NEW_RELATION, all)
+            source: 출처 필터 (chat, background, admin, all)
             category: 카테고리 필터
             term_search: 용어 검색어
             sort_by: 정렬 필드
@@ -118,12 +121,15 @@ class OntologyService:
             status = None
         if proposal_type == "all":
             proposal_type = None
+        if source == "all":
+            source = None
 
         offset = (page - 1) * page_size
 
         return await self._neo4j.get_proposals_paginated(
             status=status,
             proposal_type=proposal_type,
+            source=source,
             category=category,
             term_search=term_search,
             sort_by=sort_by,
@@ -181,6 +187,7 @@ class OntologyService:
             frequency=1,
             confidence=1.0,  # 수동 생성은 높은 신뢰도
             status=ProposalStatus.PENDING,
+            source=ProposalSource.ADMIN,  # Admin API에서 생성
         )
 
         return await self._neo4j.create_proposal(proposal)

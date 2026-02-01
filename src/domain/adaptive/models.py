@@ -84,6 +84,20 @@ class ProposalStatus(str, Enum):
     AUTO_APPROVED = "auto_approved"
 
 
+class ProposalSource(str, Enum):
+    """
+    온톨로지 제안 출처
+
+    - CHAT: 사용자가 채팅으로 직접 요청
+    - BACKGROUND: 백그라운드 학습 (미해결 엔티티 자동 분석)
+    - ADMIN: 관리자가 직접 생성
+    """
+
+    CHAT = "chat"
+    BACKGROUND = "background"
+    ADMIN = "admin"
+
+
 @dataclass
 class OntologyProposal:
     """
@@ -134,6 +148,7 @@ class OntologyProposal:
     # Phase 4: 온톨로지 적용 관련 필드
     suggested_relation_type: str | None = None  # IS_A, SAME_AS, REQUIRES, PART_OF
     applied_at: datetime | None = None  # 온톨로지 실제 적용 시각
+    source: ProposalSource = ProposalSource.BACKGROUND  # 제안 출처
 
     def approve(self, reviewer: str | None = None, auto: bool = False) -> None:
         """제안 승인"""
@@ -208,6 +223,7 @@ class OntologyProposal:
             "rejection_reason": self.rejection_reason,
             "suggested_relation_type": self.suggested_relation_type,
             "applied_at": self.applied_at.isoformat() if self.applied_at else None,
+            "source": self.source.value,
         }
 
     @classmethod
@@ -234,4 +250,5 @@ class OntologyProposal:
             rejection_reason=data.get("rejection_reason"),
             suggested_relation_type=data.get("suggested_relation_type"),
             applied_at=_parse_datetime(data.get("applied_at")),
+            source=ProposalSource(data.get("source", "background")),
         )

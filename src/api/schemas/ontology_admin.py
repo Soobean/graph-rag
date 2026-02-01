@@ -129,6 +129,7 @@ class ProposalResponse(BaseModel):
     frequency: int = Field(..., description="등장 빈도")
     confidence: float = Field(..., description="신뢰도 (0.0 ~ 1.0)")
     status: str = Field(..., description="현재 상태")
+    source: str = Field(..., description="제안 출처 (chat, background, admin)")
     evidence_questions: list[str] = Field(
         default_factory=list, description="증거 질문 목록 (최근 5건)"
     )

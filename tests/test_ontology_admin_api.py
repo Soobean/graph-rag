@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from src.api.routes.ontology_admin import router
 from src.domain.adaptive.models import (
     OntologyProposal,
+    ProposalSource,
     ProposalStatus,
     ProposalType,
 )
@@ -90,6 +91,7 @@ def sample_proposal():
         frequency=3,
         confidence=0.85,
         status=ProposalStatus.PENDING,
+        source=ProposalSource.BACKGROUND,
         evidence_questions=["LangGraph를 사용하는 개발자는?", "LangGraph 경험자 찾기"],
         created_at=datetime.now(UTC),
     )
@@ -152,6 +154,7 @@ class TestListProposals:
         mock_ontology_service.list_proposals.assert_called_once_with(
             status="pending",
             proposal_type="NEW_CONCEPT",
+            source="all",
             category="skills",
             term_search="Lang",
             sort_by="frequency",
