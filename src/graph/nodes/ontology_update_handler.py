@@ -12,15 +12,13 @@ from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import AIMessage
 
+from src.config import Settings
 from src.domain.adaptive.models import (
     OntologyProposal,
     ProposalSource,
     ProposalStatus,
     ProposalType,
 )
-
-# 채팅 요청 자동 승인 신뢰도 임계값
-CHAT_AUTO_APPROVE_THRESHOLD = 0.9
 from src.domain.types import OntologyUpdateHandlerUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
@@ -51,12 +49,21 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
         llm_repository: LLMRepository,
         neo4j_repository: Neo4jRepository,
         ontology_service: OntologyService,
+        settings: Settings | None = None,
     ):
         super().__init__()
         self._llm = llm_repository
         self._neo4j = neo4j_repository
         self._ontology_service = ontology_service
         self._prompt_manager = PromptManager()
+
+        # 채팅 자동 승인 설정
+        if settings:
+            self._auto_approve_enabled = settings.chat_auto_approve_enabled
+            self._auto_approve_threshold = settings.chat_auto_approve_threshold
+        else:
+            self._auto_approve_enabled = True
+            self._auto_approve_threshold = 0.9
 
     @property
     def name(self) -> str:
@@ -105,8 +112,8 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
                 "온톨로지 제안 생성 중 오류가 발생했습니다.", "proposal_error", str(e)
             )
 
-        # 3. 신뢰도 기반 분기: 높으면 즉시 적용, 낮으면 관리자 검토
-        if confidence >= CHAT_AUTO_APPROVE_THRESHOLD:
+        # 3. 신뢰도 기반 분기: auto-approve 활성화 + 높은 신뢰도면 즉시 적용
+        if self._auto_approve_enabled and confidence >= self._auto_approve_threshold:
             # 높은 신뢰도 → 즉시 승인 및 적용
             try:
                 approved = await self._ontology_service.approve_proposal(

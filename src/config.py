@@ -257,6 +257,18 @@ class Settings(BaseSettings):
         description="온톨로지 로더 모드 (yaml: YAML 파일, neo4j: Neo4j DB, hybrid: Neo4j 우선 + YAML 폴백)",
     )
 
+    # 채팅 온톨로지 업데이트 설정
+    chat_auto_approve_enabled: bool = Field(
+        default=True,
+        description="채팅에서 온톨로지 추가 요청 시 자동 승인 여부",
+    )
+    chat_auto_approve_threshold: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description="채팅 자동 승인 최소 신뢰도 (0.0 ~ 1.0)",
+    )
+
     # ============================================
     # Adaptive Ontology 설정
     # ============================================

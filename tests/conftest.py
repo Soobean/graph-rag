@@ -27,6 +27,9 @@ def mock_settings():
     settings.adaptive_ontology.enabled = False
     # Latency Optimization 설정
     settings.cypher_light_model_enabled = True
+    # 채팅 자동 승인 설정
+    settings.chat_auto_approve_enabled = True
+    settings.chat_auto_approve_threshold = 0.9
     return settings
 
 
@@ -58,8 +61,23 @@ def mock_llm():
 @pytest.fixture
 def mock_neo4j():
     """Mock Neo4j Repository"""
+    from src.repositories.neo4j_repository import NodeResult
+
     neo4j = MagicMock(spec=Neo4jRepository)
-    neo4j.find_entities_by_name = AsyncMock(return_value=[])
+
+    # find_entities_by_name: 엔티티가 발견되면 resolved로 처리됨
+    # 빈 리스트를 반환하면 unresolved로 분류되어 clarification_handler로 라우팅됨
+    async def mock_find_entities(name: str, labels=None, limit=10):
+        # 테스트에서 사용하는 일반적인 엔티티 이름에 대해 매칭 결과 반환
+        return [
+            NodeResult(
+                id=f"node_{name}",
+                labels=labels or ["Person"],
+                properties={"name": name},
+            )
+        ]
+
+    neo4j.find_entities_by_name = AsyncMock(side_effect=mock_find_entities)
     neo4j.execute_cypher = AsyncMock(return_value=[])
     return neo4j
 
