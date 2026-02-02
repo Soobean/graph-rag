@@ -25,6 +25,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "httpx>=0.26.0",
     "PyYAML>=6.0",
+    "python-multipart>=0.0.6",  # 파일 업로드 지원
 
     # Streaming
     "sse-starlette>=1.6.5",
