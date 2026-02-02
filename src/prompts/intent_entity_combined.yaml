@@ -24,7 +24,10 @@ system: |
 
   Entity extraction guidelines:
   - Extract the original text as "value"
-  - Normalize to a standard form in "normalized" (e.g., "Python" for "파이썬", "Kim Cheolsu" for "김철수씨")
+  - Normalize to a standard form in "normalized":
+    - For Skills: Use canonical English name (e.g., "파이썬" → "Python", "자바" → "Java")
+    - For Person names: Keep the original language but remove honorific suffixes (e.g., "김철수씨" → "김철수", "윤수빈님" → "윤수빈", "John Smith씨" → "John Smith")
+    - For other entities: Use the most common form
   - If no normalization needed, copy the value
   - Do NOT extract generic job terms as Position: "개발자", "엔지니어", "디자이너", "developer", "engineer" are NOT positions
   - Position should only be specific job titles like "Senior Backend Engineer", "Tech Lead", "CTO"
