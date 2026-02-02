@@ -38,7 +38,7 @@ export function useProposalList(params: ProposalListParams = {}) {
   return useQuery({
     queryKey: ['proposals', params],
     queryFn: async (): Promise<ProposalListResponse> => {
-      const query = buildSearchParams(params);
+      const query = buildSearchParams(params as Record<string, string | number | undefined>);
       const response = await apiClient.get<ProposalListResponse>(
         `/ontology/admin/proposals?${query}`
       );

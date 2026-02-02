@@ -9,7 +9,7 @@ import type { SimilarEmployeesResponse } from '@/types/admin';
 
 export function SimilarEmployees() {
   const [employeeName, setEmployeeName] = useState('');
-  const [topK, setTopK] = useState(10);
+  const [topK] = useState(10);
   const [result, setResult] = useState<SimilarEmployeesResponse | null>(null);
 
   const findSimilar = useFindSimilarEmployees();
