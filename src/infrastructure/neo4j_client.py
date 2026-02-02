@@ -238,7 +238,7 @@ class Neo4jClient:
 
         사용 예시:
             async with client.session() as session:
-                result = await session.run("MATCH (n:Person) RETURN n")
+                result = await session.run("MATCH (n:Employee) RETURN n")
         """
         db = database or self._database
         session = self.driver.session(database=db, **kwargs)

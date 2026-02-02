@@ -16,7 +16,7 @@ class EntityExtractorNode(BaseNode[EntityExtractorUpdate]):
 
     # 기본 엔티티 타입
     DEFAULT_ENTITY_TYPES = [
-        "Person",  # 사람
+        "Employee",  # 사람 (Neo4j DB 라벨과 일치)
         "Organization",  # 조직/회사
         "Department",  # 부서
         "Position",  # 직책/직급

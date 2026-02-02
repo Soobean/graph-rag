@@ -50,13 +50,13 @@ class TestSchemaGenerator:
         """스키마 발견 성공 케이스"""
         # LLM 응답 설정
         mock_llm.generate_json.return_value = {
-            "node_labels": ["Person", "Project"],
+            "node_labels": ["Employee", "Project"],
             "relationship_types": ["WORKS_ON", "MANAGES"],
             "properties": {
-                "Person": ["name", "email"],
+                "Employee": ["name", "email"],
                 "Project": ["name", "status"],
             },
-            "constraints": {"Person": ["email"]},
+            "constraints": {"Employee": ["email"]},
             "reasoning": "Based on HR domain patterns",
         }
 
@@ -71,7 +71,7 @@ class TestSchemaGenerator:
         )
 
         assert isinstance(result, SchemaProposal)
-        assert "Person" in result.node_labels
+        assert "Employee" in result.node_labels
         assert "WORKS_ON" in result.relationship_types
         assert mock_llm.generate_json.called
 
@@ -104,16 +104,16 @@ class TestSchemaGenerator:
     async def test_refine_schema(self, schema_generator, mock_llm):
         """스키마 개선"""
         current_schema = SchemaProposal(
-            node_labels=["Person"],
+            node_labels=["Employee"],
             relationship_types=["KNOWS"],
-            properties={"Person": ["name"]},
+            properties={"Employee": ["name"]},
         )
 
         mock_llm.generate_json.return_value = {
-            "node_labels": ["Person", "Skill"],
+            "node_labels": ["Employee", "Skill"],
             "relationship_types": ["KNOWS", "HAS_SKILL"],
             "properties": {
-                "Person": ["name", "email"],
+                "Employee": ["name", "email"],
                 "Skill": ["name"],
             },
             "reasoning": "Added Skill based on feedback",
@@ -132,7 +132,7 @@ class TestSchemaGenerator:
         """스키마 병합"""
         schemas = [
             SchemaProposal(
-                node_labels=["Person"],
+                node_labels=["Employee"],
                 relationship_types=["KNOWS"],
                 properties={},
             ),
@@ -144,7 +144,7 @@ class TestSchemaGenerator:
         ]
 
         mock_llm.generate_json.return_value = {
-            "node_labels": ["Person", "Project"],
+            "node_labels": ["Employee", "Project"],
             "relationship_types": ["KNOWS", "WORKS_ON"],
             "properties": {},
             "reasoning": "Merged both schemas",
@@ -152,7 +152,7 @@ class TestSchemaGenerator:
 
         result = await schema_generator.merge_schemas(schemas)
 
-        assert "Person" in result.node_labels
+        assert "Employee" in result.node_labels
         assert "Project" in result.node_labels
 
     @pytest.mark.asyncio

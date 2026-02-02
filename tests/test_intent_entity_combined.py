@@ -23,7 +23,7 @@ def mock_llm_repository() -> MagicMock:
             "confidence": 0.95,
             "entities": [
                 {"type": "Skill", "value": "Python", "normalized": "Python"},
-                {"type": "Person", "value": "홍길동", "normalized": "Hong Gildong"},
+                {"type": "Employee", "value": "홍길동", "normalized": "Hong Gildong"},
             ],
         }
     )
@@ -57,8 +57,8 @@ class TestIntentEntityExtractorNode:
         entities = result["entities"]
         assert "Skill" in entities
         assert "Python" in entities["Skill"]
-        assert "Person" in entities
-        assert "Hong Gildong" in entities["Person"]
+        assert "Employee" in entities
+        assert "Hong Gildong" in entities["Employee"]
 
         # execution_path 검증
         assert "intent_entity_extractor" in result["execution_path"]
@@ -184,7 +184,7 @@ class TestIntentEntityExtractorNode:
                 "intent": "personnel_search",
                 "confidence": 0.9,
                 "entities": [
-                    {"type": "Person", "value": "홍길동"},  # normalized 없음
+                    {"type": "Employee", "value": "홍길동"},  # normalized 없음
                 ],
             }
         )
@@ -201,7 +201,7 @@ class TestIntentEntityExtractorNode:
         result = await node._process(state)
 
         # value 사용
-        assert "홍길동" in result["entities"]["Person"]
+        assert "홍길동" in result["entities"]["Employee"]
 
 
 class TestIntentEntityExtractorNodeConfig:
@@ -259,7 +259,7 @@ class TestLLMRepositoryCombinedMethod:
         await repo.classify_intent_and_extract_entities(
             question="테스트 질문",
             available_intents=["personnel_search"],
-            entity_types=["Person"],
+            entity_types=["Employee"],
         )
 
         # LIGHT 모델 사용 확인

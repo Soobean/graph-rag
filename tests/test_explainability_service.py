@@ -80,14 +80,14 @@ class TestBuildThoughtProcess:
         """엔티티 추출 스텝 세부 정보"""
         metadata = {
             "execution_path": ["entity_extractor"],
-            "entities": {"Person": ["홍길동"], "Skill": ["Python", "Java"]},
+            "entities": {"Employee": ["홍길동"], "Skill": ["Python", "Java"]},
         }
         result = service.build_thought_process(metadata, None)
 
         step = result.steps[0]
         assert step.step_type == "extraction"
         assert "추출된 엔티티: 3개" in step.output_summary
-        assert step.details["entities"] == {"Person": ["홍길동"], "Skill": ["Python", "Java"]}
+        assert step.details["entities"] == {"Employee": ["홍길동"], "Skill": ["Python", "Java"]}
 
     def test_concept_expander_step_with_full_state(self, service):
         """개념 확장 스텝 (full_state 포함)"""

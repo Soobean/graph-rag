@@ -697,7 +697,7 @@ class GraphRAGPipeline:
 
         # 노드 스타일 기본값
         default_styles = {
-            "Person": {"color": "#4CAF50", "icon": "user", "size": 40},
+            "Employee": {"color": "#4CAF50", "icon": "user", "size": 40},
             "Skill": {"color": "#2196F3", "icon": "code", "size": 35},
             "Department": {"color": "#FF9800", "icon": "building", "size": 45},
             "Project": {"color": "#9C27B0", "icon": "folder", "size": 40},

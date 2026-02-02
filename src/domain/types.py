@@ -77,7 +77,7 @@ class GraphSchema(TypedDict, total=False):
 class ExtractedEntity(TypedDict):
     """LLM이 추출한 엔티티"""
 
-    type: str  # e.g., "Person", "Skill", "Department"
+    type: str  # e.g., "Employee", "Skill", "Department"
     value: str  # e.g., "홍길동", "Python", "개발팀"
     normalized: str  # 정규화된 값 (선택)
 
@@ -99,7 +99,7 @@ class UnresolvedEntity(TypedDict):
     """
 
     term: str  # 원본 용어 (예: "LangGraph")
-    category: str  # 카테고리 (예: "skills", "Person")
+    category: str  # 카테고리 (예: "skills", "Employee")
     question: str  # 원본 질문 (증거 데이터)
     timestamp: str  # ISO 8601 타임스탬프
 
@@ -317,7 +317,7 @@ class QueryHop(TypedDict, total=False):
 
     step: int  # 1, 2, 3...
     description: str  # "Python 스킬 보유자 찾기"
-    node_label: str  # "Person", "Skill"
+    node_label: str  # "Employee", "Skill"
     relationship: str  # "HAS_SKILL", "MENTOR_OF"
     direction: Literal["outgoing", "incoming", "both"]
     filter_condition: str | None  # "name = 'Python'"

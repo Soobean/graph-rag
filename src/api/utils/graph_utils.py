@@ -19,7 +19,7 @@ from src.domain.validators import (  # noqa: F401
 # ============================================
 
 NODE_STYLES: dict[str, dict[str, str | float]] = {
-    "Person": {"color": "#4A90D9", "icon": "person", "size": 1.2},
+    "Employee": {"color": "#4A90D9", "icon": "person", "size": 1.2},
     "Skill": {"color": "#7CB342", "icon": "code", "size": 1.0},
     "Department": {"color": "#FF7043", "icon": "business", "size": 1.3},
     "Project": {"color": "#AB47BC", "icon": "folder", "size": 1.1},
@@ -36,7 +36,7 @@ def get_node_style(label: str) -> NodeStyle:
     노드 라벨에 따른 스타일 반환
 
     Args:
-        label: 노드 라벨 (Person, Skill, etc.)
+        label: 노드 라벨 (Employee, Skill, etc.)
 
     Returns:
         NodeStyle 객체

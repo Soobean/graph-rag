@@ -67,9 +67,9 @@ class TestQueryMetadata:
         metadata = QueryMetadata(
             intent="personnel_search",
             intent_confidence=0.95,
-            entities={"Person": ["홍길동"]},  # dict[str, list[str]] 형식
+            entities={"Employee": ["홍길동"]},  # dict[str, list[str]] 형식
             resolved_entities=[{"id": 1, "name": "홍길동"}],
-            cypher_query="MATCH (p:Person) RETURN p",
+            cypher_query="MATCH (p:Employee) RETURN p",
             cypher_parameters={"name": "홍길동"},
             result_count=5,
             execution_path=["intent_classifier", "entity_extractor"],
@@ -77,7 +77,7 @@ class TestQueryMetadata:
         assert metadata.intent == "personnel_search"
         assert metadata.intent_confidence == 0.95
         assert len(metadata.entities) == 1
-        assert metadata.entities["Person"] == ["홍길동"]
+        assert metadata.entities["Employee"] == ["홍길동"]
         assert metadata.result_count == 5
 
     def test_minimal_metadata(self):
@@ -184,7 +184,7 @@ class TestSchemaResponse:
     def test_full_schema(self):
         """전체 스키마 응답"""
         response = SchemaResponse(
-            node_labels=["Person", "Company"],
+            node_labels=["Employee", "Company"],
             relationship_types=["WORKS_AT", "KNOWS"],
             indexes=[{"name": "idx1", "type": "BTREE"}],
             constraints=[{"name": "const1", "type": "UNIQUE"}],
@@ -204,8 +204,8 @@ class TestSchemaResponse:
 
     def test_partial_schema(self):
         """부분 스키마 응답"""
-        response = SchemaResponse(node_labels=["Person"])
-        assert response.node_labels == ["Person"]
+        response = SchemaResponse(node_labels=["Employee"])
+        assert response.node_labels == ["Employee"]
         assert response.relationship_types == []
 
 
@@ -242,7 +242,7 @@ class TestSchemaJsonSerialization:
             metadata=QueryMetadata(
                 intent="personnel_search",
                 intent_confidence=0.95,
-                entities={"Person": ["홍길동"]},  # dict[str, list[str]] 형식
+                entities={"Employee": ["홍길동"]},  # dict[str, list[str]] 형식
             ),
         )
 

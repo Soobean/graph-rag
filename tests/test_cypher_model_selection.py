@@ -20,7 +20,7 @@ def mock_llm_repository() -> MagicMock:
     """LLM Repository 목"""
     mock = MagicMock(spec=LLMRepository)
     mock.generate_cypher = AsyncMock(
-        return_value={"cypher": "MATCH (p:Person) RETURN p", "parameters": {}}
+        return_value={"cypher": "MATCH (p:Employee) RETURN p", "parameters": {}}
     )
     return mock
 
@@ -31,7 +31,7 @@ def mock_neo4j_repository() -> MagicMock:
     mock = MagicMock(spec=Neo4jRepository)
     mock.get_schema = AsyncMock(
         return_value={
-            "node_labels": ["Person", "Skill"],
+            "node_labels": ["Employee", "Skill"],
             "relationship_types": ["HAS_SKILL"],
         }
     )
@@ -152,7 +152,7 @@ class TestQueryComplexityAnalysis:
             "messages": [],
             "execution_path": [],
             "intent": "path_analysis",
-            "entities": {"Person": ["홍길동", "김철수"]},
+            "entities": {"Employee": ["홍길동", "김철수"]},
         }
 
         complexity = node._analyze_complexity(state)
@@ -209,7 +209,7 @@ class TestCypherGeneratorModelSelection:
             "intent": "personnel_search",
             "entities": {"skills": ["Python"]},
             "schema": {
-                "node_labels": ["Person"],
+                "node_labels": ["Employee"],
                 "relationship_types": [],
             },
         }
@@ -247,7 +247,7 @@ class TestCypherGeneratorModelSelection:
                 "hop_count": 2,
             },
             "schema": {
-                "node_labels": ["Person"],
+                "node_labels": ["Employee"],
                 "relationship_types": [],
             },
         }
@@ -282,7 +282,7 @@ class TestCypherGeneratorModelSelection:
             "intent": "personnel_search",
             "entities": {"skills": ["Python"]},
             "schema": {
-                "node_labels": ["Person"],
+                "node_labels": ["Employee"],
                 "relationship_types": [],
             },
         }
@@ -315,7 +315,7 @@ class TestCypherGeneratorModelSelection:
             "intent": "personnel_search",
             "entities": {"skills": ["Python"]},
             "schema": {
-                "node_labels": ["Person"],
+                "node_labels": ["Employee"],
                 "relationship_types": [],
             },
         }
@@ -347,7 +347,7 @@ class TestCypherGeneratorModelSelection:
             "messages": [],
             "execution_path": [],
             "skip_generation": True,
-            "cypher_query": "MATCH (p:Person) RETURN p",
+            "cypher_query": "MATCH (p:Employee) RETURN p",
         }
 
         result = await node._process(state)

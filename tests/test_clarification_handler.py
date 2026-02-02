@@ -38,11 +38,11 @@ class TestClarificationHandlerNode:
             "resolved_entities": [
                 {
                     "id": None,  # 미해결
-                    "labels": ["Person"],
+                    "labels": ["Employee"],
                     "original_value": "홍길동",
                 }
             ],
-            "entities": {"Person": ["홍길동"]},
+            "entities": {"Employee": ["홍길동"]},
             "execution_path": [],
         }
 
@@ -65,10 +65,10 @@ class TestClarificationHandlerNode:
             "question": "홍길동이 김철수와 같은 팀인가요?",
             "session_id": "test",
             "resolved_entities": [
-                {"id": None, "labels": ["Person"], "original_value": "홍길동"},
-                {"id": None, "labels": ["Person"], "original_value": "김철수"},
+                {"id": None, "labels": ["Employee"], "original_value": "홍길동"},
+                {"id": None, "labels": ["Employee"], "original_value": "김철수"},
             ],
-            "entities": {"Person": ["홍길동", "김철수"]},
+            "entities": {"Employee": ["홍길동", "김철수"]},
             "execution_path": [],
         }
 
@@ -111,7 +111,7 @@ class TestClarificationHandlerNode:
             "question": "홍길동은 누구인가요?",
             "session_id": "test",
             "resolved_entities": [],
-            "entities": {"Person": ["홍길동"]},
+            "entities": {"Employee": ["홍길동"]},
             "execution_path": [],
         }
 
@@ -151,23 +151,23 @@ class TestExtractUnresolvedEntities:
     def test_extract_from_resolved_entities(self, node):
         """resolved_entities에서 미해결 항목 추출"""
         resolved = [
-            {"id": "123", "labels": ["Person"], "original_value": "홍길동"},
-            {"id": None, "labels": ["Person"], "original_value": "김철수"},  # 미해결
+            {"id": "123", "labels": ["Employee"], "original_value": "홍길동"},
+            {"id": None, "labels": ["Employee"], "original_value": "김철수"},  # 미해결
         ]
-        entities = {"Person": ["홍길동", "김철수"]}
+        entities = {"Employee": ["홍길동", "김철수"]}
 
         result = node._extract_unresolved_entities(resolved, entities)
 
         assert len(result) == 1
         assert result[0]["value"] == "김철수"
-        assert result[0]["type"] == "Person"
+        assert result[0]["type"] == "Employee"
 
     def test_extract_missing_from_entities(self, node):
         """entities에는 있지만 resolved에 없는 항목 추출"""
         resolved = [
-            {"id": "123", "labels": ["Person"], "original_value": "홍길동"},
+            {"id": "123", "labels": ["Employee"], "original_value": "홍길동"},
         ]
-        entities = {"Person": ["홍길동", "김철수"]}  # 김철수는 resolved에 없음
+        entities = {"Employee": ["홍길동", "김철수"]}  # 김철수는 resolved에 없음
 
         result = node._extract_unresolved_entities(resolved, entities)
 
@@ -177,9 +177,9 @@ class TestExtractUnresolvedEntities:
     def test_extract_empty_when_all_resolved(self, node):
         """모두 해결된 경우 빈 리스트 반환"""
         resolved = [
-            {"id": "123", "labels": ["Person"], "original_value": "홍길동"},
+            {"id": "123", "labels": ["Employee"], "original_value": "홍길동"},
         ]
-        entities = {"Person": ["홍길동"]}
+        entities = {"Employee": ["홍길동"]}
 
         result = node._extract_unresolved_entities(resolved, entities)
 
@@ -209,7 +209,7 @@ class TestPipelineRouting:
             return_value={"intent": "personnel_search", "confidence": 0.9}
         )
         llm.extract_entities = AsyncMock(
-            return_value={"entities": [{"type": "Person", "value": "홍길동"}]}
+            return_value={"entities": [{"type": "Employee", "value": "홍길동"}]}
         )
         llm.generate_clarification = AsyncMock(
             return_value="홍길동이라는 이름이 여러 명 있습니다."
@@ -218,7 +218,7 @@ class TestPipelineRouting:
 
         neo4j = MagicMock()
         neo4j.get_schema = AsyncMock(
-            return_value={"node_labels": ["Person"], "relationship_types": ["WORKS_IN"]}
+            return_value={"node_labels": ["Employee"], "relationship_types": ["WORKS_IN"]}
         )
         neo4j.find_entities_by_name = AsyncMock(return_value=[])  # 미해결
 
@@ -248,7 +248,7 @@ class TestPipelineRouting:
             "question": "홍길동은 누구?",
             "session_id": "test",
             "resolved_entities": [
-                {"id": None, "labels": ["Person"], "original_value": "홍길동"}
+                {"id": None, "labels": ["Employee"], "original_value": "홍길동"}
             ],
             "execution_path": [],
         }
@@ -267,7 +267,7 @@ class TestPipelineRouting:
             "question": "홍길동은 누구?",
             "session_id": "test",
             "resolved_entities": [
-                {"id": "123", "labels": ["Person"], "original_value": "홍길동"}
+                {"id": "123", "labels": ["Employee"], "original_value": "홍길동"}
             ],
             "execution_path": [],
         }

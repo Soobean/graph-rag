@@ -115,7 +115,7 @@ class TestRelationNormalizer:
         }
 
         schema = SchemaProposal(
-            node_labels=["Person", "Project"],
+            node_labels=["Employee", "Project"],
             relationship_types=["WORKS_ON"],
             properties={},
         )

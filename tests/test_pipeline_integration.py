@@ -67,10 +67,10 @@ class TestPipelineRouting:
         mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
-            "entities": [{"type": "Person", "value": "홍길동", "normalized": "홍길동"}],
+            "entities": [{"type": "Employee", "value": "홍길동", "normalized": "홍길동"}],
         }
         mock_llm.generate_cypher.return_value = {
-            "cypher": "MATCH (p:Person {name: $name}) RETURN p",
+            "cypher": "MATCH (p:Employee {name: $name}) RETURN p",
             "parameters": {"name": "홍길동"},
         }
         mock_neo4j.execute_cypher.return_value = [
@@ -125,12 +125,12 @@ class TestPipelineMetadata:
             "intent": "personnel_search",
             "confidence": 0.9,
             "entities": [
-                {"type": "Person", "value": "김철수", "normalized": "김철수"},
+                {"type": "Employee", "value": "김철수", "normalized": "김철수"},
                 {"type": "Department", "value": "인사팀", "normalized": "인사팀"},
             ],
         }
         mock_llm.generate_cypher.return_value = {
-            "cypher": "MATCH (p:Person)-[:BELONGS_TO]->(d:Department) RETURN p, d",
+            "cypher": "MATCH (p:Employee)-[:BELONGS_TO]->(d:Department) RETURN p, d",
             "parameters": {},
         }
         mock_neo4j.execute_cypher.return_value = []
@@ -140,12 +140,12 @@ class TestPipelineMetadata:
 
         entities = result["metadata"]["entities"]
         # IntentEntityExtractor는 dict[str, list[str]] 형태로 반환
-        assert "Person" in entities or "Department" in entities
+        assert "Employee" in entities or "Department" in entities
 
     @pytest.mark.asyncio
     async def test_metadata_includes_cypher(self, pipeline, mock_llm, mock_neo4j):
         """메타데이터에 Cypher 쿼리 포함"""
-        expected_cypher = "MATCH (p:Person {name: $name}) RETURN p"
+        expected_cypher = "MATCH (p:Employee {name: $name}) RETURN p"
 
         mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
@@ -248,11 +248,11 @@ class TestPipelineEmptyResults:
             "intent": "personnel_search",
             "confidence": 0.9,
             "entities": [
-                {"type": "Person", "value": "존재하지않는사람", "normalized": "존재하지않는사람"}
+                {"type": "Employee", "value": "존재하지않는사람", "normalized": "존재하지않는사람"}
             ],
         }
         mock_llm.generate_cypher.return_value = {
-            "cypher": "MATCH (p:Person {name: $name}) RETURN p",
+            "cypher": "MATCH (p:Employee {name: $name}) RETURN p",
             "parameters": {"name": "존재하지않는사람"},
         }
         mock_neo4j.execute_cypher.return_value = []  # 빈 결과

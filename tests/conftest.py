@@ -72,7 +72,7 @@ def mock_neo4j():
         return [
             NodeResult(
                 id=f"node_{name}",
-                labels=labels or ["Person"],
+                labels=labels or ["Employee"],
                 properties={"name": name},
             )
         ]
@@ -86,7 +86,7 @@ def mock_neo4j():
 def graph_schema():
     """테스트용 스키마"""
     return {
-        "node_labels": ["Person"],
+        "node_labels": ["Employee"],
         "relationship_types": ["WORKS_AT"],
     }
 

@@ -50,7 +50,7 @@ def to_pascal_case(s: str) -> str:
     Convert string to PascalCase.
 
     Examples:
-        - "person" -> "Person"
+        - "person" -> "Employee"
         - "my_project" -> "MyProject"
         - "skill category" -> "SkillCategory"
     """

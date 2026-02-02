@@ -11,7 +11,7 @@ from enum import Enum
 class NodeType(str, Enum):
     """허용된 노드 타입"""
 
-    PERSON = "Person"  # Employee → Person으로 통일
+    PERSON = "Employee"  # DB에 Employee 라벨로 저장됨
     PROJECT = "Project"
     SKILL = "Skill"
     DEPARTMENT = "Department"  # 조직 분석 등을 위해 추가
@@ -22,13 +22,13 @@ class NodeType(str, Enum):
 class RelationType(str, Enum):
     """허용된 관계 타입"""
 
-    # Person 관련
-    WORKS_ON = "WORKS_ON"  # Person -> Project
-    HAS_SKILL = "HAS_SKILL"  # Person -> Skill
-    BELONGS_TO = "BELONGS_TO"  # Person -> Department
-    HAS_POSITION = "HAS_POSITION"  # Person -> Position
-    HAS_CERTIFICATE = "HAS_CERTIFICATE"  # Person -> Certificate
-    MENTORS = "MENTORS"  # Person -> Person
+    # Employee 관련
+    WORKS_ON = "WORKS_ON"  # Employee -> Project
+    HAS_SKILL = "HAS_SKILL"  # Employee -> Skill
+    BELONGS_TO = "BELONGS_TO"  # Employee -> Department
+    HAS_POSITION = "HAS_POSITION"  # Employee -> Position
+    HAS_CERTIFICATE = "HAS_CERTIFICATE"  # Employee -> Certificate
+    MENTORS = "MENTORS"  # Employee -> Person
 
     # Project 관련
     REQUIRES = "REQUIRES"  # Project -> Skill

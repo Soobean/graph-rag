@@ -87,25 +87,25 @@ class TestConceptExpander:
 
     def test_passthrough_unmapped_entity(self, loader: OntologyLoader):
         """매핑되지 않은 엔티티 타입은 그대로 전달"""
-        entities = {"Person": ["홍길동"]}
+        entities = {"Employee": ["홍길동"]}
         expanded = self._expand_entities(entities, loader)
 
-        assert "Person" in expanded
-        assert expanded["Person"] == ["홍길동"]
+        assert "Employee" in expanded
+        assert expanded["Employee"] == ["홍길동"]
 
     def test_mixed_entity_types(self, loader: OntologyLoader):
         """혼합 엔티티 타입 (일부만 확장)"""
         entities = {
             "Skill": ["파이썬"],
-            "Person": ["홍길동"],  # 매핑 없음
+            "Employee": ["홍길동"],  # 매핑 없음
             "Date": ["2024-01-01"],  # 매핑 없음
         }
         expanded = self._expand_entities(entities, loader)
 
         # Skill은 확장됨
         assert "Python" in expanded["Skill"]
-        # Person, Date는 그대로
-        assert expanded["Person"] == ["홍길동"]
+        # Employee, Date는 그대로
+        assert expanded["Employee"] == ["홍길동"]
         assert expanded["Date"] == ["2024-01-01"]
 
     # =========================================================================

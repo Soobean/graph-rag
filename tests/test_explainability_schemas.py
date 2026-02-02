@@ -101,11 +101,11 @@ class TestThoughtStep:
             step_type="extraction",
             description="test",
             details={
-                "entities": {"Person": ["홍길동"], "Skill": ["Python", "Java"]},
+                "entities": {"Employee": ["홍길동"], "Skill": ["Python", "Java"]},
                 "count": 3,
             },
         )
-        assert step.details["entities"]["Person"] == ["홍길동"]
+        assert step.details["entities"]["Employee"] == ["홍길동"]
 
 
 class TestConceptExpansionTree:

@@ -160,8 +160,8 @@ class GDSService:
         """
         스킬 기반 직원 유사도 그래프 프로젝션 생성
 
-        1단계: Person-Skill bipartite 그래프 생성
-        2단계: Node Similarity로 Person 간 유사도 관계 생성
+        1단계: Employee-Skill bipartite 그래프 생성
+        2단계: Node Similarity로 Employee 간 유사도 관계 생성
 
         Args:
             projection_name: 프로젝션 이름 (기본: employee_skill_graph)
@@ -192,10 +192,10 @@ class GDSService:
                 self.gds.run_cypher("MATCH ()-[r:SIMILAR]->() DELETE r")
                 logger.info("Cleaned up existing SIMILAR relationships")
 
-                # 1단계: Bipartite 그래프 프로젝션 (Person-Skill)
+                # 1단계: Bipartite 그래프 프로젝션 (Employee-Skill)
                 G_bipartite, bipartite_result = self.gds.graph.project(
                     bipartite_name,
-                    ["Person", "Skill"],
+                    ["Employee", "Skill"],
                     {
                         "HAS_SKILL": {
                             "orientation": "UNDIRECTED",
@@ -227,10 +227,10 @@ class GDSService:
                 # Bipartite 프로젝션 삭제 (더 이상 필요 없음)
                 self.gds.graph.drop(G_bipartite)
 
-                # 3단계: Person + SIMILAR 관계로 새 프로젝션 생성 (UNDIRECTED)
+                # 3단계: Employee + SIMILAR 관계로 새 프로젝션 생성 (UNDIRECTED)
                 G_final, final_result = self.gds.graph.project(
                     name,
-                    ["Person"],
+                    ["Employee"],
                     {
                         "SIMILAR": {
                             "orientation": "UNDIRECTED",
@@ -357,7 +357,7 @@ class GDSService:
             # 커뮤니티별 통계 조회
             communities = self.gds.run_cypher(
                 f"""
-                MATCH (e:Person)
+                MATCH (e:Employee)
                 WHERE e.{write_property} IS NOT NULL
                 RETURN e.{write_property} AS community_id,
                        count(*) AS member_count,
@@ -409,9 +409,9 @@ class GDSService:
             # Jaccard 유사도 기반 검색
             result = self.gds.run_cypher(
                 """
-                MATCH (target:Person {name: $name})-[:HAS_SKILL]->(s:Skill)
+                MATCH (target:Employee {name: $name})-[:HAS_SKILL]->(s:Skill)
                 WITH target, collect(s) AS targetSkills
-                MATCH (other:Person)-[:HAS_SKILL]->(s2:Skill)
+                MATCH (other:Employee)-[:HAS_SKILL]->(s2:Skill)
                 WHERE other <> target
                 WITH target, targetSkills, other, collect(s2) AS otherSkills
                 WITH target, other,
@@ -469,7 +469,7 @@ class GDSService:
             candidates = self.gds.run_cypher(
                 """
                 UNWIND $skills AS skillName
-                MATCH (e:Person)-[r:HAS_SKILL]->(s:Skill)
+                MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
                 WHERE toLower(s.name) = toLower(skillName)
                 WITH e, collect(DISTINCT s.name) AS matchedSkills,
                      count(DISTINCT s) AS skillCount
@@ -590,7 +590,7 @@ class GDSService:
             # 멤버 조회
             members = self.gds.run_cypher(
                 """
-                MATCH (e:Person {communityId: $community_id})
+                MATCH (e:Employee {communityId: $community_id})
                 OPTIONAL MATCH (e)-[:HAS_SKILL]->(s:Skill)
                 WITH e, collect(s.name) AS skills
                 RETURN e.employee_id AS id,
@@ -606,7 +606,7 @@ class GDSService:
             # 주요 스킬 통계
             skill_stats = self.gds.run_cypher(
                 """
-                MATCH (e:Person {communityId: $community_id})-[:HAS_SKILL]->(s:Skill)
+                MATCH (e:Employee {communityId: $community_id})-[:HAS_SKILL]->(s:Skill)
                 RETURN s.name AS skill,
                        count(*) AS count,
                        round(100.0 * count(*) / $member_count, 1) AS percentage

@@ -51,7 +51,7 @@ class TestLLMRepositoryStreamingMethod:
             async for chunk in llm_repository.generate_response_stream(
                 question="테스트 질문",
                 query_results=[{"name": "홍길동"}],
-                cypher_query="MATCH (p:Person) RETURN p",
+                cypher_query="MATCH (p:Employee) RETURN p",
             ):
                 chunks.append(chunk)
 
@@ -136,7 +136,7 @@ class TestBuildMetadata:
             "intent_confidence": 0.95,
             "entities": {"Skill": ["Python"]},
             "expanded_entities": {"Skill": ["Python", "python", "파이썬"]},
-            "cypher_query": "MATCH (p:Person) RETURN p",
+            "cypher_query": "MATCH (p:Employee) RETURN p",
             "result_count": 5,
             "execution_path": ["intent_classifier", "cypher_generator"],
         }

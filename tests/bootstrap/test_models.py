@@ -117,14 +117,14 @@ class TestSchemaProposal:
     def test_create_schema(self):
         """기본 스키마 생성"""
         schema = SchemaProposal(
-            node_labels=["Person", "Project"],
+            node_labels=["Employee", "Project"],
             relationship_types=["WORKS_ON", "MANAGES"],
-            properties={"Person": ["name", "email"]},
+            properties={"Employee": ["name", "email"]},
         )
 
-        assert "Person" in schema.node_labels
+        assert "Employee" in schema.node_labels
         assert "WORKS_ON" in schema.relationship_types
-        assert "Person" in schema.properties
+        assert "Employee" in schema.properties
 
     def test_label_normalization_pascal_case(self):
         """노드 라벨 PascalCase 정규화"""
@@ -153,28 +153,28 @@ class TestSchemaProposal:
     def test_to_cypher_constraints(self):
         """Cypher 제약조건 생성"""
         schema = SchemaProposal(
-            node_labels=["Person"],
+            node_labels=["Employee"],
             relationship_types=[],
             properties={},
-            constraints={"Person": ["email", "employeeId"]},
+            constraints={"Employee": ["email", "employeeId"]},
         )
 
         constraints = schema.to_cypher_constraints()
         assert len(constraints) == 2
-        assert "Person" in constraints[0]
+        assert "Employee" in constraints[0]
         assert "IS UNIQUE" in constraints[0]
 
     def test_get_schema_summary(self):
         """스키마 요약 생성"""
         schema = SchemaProposal(
-            node_labels=["Person", "Project"],
+            node_labels=["Employee", "Project"],
             relationship_types=["WORKS_ON"],
-            properties={"Person": ["name"]},
+            properties={"Employee": ["name"]},
             reasoning="Test reasoning",
         )
 
         summary = schema.get_schema_summary()
-        assert "Person" in summary
+        assert "Employee" in summary
         assert "Project" in summary
         assert "WORKS_ON" in summary
         assert "Test reasoning" in summary
@@ -182,10 +182,10 @@ class TestSchemaProposal:
     def test_to_dict_from_dict_roundtrip(self):
         """딕셔너리 변환 왕복 테스트"""
         original = SchemaProposal(
-            node_labels=["Person"],
+            node_labels=["Employee"],
             relationship_types=["KNOWS"],
-            properties={"Person": ["name"]},
-            constraints={"Person": ["email"]},
+            properties={"Employee": ["name"]},
+            constraints={"Employee": ["email"]},
             confidence=0.9,
             reasoning="test",
         )

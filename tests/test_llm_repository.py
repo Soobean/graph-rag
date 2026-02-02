@@ -71,12 +71,12 @@ class TestFormatHelpers:
     def test_format_schema_full(self, repo):
         """전체 스키마 포맷팅"""
         schema = {
-            "node_labels": ["Person", "Company"],
+            "node_labels": ["Employee", "Company"],
             "relationship_types": ["WORKS_AT", "KNOWS"],
         }
         result = repo._format_schema(schema)
 
-        assert "Node Labels: Person, Company" in result
+        assert "Node Labels: Employee, Company" in result
         assert "Relationship Types: WORKS_AT, KNOWS" in result
 
     def test_format_schema_empty(self, repo):
@@ -86,21 +86,21 @@ class TestFormatHelpers:
 
     def test_format_schema_partial(self, repo):
         """부분 스키마 포맷팅"""
-        schema = {"node_labels": ["Person"]}
+        schema = {"node_labels": ["Employee"]}
         result = repo._format_schema(schema)
 
-        assert "Node Labels: Person" in result
+        assert "Node Labels: Employee" in result
         assert "Relationship Types" not in result
 
     def test_format_entities_with_data(self, repo):
         """엔티티 포맷팅"""
         entities = [
-            {"type": "Person", "value": "홍길동", "normalized": "홍길동"},
+            {"type": "Employee", "value": "홍길동", "normalized": "홍길동"},
             {"type": "Company", "value": "ABC회사", "normalized": "ABC"},
         ]
         result = repo._format_entities(entities)
 
-        assert "Person: 홍길동" in result
+        assert "Employee: 홍길동" in result
         assert "Company: ABC회사" in result
 
     def test_format_entities_empty(self, repo):
@@ -110,9 +110,9 @@ class TestFormatHelpers:
 
     def test_format_entities_missing_fields(self, repo):
         """필드 누락 엔티티 포맷팅"""
-        entities = [{"type": "Person"}]
+        entities = [{"type": "Employee"}]
         result = repo._format_entities(entities)
-        assert "Person:" in result
+        assert "Employee:" in result
         assert "Unknown" not in result
 
     def test_format_results_with_data(self, repo):
@@ -440,7 +440,7 @@ class TestHighLevelMethods:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = (
-            '{"entities": [{"type": "Person", "value": "홍길동", "normalized": "홍길동"}]}'
+            '{"entities": [{"type": "Employee", "value": "홍길동", "normalized": "홍길동"}]}'
         )
 
         mock_client = AsyncMock()
@@ -449,11 +449,11 @@ class TestHighLevelMethods:
 
         result = await repo.extract_entities(
             question="홍길동이 근무하는 회사는?",
-            entity_types=["Person", "Company"],
+            entity_types=["Employee", "Company"],
         )
 
         assert len(result["entities"]) == 1
-        assert result["entities"][0]["type"] == "Person"
+        assert result["entities"][0]["type"] == "Employee"
 
     @pytest.mark.asyncio
     async def test_generate_cypher(self, mock_settings):
@@ -463,7 +463,7 @@ class TestHighLevelMethods:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = (
-            '{"cypher": "MATCH (p:Person {name: $name}) RETURN p", '
+            '{"cypher": "MATCH (p:Employee {name: $name}) RETURN p", '
             '"parameters": {"name": "홍길동"}, '
             '"explanation": "Finding person by name"}'
         )
@@ -474,8 +474,8 @@ class TestHighLevelMethods:
 
         result = await repo.generate_cypher(
             question="홍길동 찾아줘",
-            schema={"node_labels": ["Person"], "relationship_types": []},
-            entities=[{"type": "Person", "value": "홍길동", "normalized": "홍길동"}],
+            schema={"node_labels": ["Employee"], "relationship_types": []},
+            entities=[{"type": "Employee", "value": "홍길동", "normalized": "홍길동"}],
         )
 
         assert "cypher" in result
@@ -500,7 +500,7 @@ class TestHighLevelMethods:
         result = await repo.generate_response(
             question="홍길동이 어디서 일해?",
             query_results=[{"name": "홍길동", "company": "ABC"}],
-            cypher_query="MATCH (p:Person)-[:WORKS_AT]->(c:Company) RETURN p, c",
+            cypher_query="MATCH (p:Employee)-[:WORKS_AT]->(c:Company) RETURN p, c",
         )
 
         assert "홍길동" in result

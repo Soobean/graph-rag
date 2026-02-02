@@ -98,7 +98,7 @@ class TestOpenExtractor:
         }
 
         schema = SchemaProposal(
-            node_labels=["Person", "Skill"],
+            node_labels=["Employee", "Skill"],
             relationship_types=["HAS_SKILL"],
             properties={},
         )
@@ -184,13 +184,13 @@ class TestOpenExtractor:
     def test_format_schema_hint_with_schema(self, extractor):
         """스키마 있을 때 포맷"""
         schema = SchemaProposal(
-            node_labels=["Person", "Skill"],
+            node_labels=["Employee", "Skill"],
             relationship_types=["HAS_SKILL"],
             properties={},
         )
 
         result = extractor._format_schema_hint(schema)
-        assert "Person" in result
+        assert "Employee" in result
         assert "HAS_SKILL" in result
 
     def test_parse_extraction_response_invalid_format(self, extractor):

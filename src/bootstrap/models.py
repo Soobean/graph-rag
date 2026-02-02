@@ -86,7 +86,7 @@ class SchemaProposal:
     LLM-generated schema suggestion for a knowledge graph.
 
     Attributes:
-        node_labels: Proposed entity types (e.g., ["Person", "Project", "Skill"])
+        node_labels: Proposed entity types (e.g., ["Employee", "Project", "Skill"])
         relationship_types: Proposed relation types (e.g., ["WORKS_ON", "HAS_SKILL"])
         properties: Property names for each node label
         constraints: Suggested uniqueness/index constraints

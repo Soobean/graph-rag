@@ -2,7 +2,7 @@ system: |
   You are a query analyzer that decomposes complex multi-hop graph queries into step-by-step traversal plans.
 
   Graph Schema Context:
-  - Person: name, job_type, department, level
+  - Employee: name, job_type, department, level
   - Skill: name, category
   - Project: name, status, start_date
   - Department: name
@@ -38,8 +38,8 @@ system: |
     "is_multi_hop": true,
     "hop_count": 3,
     "hops": [
-      {{"step": 1, "description": "Find employees with Python skill", "node_label": "Person", "relationship": "HAS_SKILL", "direction": "outgoing", "filter_condition": "name = 'Python'"}},
-      {{"step": 2, "description": "Find mentors of those employees", "node_label": "Person", "relationship": "MENTOR_OF", "direction": "incoming", "filter_condition": null}},
+      {{"step": 1, "description": "Find employees with Python skill", "node_label": "Employee", "relationship": "HAS_SKILL", "direction": "outgoing", "filter_condition": "name = 'Python'"}},
+      {{"step": 2, "description": "Find mentors of those employees", "node_label": "Employee", "relationship": "MENTOR_OF", "direction": "incoming", "filter_condition": null}},
       {{"step": 3, "description": "Filter mentors with AWS skill", "node_label": "Skill", "relationship": "HAS_SKILL", "direction": "outgoing", "filter_condition": "name = 'AWS'"}}
     ],
     "final_return": "mentor",
@@ -51,9 +51,9 @@ system: |
     "is_multi_hop": true,
     "hop_count": 3,
     "hops": [
-      {{"step": 1, "description": "Find employee 김철수", "node_label": "Person", "relationship": null, "direction": "both", "filter_condition": "name = '김철수'"}},
+      {{"step": 1, "description": "Find employee 김철수", "node_label": "Employee", "relationship": null, "direction": "both", "filter_condition": "name = '김철수'"}},
       {{"step": 2, "description": "Find projects 김철수 participated in", "node_label": "Project", "relationship": "PARTICIPATED_IN", "direction": "outgoing", "filter_condition": null}},
-      {{"step": 3, "description": "Find other participants and their skills", "node_label": "Person", "relationship": "PARTICIPATED_IN", "direction": "incoming", "filter_condition": null}}
+      {{"step": 3, "description": "Find other participants and their skills", "node_label": "Employee", "relationship": "PARTICIPATED_IN", "direction": "incoming", "filter_condition": null}}
     ],
     "final_return": "skills of coworkers",
     "explanation": "Find skills of employees who worked on the same projects as 김철수"
@@ -64,7 +64,7 @@ system: |
     "is_multi_hop": false,
     "hop_count": 1,
     "hops": [
-      {{"step": 1, "description": "Find employees with Python skill", "node_label": "Person", "relationship": "HAS_SKILL", "direction": "outgoing", "filter_condition": "name = 'Python'"}}
+      {{"step": 1, "description": "Find employees with Python skill", "node_label": "Employee", "relationship": "HAS_SKILL", "direction": "outgoing", "filter_condition": "name = 'Python'"}}
     ],
     "final_return": "employee",
     "explanation": "Simple query to find Python developers"
@@ -75,8 +75,8 @@ system: |
     "is_multi_hop": true,
     "hop_count": 4,
     "hops": [
-      {{"step": 1, "description": "Find employee 구은서", "node_label": "Person", "relationship": null, "direction": "both", "filter_condition": "name = '구은서'"}},
-      {{"step": 2, "description": "Find mentees of 구은서", "node_label": "Person", "relationship": "MENTOR_OF", "direction": "outgoing", "filter_condition": null}},
+      {{"step": 1, "description": "Find employee 구은서", "node_label": "Employee", "relationship": null, "direction": "both", "filter_condition": "name = '구은서'"}},
+      {{"step": 2, "description": "Find mentees of 구은서", "node_label": "Employee", "relationship": "MENTOR_OF", "direction": "outgoing", "filter_condition": null}},
       {{"step": 3, "description": "Find projects the mentees participated in", "node_label": "Project", "relationship": "PARTICIPATED_IN", "direction": "outgoing", "filter_condition": null}},
       {{"step": 4, "description": "Find departments collaborating on those projects", "node_label": "Department", "relationship": "BELONGS_TO", "direction": "incoming", "filter_condition": null}}
     ],

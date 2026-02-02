@@ -136,14 +136,14 @@ class TestEntityExtractorNode:
     async def test_extract_single_entity(self, node, mock_llm, base_state):
         """단일 엔티티 추출"""
         mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Person", "value": "홍길동", "normalized": "홍길동"}]
+            "entities": [{"type": "Employee", "value": "홍길동", "normalized": "홍길동"}]
         }
 
         result = await node(base_state)
 
         assert "entities" in result
-        assert "Person" in result["entities"]
-        assert "홍길동" in result["entities"]["Person"]
+        assert "Employee" in result["entities"]
+        assert "홍길동" in result["entities"]["Employee"]
         assert "entity_extractor" in result["execution_path"]
 
     @pytest.mark.asyncio
@@ -151,7 +151,7 @@ class TestEntityExtractorNode:
         """다중 엔티티 추출"""
         mock_llm.extract_entities.return_value = {
             "entities": [
-                {"type": "Person", "value": "홍길동", "normalized": "홍길동"},
+                {"type": "Employee", "value": "홍길동", "normalized": "홍길동"},
                 {"type": "Organization", "value": "ABC 회사", "normalized": "ABC"},
                 {"type": "Skill", "value": "Python", "normalized": "Python"},
             ]
@@ -160,7 +160,7 @@ class TestEntityExtractorNode:
         result = await node(base_state)
 
         assert len(result["entities"]) == 3
-        assert "Person" in result["entities"]
+        assert "Employee" in result["entities"]
         assert "Organization" in result["entities"]
         assert "Skill" in result["entities"]
 
@@ -169,16 +169,16 @@ class TestEntityExtractorNode:
         """같은 타입 다중 엔티티"""
         mock_llm.extract_entities.return_value = {
             "entities": [
-                {"type": "Person", "value": "홍길동", "normalized": "홍길동"},
-                {"type": "Person", "value": "김철수", "normalized": "김철수"},
+                {"type": "Employee", "value": "홍길동", "normalized": "홍길동"},
+                {"type": "Employee", "value": "김철수", "normalized": "김철수"},
             ]
         }
 
         result = await node(base_state)
 
-        assert len(result["entities"]["Person"]) == 2
-        assert "홍길동" in result["entities"]["Person"]
-        assert "김철수" in result["entities"]["Person"]
+        assert len(result["entities"]["Employee"]) == 2
+        assert "홍길동" in result["entities"]["Employee"]
+        assert "김철수" in result["entities"]["Employee"]
 
     @pytest.mark.asyncio
     async def test_extract_no_entities(self, node, mock_llm, base_state):
@@ -193,24 +193,24 @@ class TestEntityExtractorNode:
     async def test_extract_use_normalized_value(self, node, mock_llm, base_state):
         """normalized 값 우선 사용"""
         mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Person", "value": "홍 길동", "normalized": "홍길동"}]
+            "entities": [{"type": "Employee", "value": "홍 길동", "normalized": "홍길동"}]
         }
 
         result = await node(base_state)
 
         # normalized 값이 사용되어야 함
-        assert "홍길동" in result["entities"]["Person"]
+        assert "홍길동" in result["entities"]["Employee"]
 
     @pytest.mark.asyncio
     async def test_extract_fallback_to_value(self, node, mock_llm, base_state):
         """normalized 없으면 value 사용"""
         mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Person", "value": "홍길동"}]
+            "entities": [{"type": "Employee", "value": "홍길동"}]
         }
 
         result = await node(base_state)
 
-        assert "홍길동" in result["entities"]["Person"]
+        assert "홍길동" in result["entities"]["Employee"]
 
     @pytest.mark.asyncio
     async def test_extract_error_handling(self, node, mock_llm, base_state):
@@ -241,7 +241,7 @@ class TestEntityExtractorNode:
         """기본 엔티티 타입 확인"""
         node = EntityExtractorNode(mock_llm)
 
-        assert "Person" in node._entity_types
+        assert "Employee" in node._entity_types
         assert "Organization" in node._entity_types
         assert "Skill" in node._entity_types
 
@@ -266,12 +266,12 @@ class TestEntityResolverNode:
         """엔티티 리졸브 성공"""
         mock_match = MagicMock()
         mock_match.id = 123
-        mock_match.labels = ["Person"]
+        mock_match.labels = ["Employee"]
         mock_match.properties = {"name": "홍길동", "dept": "IT"}
         mock_neo4j.find_entities_by_name.return_value = [mock_match]
 
         state: GraphRAGState = {
-            "entities": {"Person": ["홍길동"]},
+            "entities": {"Employee": ["홍길동"]},
             "execution_path": [],
         }
 
@@ -282,7 +282,7 @@ class TestEntityResolverNode:
 
         resolved = result["resolved_entities"][0]
         assert resolved["id"] == 123
-        assert resolved["labels"] == ["Person"]
+        assert resolved["labels"] == ["Employee"]
         assert resolved["name"] == "홍길동"
         assert resolved["original_value"] == "홍길동"
         assert resolved["match_score"] == 1.0
@@ -296,7 +296,7 @@ class TestEntityResolverNode:
         mock_neo4j.find_entities_by_name.return_value = []
 
         state: GraphRAGState = {
-            "entities": {"Person": ["없는사람"]},
+            "entities": {"Employee": ["없는사람"]},
             "execution_path": [],
         }
 
@@ -322,7 +322,7 @@ class TestEntityResolverNode:
         mock_neo4j.find_entities_by_name.side_effect = Exception("DB Error")
 
         state: GraphRAGState = {
-            "entities": {"Person": ["에러유발"]},
+            "entities": {"Employee": ["에러유발"]},
             "execution_path": [],
         }
 
@@ -345,7 +345,7 @@ class TestCypherGeneratorNode:
     @pytest.fixture
     def mock_neo4j(self):
         neo4j = MagicMock()
-        neo4j.get_schema = AsyncMock(return_value={"node_labels": ["Person"]})
+        neo4j.get_schema = AsyncMock(return_value={"node_labels": ["Employee"]})
         return neo4j
 
     @pytest.fixture
@@ -356,7 +356,7 @@ class TestCypherGeneratorNode:
     def base_state(self) -> GraphRAGState:
         return GraphRAGState(
             question="홍길동 찾기",
-            entities={"Person": ["홍길동"]},
+            entities={"Employee": ["홍길동"]},
         )
 
     @pytest.mark.asyncio
@@ -482,19 +482,19 @@ class TestGraphRAGState:
             session_id="session-123",
             intent="personnel_search",
             intent_confidence=0.95,
-            entities={"Person": ["홍길동"]},
+            entities={"Employee": ["홍길동"]},
             resolved_entities=[
                 {
                     "id": 1,
                     "name": "홍길동",
-                    "labels": ["Person"],
+                    "labels": ["Employee"],
                     "properties": {},
                     "match_score": 1,
                     "original_value": "홍길동",
                 }
             ],
-            schema={"node_labels": ["Person"]},
-            cypher_query="MATCH (p:Person) RETURN p",
+            schema={"node_labels": ["Employee"]},
+            cypher_query="MATCH (p:Employee) RETURN p",
             cypher_parameters={},
             graph_results=[{"name": "홍길동"}],
             result_count=1,

@@ -39,7 +39,7 @@ class TestToPascalCase:
 
     def test_already_pascal_case(self):
         """Already PascalCase stays the same."""
-        assert to_pascal_case("PersonName") == "PersonName"
+        assert to_pascal_case("EmployeeName") == "EmployeeName"
 
     def test_empty_string(self):
         """Empty string returns empty."""
@@ -185,9 +185,9 @@ class TestLoadSchemaFromFile:
     def test_load_valid_schema(self, tmp_path: Path):
         """Valid schema file is loaded."""
         schema_data = {
-            "node_labels": ["Person", "Skill"],
+            "node_labels": ["Employee", "Skill"],
             "relationship_types": ["HAS_SKILL"],
-            "properties": {"Person": ["name"]},
+            "properties": {"Employee": ["name"]},
         }
 
         schema_file = tmp_path / "schema.yaml"
@@ -197,7 +197,7 @@ class TestLoadSchemaFromFile:
         result = load_schema_from_file(str(schema_file))
 
         assert result is not None
-        assert "Person" in result.node_labels
+        assert "Employee" in result.node_labels
         assert "HAS_SKILL" in result.relationship_types
 
     def test_none_path_returns_none(self):
