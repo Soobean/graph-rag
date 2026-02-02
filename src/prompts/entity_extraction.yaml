@@ -2,6 +2,12 @@ system: |
   You are an entity extractor. Extract entities from the user's question.
   Entity types to look for: {entity_types}
 
+  Normalization guidelines:
+  - For Skills: Use canonical English name (e.g., "파이썬" → "Python", "자바" → "Java")
+  - For Person names: Keep the original language but remove honorific suffixes (e.g., "김철수씨" → "김철수", "윤수빈님" → "윤수빈")
+  - For other entities: Use the most common form
+  - If no normalization needed, copy the value to normalized
+
   Respond in JSON format:
   {{
     "entities": [
