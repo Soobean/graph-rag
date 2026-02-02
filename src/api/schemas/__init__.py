@@ -22,6 +22,7 @@ from src.api.schemas.explainability import (
     ThoughtStep,
 )
 from src.api.schemas.ingest import (
+    FileUploadResponse,
     IngestRequest,
     IngestResponse,
     IngestStats,
@@ -50,6 +51,7 @@ __all__ = [
     "ExplainableGraphData",
     "ExplainableResponse",
     # Ingest
+    "FileUploadResponse",
     "IngestRequest",
     "IngestResponse",
     "IngestStats",

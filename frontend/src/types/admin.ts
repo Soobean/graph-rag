@@ -117,6 +117,14 @@ export interface IngestResponse {
   stats: IngestStats;
 }
 
+export interface FileUploadResponse {
+  success: boolean;
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  source_type: SourceType;
+}
+
 // Analytics Types
 
 export interface ProjectionStatus {

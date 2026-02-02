@@ -81,3 +81,13 @@ class IngestStatusResponse(BaseModel):
     progress: float = Field(default=0.0, description="진행률 (0.0 ~ 1.0)")
     stats: IngestStats | None = Field(default=None, description="현재까지 통계")
     error: str | None = Field(default=None, description="에러 메시지")
+
+
+class FileUploadResponse(BaseModel):
+    """파일 업로드 응답"""
+
+    success: bool = Field(description="성공 여부")
+    file_path: str = Field(description="서버에 저장된 파일 경로")
+    file_name: str = Field(description="원본 파일 이름")
+    file_size: int = Field(description="파일 크기 (bytes)")
+    source_type: SourceType = Field(description="감지된 소스 타입")

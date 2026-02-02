@@ -5,24 +5,65 @@ Ingestion API Routes
 """
 
 import logging
+import re
+import shutil
 import time
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile, status
 
 from src.api.job_store import JobStatus, job_store
 from src.api.schemas import (
+    FileUploadResponse,
     IngestRequest,
     IngestResponse,
     IngestStats,
     IngestStatusResponse,
     SourceType,
 )
+from src.ingestion.loaders.base import BaseLoader
 from src.ingestion.loaders.csv_loader import CSVLoader
 from src.ingestion.loaders.excel_loader import ExcelLoader
 from src.ingestion.pipeline import IngestionPipeline
 
+# 업로드 파일 저장 디렉토리
+UPLOAD_DIR = Path("/tmp/graph-rag-uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# 허용되는 파일 확장자
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+
+# 파일 크기 제한 (100MB)
+MAX_FILE_SIZE = 100 * 1024 * 1024
+
 logger = logging.getLogger(__name__)
+
+
+def sanitize_filename(filename: str) -> str:
+    """
+    파일명에서 위험한 문자 제거 (Path Traversal 방지)
+
+    Args:
+        filename: 원본 파일명
+
+    Returns:
+        정규화된 안전한 파일명
+    """
+    # 경로 구분자 제거
+    filename = filename.replace("/", "_").replace("\\", "_")
+    # 위험한 문자 제거 (알파벳, 숫자, 한글, 언더스코어, 하이픈, 점만 허용)
+    filename = re.sub(r"[^\w\s\-\.\uac00-\ud7af]", "", filename)
+    # 연속된 점 제거 (.. 방지)
+    filename = re.sub(r"\.{2,}", ".", filename)
+    # 앞뒤 공백 및 점 제거
+    filename = filename.strip(". ")
+    # 최대 길이 제한
+    if "." in filename:
+        name, ext = filename.rsplit(".", 1)
+        name = name[:100]
+        return f"{name}.{ext}"
+    return filename[:100]
 
 router = APIRouter(prefix="/api/v1", tags=["ingest"])
 
@@ -45,7 +86,8 @@ async def _run_ingestion_job(
     job_store.update_job(job_id, status=JobStatus.RUNNING, progress=0.1)
 
     try:
-        # 로더 생성
+        # 로더 생성 (BaseLoader 타입으로 명시하여 mypy 에러 방지)
+        loader: BaseLoader
         if request.source_type == SourceType.CSV:
             loader = CSVLoader(file_path)
         else:  # EXCEL
@@ -90,6 +132,16 @@ async def _run_ingestion_job(
             status=JobStatus.FAILED,
             error=str(e),
         )
+    finally:
+        # Ingestion 완료/실패 후 업로드된 임시 파일 삭제
+        if file_path.exists() and UPLOAD_DIR in file_path.parents:
+            try:
+                file_path.unlink()
+                logger.info(f"[Job {job_id}] Deleted processed file: {file_path}")
+            except Exception as cleanup_err:
+                logger.warning(
+                    f"[Job {job_id}] Failed to delete file {file_path}: {cleanup_err}"
+                )
 
 
 @router.post("/ingest", response_model=IngestResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -211,3 +263,90 @@ async def list_ingest_jobs(limit: int = 20) -> list[IngestStatusResponse]:
         )
         for job in jobs
     ]
+
+
+@router.post("/upload", response_model=FileUploadResponse)
+async def upload_file(file: UploadFile = File(...)) -> FileUploadResponse:
+    """
+    파일 업로드
+
+    로컬 파일을 서버에 업로드하고, 저장된 경로를 반환합니다.
+    이후 /ingest API에 해당 경로를 전달하여 적재를 시작할 수 있습니다.
+
+    Args:
+        file: 업로드할 파일 (CSV, Excel, 최대 100MB)
+
+    Returns:
+        업로드된 파일 정보 및 서버 경로
+    """
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required",
+        )
+
+    # 파일 크기 체크 (저장 전에 검증)
+    file.file.seek(0, 2)  # 파일 끝으로 이동
+    file_size = file.file.tell()
+    file.file.seek(0)  # 처음으로 되돌림
+
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large: {file_size} bytes. Maximum: {MAX_FILE_SIZE} bytes (100MB)",
+        )
+
+    # 파일 확장자 검증
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type: {file_ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+        )
+
+    # 소스 타입 결정
+    source_type = SourceType.CSV if file_ext == ".csv" else SourceType.EXCEL
+
+    # 고유 파일명 생성 (충돌 방지 + Path Traversal 방지)
+    unique_id = uuid.uuid4().hex  # 전체 UUID 사용
+    sanitized_name = sanitize_filename(file.filename)
+    safe_filename = f"{unique_id}_{sanitized_name}"
+    file_path = UPLOAD_DIR / safe_filename
+
+    # 경로 검증 (Path Traversal 방지)
+    file_path = file_path.resolve()
+    if not file_path.is_relative_to(UPLOAD_DIR.resolve()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path",
+        )
+
+    # 파일 저장
+    try:
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        # 저장 실패 시 partial file 삭제
+        if file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception as cleanup_err:
+                logger.error(f"Failed to cleanup partial file: {cleanup_err}")
+
+        logger.error(f"Failed to save uploaded file: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save file",
+        ) from e
+    finally:
+        file.file.close()
+
+    logger.info(f"File uploaded: {file.filename} -> {file_path} ({file_size} bytes)")
+
+    return FileUploadResponse(
+        success=True,
+        file_path=str(file_path),
+        file_name=file.filename,
+        file_size=file_size,
+        source_type=source_type,
+    )
