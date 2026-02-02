@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../client';
-import type { IngestRequest, IngestJob, IngestResponse } from '@/types/admin';
+import type { IngestRequest, IngestJob, IngestResponse, FileUploadResponse } from '@/types/admin';
 
 const JOBS_REFETCH_INTERVAL = 5000; // 5 seconds
 const RUNNING_JOB_REFETCH_INTERVAL = 2000; // 2 seconds
@@ -44,6 +44,22 @@ export function useStartIngest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ingest-jobs'] });
+    },
+  });
+}
+
+export function useUploadFile() {
+  return useMutation({
+    mutationFn: async (file: File): Promise<FileUploadResponse> => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await apiClient.post<FileUploadResponse>('/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
     },
   });
 }
