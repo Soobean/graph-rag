@@ -31,7 +31,7 @@ async def run_verification():
     mock_neo4j.execute_cypher = AsyncMock(return_value=[])
 
     # 스키마 사전 로드 (파이프라인 초기화 전)
-    graph_schema = {"node_labels": ["Person"], "relationship_types": ["WORKS_AT"]}
+    graph_schema = {"node_labels": ["Employee"], "relationship_types": ["WORKS_AT"]}
 
     pipeline = GraphRAGPipeline(
         settings=settings,
@@ -72,7 +72,7 @@ async def run_verification():
         "confidence": 0.9,
     }
     mock_llm.extract_entities.return_value = {
-        "entities": [{"type": "Person", "value": "Kim"}]
+        "entities": [{"type": "Employee", "value": "Kim"}]
     }
     mock_llm.generate_cypher.side_effect = None
     mock_llm.generate_cypher.return_value = {

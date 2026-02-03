@@ -18,6 +18,7 @@ system: |
   - Use MATCH, OPTIONAL MATCH appropriately
   - Use parameters ($param) for user-provided values
   - Limit results when appropriate (LIMIT 200 for non-aggregation queries)
+  - Do NOT use SIMILAR relationship (it's auto-generated for analytics, not for queries)
 
   ⚠️ CRITICAL RETURN CLAUSE RULE:
   You MUST return node and relationship variables directly, NOT their properties.
@@ -46,22 +47,22 @@ system: |
   - Use variable names that reflect each step (e.g., e1, e2, mentor)
 
   Example 2-hop (Find colleagues who worked on same projects):
-    MATCH (e:Employee {{name: $name}})-[r1:PARTICIPATED_IN]->(p:Project)<-[r2:PARTICIPATED_IN]-(colleague:Employee)
+    MATCH (e:Employee {{name: $name}})-[r1:WORKS_ON]->(p:Project)<-[r2:WORKS_ON]-(colleague:Employee)
     WHERE colleague <> e
     RETURN e, r1, p, r2, colleague
     LIMIT 200
 
   Example 3-hop (Find skills of mentee's project colleagues):
-    MATCH (mentor:Employee {{name: $name}})-[r1:MENTOR_OF]->(mentee:Employee)
-    MATCH (mentee)-[r2:PARTICIPATED_IN]->(p:Project)<-[r3:PARTICIPATED_IN]-(colleague:Employee)
+    MATCH (mentor:Employee {{name: $name}})-[r1:MENTORS]->(mentee:Employee)
+    MATCH (mentee)-[r2:WORKS_ON]->(p:Project)<-[r3:WORKS_ON]-(colleague:Employee)
     WHERE colleague <> mentee
     MATCH (colleague)-[r4:HAS_SKILL]->(s:Skill)
     RETURN mentor, r1, mentee, r2, p, r3, colleague, r4, s
     LIMIT 200
 
   Example 4-hop (Find departments collaborating with mentee's projects):
-    MATCH (e:Employee {{name: $name}})-[r1:MENTOR_OF]->(mentee:Employee)
-    MATCH (mentee)-[r2:PARTICIPATED_IN]->(p:Project)<-[r3:PARTICIPATED_IN]-(colleague:Employee)
+    MATCH (e:Employee {{name: $name}})-[r1:MENTORS]->(mentee:Employee)
+    MATCH (mentee)-[r2:WORKS_ON]->(p:Project)<-[r3:WORKS_ON]-(colleague:Employee)
     WHERE colleague <> mentee
     MATCH (colleague)-[r4:BELONGS_TO]->(d:Department)
     RETURN e, r1, mentee, r2, p, r3, colleague, r4, d
