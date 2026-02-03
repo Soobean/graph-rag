@@ -632,21 +632,19 @@ def _build_path_visualization_query(
 
     # SIMILAR 관계 제외하고 의미있는 관계만 포함
     # (HAS_SKILL, BELONGS_TO, WORKS_ON, MENTORS, HAS_POSITION 등)
+    # DB에 실제로 존재하는 관계 타입만 포함
     meaningful_rels = [
         "HAS_SKILL",
         "BELONGS_TO",
         "WORKS_ON",
         "MENTORS",
-        "MENTORED_BY",
         "HAS_POSITION",
-        "MANAGES",
-        "REPORTS_TO",
-        "COLLABORATES_WITH",
         "OWNED_BY",
         "HAS_CERTIFICATE",
         "LOCATED_AT",
         "REQUIRES",
         "IS_A",
+        "SAME_AS",
     ]
     rel_filter = " OR ".join([f"type(rel) = '{r}'" for r in meaningful_rels])
 

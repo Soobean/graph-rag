@@ -11,7 +11,7 @@ system: |
   ## 대표 관계명 예시
   - WORKS_ON: 프로젝트/업무 참여
   - MANAGES: 관리/담당
-  - REPORTS_TO: 보고 관계
+  - HAS_POSITION: 직급 관계
   - HAS_SKILL: 기술 보유
   - KNOWS: 인적 네트워크
   - MENTORS: 멘토링

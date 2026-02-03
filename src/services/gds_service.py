@@ -214,9 +214,9 @@ class GDSService:
                     G_bipartite,
                     writeRelationshipType="SIMILAR",
                     writeProperty="similarity",
-                    similarityCutoff=0.0,  # 모든 유사도 포함
+                    similarityCutoff=0.3,  # 30% 이상 유사한 것만 저장
                     degreeCutoff=min_shared_skills,  # 최소 공유 스킬
-                    topK=50,  # 상위 50개 유사 노드만
+                    topK=10,  # 상위 10개 유사 노드만
                 )
 
                 logger.info(

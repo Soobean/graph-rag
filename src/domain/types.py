@@ -318,7 +318,7 @@ class QueryHop(TypedDict, total=False):
     step: int  # 1, 2, 3...
     description: str  # "Python 스킬 보유자 찾기"
     node_label: str  # "Employee", "Skill"
-    relationship: str  # "HAS_SKILL", "MENTOR_OF"
+    relationship: str  # "HAS_SKILL", "MENTORS"
     direction: Literal["outgoing", "incoming", "both"]
     filter_condition: str | None  # "name = 'Python'"
 

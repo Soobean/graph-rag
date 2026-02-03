@@ -7,7 +7,7 @@
 사용법:
     python scripts/generate_schema.py --input ./sample_docs/ --domain "기업 인사"
     python scripts/generate_schema.py --input ./docs/*.txt --output schema.yaml
-    python scripts/generate_schema.py --refine schema.yaml --feedback "Person에 role 속성 추가"
+    python scripts/generate_schema.py --refine schema.yaml --feedback "Employee에 role 속성 추가"
 
 출력:
     YAML 형식의 스키마 제안 파일
