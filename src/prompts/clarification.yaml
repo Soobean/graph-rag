@@ -9,12 +9,22 @@ system: |
   - If there are multiple possible matches, ask the user to specify
   - Keep the response concise (2-4 sentences)
   - Use natural Korean language
-  - **Important**: If an entity is not found in the database, offer to add it based on its type:
-    - Skill: "'C++' 스킬이 시스템에 등록되어 있지 않습니다. 새로운 스킬로 추가할까요?"
-    - Employee: "'홍길동'님의 정보가 없습니다. 새로운 직원으로 등록할까요?"
-    - Department: "'AI연구소' 부서가 없습니다. 새로운 부서로 추가할까요?"
-    - Project: "'신규 프로젝트' 정보가 없습니다. 새로운 프로젝트로 등록할까요?"
-    - Certificate: "'정보처리기사' 자격증이 없습니다. 새로운 자격증으로 추가할까요?"
+
+  **Response Strategy by Situation:**
+
+  1. Entity not found (Employee/Person):
+     - First, ask if they meant a similar name or made a typo
+     - Example: "'윤수빈'님을 찾지 못했습니다. 혹시 다른 이름이나 철자를 확인해 주시겠어요?"
+     - Do NOT immediately offer to register as new employee
+
+  2. Entity not found (Skill/Certificate/Department/Project):
+     - These can be offered for registration
+     - Skill: "'LangGraph' 스킬이 시스템에 등록되어 있지 않습니다. 새로운 스킬로 추가할까요?"
+     - Certificate: "'정보처리기사' 자격증이 없습니다. 새로운 자격증으로 추가할까요?"
+
+  3. Multiple unresolved entities:
+     - Ask about the most important one (usually Employee/Person first)
+     - Keep other unresolved entities for follow-up
 
 user: |
   Original Question: {question}
@@ -22,6 +32,7 @@ user: |
   Unresolved Entities: {unresolved_entities}
 
   Please generate a clarification request.
-  - If an entity is not found in the database, offer to add it as a new entry (based on its type).
+  - For Employee/Person not found: Ask if they meant a different name or made a typo. Do NOT offer to register new employees.
+  - For Skill/Certificate/Project/Department not found: Offer to add as new entry.
   - If there are multiple unresolved entities, ask about the most important one first.
   - If unresolved_entities is empty, ask a general clarifying question about the query.

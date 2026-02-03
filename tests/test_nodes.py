@@ -460,6 +460,92 @@ class TestResponseGeneratorNode:
         assert "response_generator_empty" in result["execution_path"]
 
     @pytest.mark.asyncio
+    async def test_generate_response_entity_found_but_no_relation(self, node):
+        """엔티티는 찾았지만 관계가 없는 경우 - 구체적 피드백"""
+        state = GraphRAGState(
+            question="박수빈이 참여한 프로젝트는?",
+            graph_results=[],  # 빈 결과
+            intent="project_matching",
+            resolved_entities=[
+                {
+                    "id": "123",
+                    "labels": ["Employee"],
+                    "name": "박수빈",
+                    "properties": {"name": "박수빈"},
+                    "match_score": 1.0,
+                    "original_value": "박수빈",
+                }
+            ],
+        )
+        result = await node(state)
+
+        # 구체적 피드백이 포함되어야 함
+        assert "박수빈" in result["response"]
+        assert "등록되어 있지만" in result["response"]
+        assert "프로젝트" in result["response"]  # intent별 관계 설명
+        assert "response_generator_empty" in result["execution_path"]
+
+    @pytest.mark.asyncio
+    async def test_generate_response_multiple_entities_found_no_relation(self, node):
+        """여러 엔티티 찾았지만 관계 없는 경우"""
+        state = GraphRAGState(
+            question="김철수, 이영희의 멘토링 관계는?",
+            graph_results=[],
+            intent="mentoring_network",
+            resolved_entities=[
+                {"id": "101", "name": "김철수", "labels": ["Employee"]},
+                {"id": "102", "name": "이영희", "labels": ["Employee"]},
+            ],
+        )
+        result = await node(state)
+
+        assert "김철수" in result["response"]
+        assert "이영희" in result["response"]
+        assert "멘토링" in result["response"]  # mentoring_network intent
+
+    @pytest.mark.asyncio
+    async def test_generate_response_entity_id_none_treated_as_not_found(self, node):
+        """ID가 None인 엔티티는 '못 찾은 것'으로 간주"""
+        state = GraphRAGState(
+            question="없는사람의 프로젝트는?",
+            graph_results=[],
+            intent="project_matching",
+            resolved_entities=[
+                {
+                    "id": None,  # 매칭 실패
+                    "labels": ["Employee"],
+                    "original_value": "없는사람",
+                    "match_score": 0.0,
+                }
+            ],
+        )
+        result = await node(state)
+
+        # ID가 None이면 "엔티티를 못 찾은 경우"로 처리
+        assert "찾을 수 없습니다" in result["response"]
+        assert "등록되어 있지만" not in result["response"]
+
+    @pytest.mark.asyncio
+    async def test_generate_response_mixed_resolved_and_unresolved(self, node):
+        """일부는 찾고 일부는 못 찾은 경우 - 찾은 것만 피드백"""
+        state = GraphRAGState(
+            question="박수빈과 없는사람의 멘토링 관계는?",
+            graph_results=[],
+            intent="mentoring_network",
+            resolved_entities=[
+                {"id": "123", "labels": ["Employee"], "name": "박수빈"},
+                {"id": None, "labels": ["Employee"], "original_value": "없는사람"},
+            ],
+        )
+        result = await node(state)
+
+        # 찾은 엔티티(박수빈)에 대해서만 피드백
+        assert "박수빈" in result["response"]
+        assert "등록되어 있지만" in result["response"]
+        # 못 찾은 엔티티(없는사람)는 언급하지 않음
+        assert "없는사람" not in result["response"]
+
+    @pytest.mark.asyncio
     async def test_generate_response_error_in_state(self, node):
         state = GraphRAGState(question="q", error="Previous failure")
         result = await node(state)
