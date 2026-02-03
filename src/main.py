@@ -36,6 +36,7 @@ from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
 from src.services.gds_service import GDSService
 from src.services.ontology_service import OntologyService
+from src.services.skill_gap_service import SkillGapService
 
 # 로깅 설정
 settings = get_settings()
@@ -132,6 +133,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     explainability_service = ExplainabilityService()
     logger.info("ExplainabilityService initialized")
 
+    # SkillGapService 초기화
+    skill_gap_service = SkillGapService(neo4j_repo)
+    logger.info("SkillGapService initialized")
+
     # app.state에 저장 (멀티 워커 환경에서 각 워커가 자체 인스턴스 보유)
     app.state.neo4j_client = neo4j_client
     app.state.neo4j_repo = neo4j_repo
@@ -141,6 +146,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.ontology_service = ontology_service
     app.state.ontology_registry = ontology_registry
     app.state.explainability_service = explainability_service
+    app.state.skill_gap_service = skill_gap_service
 
     yield
 
