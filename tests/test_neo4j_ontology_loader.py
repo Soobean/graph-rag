@@ -85,10 +85,8 @@ class TestNeo4jOntologyLoader:
     @pytest.mark.asyncio
     async def test_get_synonyms_found(self, loader, mock_client):
         """동의어 목록 조회 성공"""
-        # get_canonical 호출
-        mock_client.execute_query.side_effect = [
-            [{"canonical_name": "Python"}],  # get_canonical
-            [{"canonical": "Python", "aliases": ["파이썬", "Python3", "Py"]}],  # get_synonyms
+        mock_client.execute_query.return_value = [
+            {"canonical": "Python", "synonyms": ["파이썬", "Python3", "Py"]}
         ]
 
         result = await loader.get_synonyms("파이썬", "skills")
