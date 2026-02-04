@@ -210,6 +210,8 @@ export interface TeamRecommendParams {
 
 export type CoverageStatus = 'covered' | 'partial' | 'gap';
 export type MatchType = 'same_category' | 'parent' | 'related' | 'none';
+export type InsightType = 'rare_skill' | 'synergy' | 'bridge' | 'alternative';
+export type InsightSeverity = 'warning' | 'info' | 'success';
 
 export interface SkillGapAnalyzeRequest {
   required_skills: string[];
@@ -232,9 +234,10 @@ export interface SkillMatch {
 
 export interface SkillCoverage {
   skill: string;
-  category: string;
+  category: string | null;
+  category_color: string | null;
   status: CoverageStatus;
-  exact_matches: SkillMatch[];
+  exact_matches: string[];
   similar_matches: SkillMatch[];
   explanation: string;
 }
@@ -257,6 +260,14 @@ export interface RecommendedEmployee {
   current_projects: number;
 }
 
+export interface Insight {
+  type: InsightType;
+  title: string;
+  description: string;
+  related_people: string[];
+  severity: InsightSeverity;
+}
+
 export interface SkillGapAnalyzeResponse {
   team_members: string[];
   overall_status: CoverageStatus;
@@ -264,6 +275,7 @@ export interface SkillGapAnalyzeResponse {
   skill_details: SkillCoverage[];
   gaps: string[];
   recommendations: string[];
+  insights: Insight[];
 }
 
 export interface SkillRecommendResponse {

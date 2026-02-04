@@ -5,13 +5,28 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAnalyzeSkillGap, useRecommendGapSolution } from '@/api/hooks/admin';
-import { Users, Loader2, Search, X, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
+import {
+  Users,
+  Loader2,
+  Search,
+  X,
+  ChevronDown,
+  ChevronRight,
+  UserPlus,
+  AlertTriangle,
+  GitMerge,
+  Lightbulb,
+  type LucideIcon,
+} from 'lucide-react';
 import type {
   SkillGapAnalyzeResponse,
   SkillRecommendResponse,
   SkillCoverage,
   CoverageStatus,
   RecommendedEmployee,
+  Insight,
+  InsightType,
+  InsightSeverity,
 } from '@/types/admin';
 
 const STATUS_BADGE_VARIANT: Record<CoverageStatus, 'success' | 'warning' | 'destructive'> = {
@@ -24,6 +39,19 @@ const STATUS_LABEL: Record<CoverageStatus, string> = {
   covered: 'Covered',
   partial: 'Partial',
   gap: 'Gap',
+};
+
+const INSIGHT_CONFIG: Record<InsightType, { icon: LucideIcon; iconColor: string }> = {
+  rare_skill: { icon: AlertTriangle, iconColor: 'text-amber-500' },
+  synergy: { icon: Users, iconColor: 'text-blue-500' },
+  bridge: { icon: GitMerge, iconColor: 'text-purple-500' },
+  alternative: { icon: Lightbulb, iconColor: 'text-green-500' },
+};
+
+const SEVERITY_STYLES: Record<InsightSeverity, string> = {
+  warning: 'bg-amber-50 border-amber-200',
+  info: 'bg-blue-50 border-blue-200',
+  success: 'bg-green-50 border-green-200',
 };
 
 function getAvailabilityInfo(projectCount: number) {
@@ -113,6 +141,49 @@ function CandidateCard({ candidate }: { candidate: RecommendedEmployee }) {
           <p className="text-xs text-muted-foreground">{candidate.department}</p>
         )}
         <p className="text-xs text-muted-foreground">{candidate.reason}</p>
+      </div>
+    </div>
+  );
+}
+
+function InsightCard({ insight }: { insight: Insight }) {
+  const config = INSIGHT_CONFIG[insight.type];
+  const Icon = config.icon;
+
+  return (
+    <div className={`rounded-lg border p-3 ${SEVERITY_STYLES[insight.severity]}`}>
+      <div className="flex items-start gap-3">
+        <Icon className={`h-5 w-5 mt-0.5 flex-shrink-0 ${config.iconColor}`} />
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-sm">{insight.title}</p>
+          <p className="text-sm text-muted-foreground mt-1">{insight.description}</p>
+          {insight.related_people.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {insight.related_people.map((name) => (
+                <Badge key={name} variant="outline" className="text-xs">
+                  {name}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InsightsSection({ insights }: { insights: Insight[] }) {
+  if (insights.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">Insights</p>
+      <div className="space-y-2">
+        {insights.map((insight, idx) => (
+          <InsightCard key={`${insight.type}-${idx}`} insight={insight} />
+        ))}
       </div>
     </div>
   );
@@ -389,6 +460,11 @@ export function SkillGapAnalysis() {
               ))}
             </div>
 
+            {/* Insights Section */}
+            {result.insights && result.insights.length > 0 && (
+              <InsightsSection insights={result.insights} />
+            )}
+
             {/* Skill Details */}
             <div className="space-y-2">
               <p className="text-sm font-medium">Skill Details</p>
@@ -412,7 +488,9 @@ export function SkillGapAnalysis() {
                           <span className="w-4" />
                         )}
                         <span className="font-medium">{detail.skill}</span>
-                        <span className="text-xs text-muted-foreground">({detail.category})</span>
+                        {detail.category && (
+                          <span className="text-xs text-muted-foreground">({detail.category})</span>
+                        )}
                       </div>
                       <Badge variant={STATUS_BADGE_VARIANT[detail.status]}>
                         {STATUS_LABEL[detail.status]}
@@ -430,7 +508,7 @@ export function SkillGapAnalysis() {
                             <p className="text-xs font-medium text-muted-foreground">
                               Current Team Coverage
                             </p>
-                            {detail.exact_matches.map((match, idx) => (
+                            {detail.exact_matches.map((name, idx) => (
                               <div
                                 key={`exact-${idx}`}
                                 className="flex items-center gap-2 text-sm"
@@ -438,8 +516,7 @@ export function SkillGapAnalysis() {
                                 <Badge variant="success" className="text-xs">
                                   Exact
                                 </Badge>
-                                <span>{match.employee_name}</span>
-                                <span className="text-muted-foreground">({match.possessed_skill})</span>
+                                <span>{name}</span>
                               </div>
                             ))}
                             {detail.similar_matches.map((match, idx) => (
