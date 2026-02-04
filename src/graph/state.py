@@ -28,6 +28,30 @@ IntentType = Literal[
     "unknown",  # 분류 불가
 ]
 
+# Intent 분류에 사용 가능한 의도 목록 (unknown 제외)
+AVAILABLE_INTENTS: list[str] = [
+    "personnel_search",
+    "project_matching",
+    "relationship_search",
+    "org_analysis",
+    "mentoring_network",
+    "certificate_search",
+    "path_analysis",
+    "ontology_update",
+]
+
+# 기본 엔티티 타입 (Neo4j 라벨과 일치)
+DEFAULT_ENTITY_TYPES: list[str] = [
+    "Employee",
+    "Organization",
+    "Department",
+    "Position",
+    "Project",
+    "Skill",
+    "Location",
+    "Date",
+]
+
 
 class GraphRAGState(TypedDict, total=False):
     """

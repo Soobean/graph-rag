@@ -187,8 +187,6 @@ async def get_subgraph(
             edge_count=len(edges),
         )
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Subgraph query failed: {e}")
         raise HTTPException(
@@ -308,8 +306,6 @@ async def get_community_graph(
             edge_count=len(edges),
         )
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Community graph query failed: {e}")
         raise HTTPException(

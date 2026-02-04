@@ -469,10 +469,6 @@ class OntologyLoader:
 
         예시:
             - get_children("Senior") → Mid, Junior 레벨 직급들
-            - "시니어 이상" 검색에는 get_position_level_and_above() 사용
-
-        Note:
-            IS_A 관계상 하위 개념을 반환 (Senior IS_A Executive 아님)
         """
         result: list[str] = []
 
@@ -492,53 +488,6 @@ class OntologyLoader:
             for level_info in hierarchy:
                 if level_info.get("level", 0) < target_level:
                     result.extend(level_info.get("includes", []))
-
-        return result
-
-    def get_position_level_and_above(
-        self, concept: str, category: str = "positions"
-    ) -> list[str]:
-        """
-        지정 레벨 이상의 직급 조회 (level >= target)
-
-        "시니어 이상" 검색 시 사용.
-
-        Args:
-            concept: 기준 레벨명 (예: "Senior")
-            category: 카테고리 (positions만 지원)
-
-        Returns:
-            해당 레벨 이상의 모든 직급명
-
-        Examples:
-            >>> loader.get_position_level_and_above("Senior")
-            ["Senior Engineer", "Tech Lead", "Staff Engineer", "CTO", "VP", "Director"]
-        """
-        if category != OntologyCategory.POSITIONS:
-            return []
-
-        schema = self.load_schema()
-        concepts = schema.get("concepts", {})
-        position_level = concepts.get("PositionLevel", {})
-        hierarchy = position_level.get("hierarchy", [])
-
-        result: list[str] = []
-
-        # 타겟 레벨 찾기
-        target_level = None
-        for level_info in hierarchy:
-            if level_info.get("name") == concept:
-                target_level = level_info.get("level", 0)
-                break
-
-        if target_level is None:
-            logger.warning(f"Position level '{concept}' not found in hierarchy")
-            return []
-
-        # 타겟 레벨 이상 수집 (level >= target)
-        for level_info in hierarchy:
-            if level_info.get("level", 0) >= target_level:
-                result.extend(level_info.get("includes", []))
 
         return result
 

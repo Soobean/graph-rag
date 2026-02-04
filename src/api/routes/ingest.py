@@ -160,8 +160,15 @@ async def ingest(
     """
     logger.info(f"Ingest request: {request.source_type} - {request.file_path}")
 
+    # 파일 경로 검증 (Path Traversal 방지)
+    file_path = Path(request.file_path).resolve()
+    if not file_path.is_relative_to(UPLOAD_DIR.resolve()):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: only uploaded files can be ingested",
+        )
+
     # 파일 존재 여부 확인
-    file_path = Path(request.file_path)
     if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -207,25 +207,28 @@ class TestIntentEntityExtractorNode:
 class TestIntentEntityExtractorNodeConfig:
     """IntentEntityExtractorNode 설정 테스트"""
 
-    def test_uses_same_intents_as_intent_classifier(
+    def test_uses_available_intents_from_state(
         self, mock_llm_repository: MagicMock
     ) -> None:
-        """IntentClassifier와 동일한 intent 목록 사용"""
-        from src.graph.nodes.intent_classifier import IntentClassifierNode
+        """state.py의 AVAILABLE_INTENTS 사용"""
+        from src.graph.state import AVAILABLE_INTENTS
+
+        # 상수가 올바르게 정의되어 있는지 확인
+        assert "personnel_search" in AVAILABLE_INTENTS
+        assert "project_matching" in AVAILABLE_INTENTS
+        assert "unknown" not in AVAILABLE_INTENTS
+
+    def test_uses_default_entity_types_from_state(
+        self, mock_llm_repository: MagicMock
+    ) -> None:
+        """state.py의 DEFAULT_ENTITY_TYPES 사용"""
+        from src.graph.state import DEFAULT_ENTITY_TYPES
 
         node = IntentEntityExtractorNode(mock_llm_repository)
 
-        assert node.AVAILABLE_INTENTS == IntentClassifierNode.AVAILABLE_INTENTS
-
-    def test_uses_same_entity_types_as_entity_extractor(
-        self, mock_llm_repository: MagicMock
-    ) -> None:
-        """EntityExtractor와 동일한 entity types 사용"""
-        from src.graph.nodes.entity_extractor import EntityExtractorNode
-
-        node = IntentEntityExtractorNode(mock_llm_repository)
-
-        assert node.DEFAULT_ENTITY_TYPES == EntityExtractorNode.DEFAULT_ENTITY_TYPES
+        assert node._entity_types == DEFAULT_ENTITY_TYPES
+        assert "Employee" in DEFAULT_ENTITY_TYPES
+        assert "Skill" in DEFAULT_ENTITY_TYPES
 
     def test_custom_entity_types(self, mock_llm_repository: MagicMock) -> None:
         """커스텀 entity types 사용 가능"""
