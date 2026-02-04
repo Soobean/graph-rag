@@ -189,47 +189,6 @@ class Neo4jOntologyLoader:
 
         return []
 
-    async def get_synonyms(
-        self,
-        term: str,
-        category: str = "skills",
-    ) -> list[str]:
-        """
-        동의어 목록 반환
-
-        Args:
-            term: 검색어 (canonical 권장)
-            category: 카테고리
-
-        Returns:
-            동의어 목록 (canonical 포함)
-        """
-        if category != OntologyCategory.SKILLS:
-            return [term]
-
-        query = """
-        MATCH (c:Concept {type: 'skill'})
-        WHERE toLower(c.name) = toLower($term)
-
-        OPTIONAL MATCH (c)-[:SAME_AS]-(syn:Concept {type: 'skill'})
-
-        RETURN c.name as canonical,
-               collect(DISTINCT syn.name) as synonyms
-        """
-
-        try:
-            results = await self._client.execute_query(query, {"term": term})
-            if results and results[0]["canonical"]:
-                result: list[str] = [results[0]["canonical"]]
-                for syn_name in results[0]["synonyms"]:
-                    if syn_name and syn_name != results[0]["canonical"]:
-                        result.append(syn_name)
-                return result
-        except Exception as e:
-            logger.warning(f"get_synonyms query failed: {e}")
-
-        return [term]
-
     async def expand_concept(
         self,
         term: str,

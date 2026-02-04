@@ -226,52 +226,6 @@ class Neo4jRepository:
             properties=r["properties"],
         )
 
-    async def find_entities_by_property(
-        self,
-        property_name: str,
-        property_value: Any,
-        labels: list[str] | None = None,
-        limit: int = 10,
-    ) -> list[NodeResult]:
-        """
-        속성 값으로 엔티티 검색
-
-        Args:
-            property_name: 속성 이름
-            property_value: 속성 값
-            labels: 필터링할 노드 레이블 (선택)
-            limit: 최대 결과 수
-
-        Returns:
-            매칭된 노드 리스트
-        """
-        label_filter = self._build_label_filter(labels)
-
-        query = f"""
-        MATCH (n{label_filter})
-        WHERE n[$property_name] = $property_value
-        RETURN elementId(n) as id, labels(n) as labels, properties(n) as properties
-        LIMIT $limit
-        """
-
-        results = await self._client.execute_query(
-            query,
-            {
-                "property_name": property_name,
-                "property_value": property_value,
-                "limit": limit,
-            },
-        )
-
-        return [
-            NodeResult(
-                id=r["id"],
-                labels=r["labels"],
-                properties=r["properties"],
-            )
-            for r in results
-        ]
-
     async def get_neighbors(
         self,
         entity_id: str,

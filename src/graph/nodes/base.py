@@ -47,24 +47,8 @@ class BaseNode[T](ABC):
     @property
     @abstractmethod
     def input_keys(self) -> list[str]:
-        """필요한 State 필드 목록"""
+        """필요한 State 필드 목록 (문서화 용도)"""
         ...
-
-    def validate_input(self, state: GraphRAGState) -> bool:
-        """
-        입력 State 검증
-
-        Args:
-            state: 현재 그래프 상태
-
-        Returns:
-            검증 성공 여부
-        """
-        missing_keys = [key for key in self.input_keys if key not in state]
-        if missing_keys:
-            self._logger.warning(f"Missing required keys: {missing_keys}")
-            return False
-        return True
 
     @abstractmethod
     async def _process(self, state: GraphRAGState) -> T:
@@ -80,30 +64,11 @@ class BaseNode[T](ABC):
         ...
 
     async def __call__(self, state: GraphRAGState) -> T:
-        """
-        노드 실행 (Template Method Pattern)
-
-        1. 입력 검증
-        2. 처리 실행
-        3. 에러 핸들링
-
-        Args:
-            state: 현재 그래프 상태
-
-        Returns:
-            업데이트할 State 필드들 (T 타입)
-        """
+        """노드 실행"""
         self._logger.debug(f"Node '{self.name}' started")
-
-        # 입력 검증 (선택적 - 검증 실패해도 진행)
-        if not self.validate_input(state):
-            self._logger.warning(
-                f"Input validation failed for node '{self.name}', proceeding anyway"
-            )
-
         try:
             result = await self._process(state)
-            self._logger.debug(f"Node '{self.name}' completed successfully")
+            self._logger.debug(f"Node '{self.name}' completed")
             return result
         except Exception as e:
             self._logger.error(f"Node '{self.name}' failed: {e}")

@@ -9,9 +9,12 @@ from typing import cast
 
 from src.domain.types import IntentEntityExtractorUpdate
 from src.graph.nodes.base import BaseNode
-from src.graph.nodes.entity_extractor import EntityExtractorNode
-from src.graph.nodes.intent_classifier import IntentClassifierNode
-from src.graph.state import GraphRAGState, IntentType
+from src.graph.state import (
+    AVAILABLE_INTENTS,
+    DEFAULT_ENTITY_TYPES,
+    GraphRAGState,
+    IntentType,
+)
 from src.graph.utils import format_chat_history
 from src.repositories.llm_repository import LLMRepository
 
@@ -20,23 +23,8 @@ class IntentEntityExtractorNode(BaseNode[IntentEntityExtractorUpdate]):
     """
     통합 Intent + Entity 추출 노드
 
-    기존 IntentClassifierNode + EntityExtractorNode를 하나의 노드로 통합하여
     LLM 호출 횟수를 줄이고 레이턴시를 최적화합니다.
-
-    사용 조건:
-    - Settings.use_combined_intent_entity = True
-    - 파이프라인에서 intent_classifier, entity_extractor 대신 이 노드 사용
-
-    동작:
-    1. 사용자 질문을 받아 의도와 엔티티를 동시에 추출
-    2. IntentClassifierUpdate + EntityExtractorUpdate를 합친 결과 반환
     """
-
-    # IntentClassifier와 동일한 의도 목록 사용
-    AVAILABLE_INTENTS = IntentClassifierNode.AVAILABLE_INTENTS
-
-    # EntityExtractor와 동일한 엔티티 타입 사용
-    DEFAULT_ENTITY_TYPES = EntityExtractorNode.DEFAULT_ENTITY_TYPES
 
     def __init__(
         self,
@@ -45,7 +33,7 @@ class IntentEntityExtractorNode(BaseNode[IntentEntityExtractorUpdate]):
     ):
         super().__init__()
         self._llm = llm_repository
-        self._entity_types = entity_types or self.DEFAULT_ENTITY_TYPES
+        self._entity_types = entity_types or DEFAULT_ENTITY_TYPES
 
     @property
     def name(self) -> str:
@@ -76,7 +64,7 @@ class IntentEntityExtractorNode(BaseNode[IntentEntityExtractorUpdate]):
             # 통합 LLM 호출 (1회)
             result = await self._llm.classify_intent_and_extract_entities(
                 question=question,
-                available_intents=self.AVAILABLE_INTENTS,
+                available_intents=AVAILABLE_INTENTS,
                 entity_types=self._entity_types,
                 chat_history=chat_history,
             )
@@ -86,7 +74,7 @@ class IntentEntityExtractorNode(BaseNode[IntentEntityExtractorUpdate]):
             confidence = result.get("confidence", 0.0)
 
             # 유효하지 않은 intent string 처리
-            if intent_str not in self.AVAILABLE_INTENTS and intent_str != "unknown":
+            if intent_str not in AVAILABLE_INTENTS and intent_str != "unknown":
                 self._logger.warning(
                     f"Invalid intent returned: {intent_str}. Fallback to unknown."
                 )
