@@ -17,3 +17,8 @@ export {
   useFindSimilarEmployees,
   useRecommendTeam,
 } from './useAnalytics';
+export {
+  useSkillCategories,
+  useAnalyzeSkillGap,
+  useRecommendGapSolution,
+} from './useSkillGap';

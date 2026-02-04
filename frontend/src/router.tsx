@@ -19,6 +19,9 @@ const IngestPage = lazy(() =>
 const AnalyticsPage = lazy(() =>
   import('@/pages/admin/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage }))
 );
+const SkillGapPage = lazy(() =>
+  import('@/pages/admin/SkillGapPage').then((m) => ({ default: m.SkillGapPage }))
+);
 
 function PageLoader() {
   return (
@@ -78,6 +81,14 @@ export const router = createBrowserRouter([
         element: (
           <SuspenseWrapper>
             <AnalyticsPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'skill-gap',
+        element: (
+          <SuspenseWrapper>
+            <SkillGapPage />
           </SuspenseWrapper>
         ),
       },

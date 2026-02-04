@@ -205,3 +205,70 @@ export interface TeamRecommendParams {
   team_size?: number;
   diversity_weight?: number;
 }
+
+// Skill Gap Analysis Types
+
+export type CoverageStatus = 'covered' | 'partial' | 'gap';
+export type MatchType = 'same_category' | 'parent' | 'related' | 'none';
+
+export interface SkillGapAnalyzeRequest {
+  required_skills: string[];
+  team_members?: string[];
+  project_id?: string;
+}
+
+export interface SkillRecommendRequest {
+  skill: string;
+  exclude_members: string[];
+  limit?: number;
+}
+
+export interface SkillMatch {
+  employee_name: string;
+  possessed_skill: string;
+  match_type: MatchType;
+  explanation: string;
+}
+
+export interface SkillCoverage {
+  skill: string;
+  category: string;
+  status: CoverageStatus;
+  exact_matches: SkillMatch[];
+  similar_matches: SkillMatch[];
+  explanation: string;
+}
+
+export interface CategoryCoverage {
+  category: string;
+  color: string;
+  total_skills: number;
+  covered_count: number;
+  coverage_ratio: number;
+}
+
+export interface RecommendedEmployee {
+  name: string;
+  department: string | null;
+  current_skills: string[];
+  match_type: MatchType;
+  matched_skill: string;
+  reason: string;
+  current_projects: number;
+}
+
+export interface SkillGapAnalyzeResponse {
+  team_members: string[];
+  overall_status: CoverageStatus;
+  category_summary: CategoryCoverage[];
+  skill_details: SkillCoverage[];
+  gaps: string[];
+  recommendations: string[];
+}
+
+export interface SkillRecommendResponse {
+  target_skill: string;
+  category: string;
+  internal_candidates: RecommendedEmployee[];
+  external_search_query: string;
+}
