@@ -189,54 +189,46 @@ class Neo4jOntologyLoader:
 
         return []
 
-    async def get_synonyms_with_weights(
+    async def get_synonyms(
         self,
         term: str,
         category: str = "skills",
-        min_weight: float = 0.0,
-    ) -> list[tuple[str, float]]:
+    ) -> list[str]:
         """
-        동의어와 가중치 목록 반환
+        동의어 목록 반환
 
         Args:
             term: 검색어 (canonical 권장)
             category: 카테고리
-            min_weight: 최소 가중치 임계값
 
         Returns:
-            (동의어, 가중치) 튜플 목록 (가중치 내림차순)
+            동의어 목록 (canonical 포함)
         """
         if category != OntologyCategory.SKILLS:
-            return [(term, 1.0)]
+            return [term]
 
         query = """
         MATCH (c:Concept {type: 'skill'})
         WHERE toLower(c.name) = toLower($term)
 
-        OPTIONAL MATCH (c)-[r:SAME_AS]-(syn:Concept {type: 'skill'})
-        WHERE r.weight >= $min_weight
-
-        WITH c, syn, r.weight as weight
-        ORDER BY weight DESC
+        OPTIONAL MATCH (c)-[:SAME_AS]-(syn:Concept {type: 'skill'})
 
         RETURN c.name as canonical,
-               collect({name: syn.name, weight: weight}) as synonyms
+               collect(DISTINCT syn.name) as synonyms
         """
 
         try:
-            results = await self._client.execute_query(
-                query, {"term": term, "min_weight": min_weight}
-            )
+            results = await self._client.execute_query(query, {"term": term})
             if results and results[0]["canonical"]:
-                result: list[tuple[str, float]] = [(results[0]["canonical"], 1.0)]
-                for syn in results[0]["synonyms"]:
-                    if syn["name"] and syn["name"] != results[0]["canonical"]:
-                        result.append((syn["name"], syn["weight"] or 1.0))
+                result: list[str] = [results[0]["canonical"]]
+                for syn_name in results[0]["synonyms"]:
+                    if syn_name and syn_name != results[0]["canonical"]:
+                        result.append(syn_name)
                 return result
         except Exception as e:
-            logger.warning(f"get_synonyms_with_weights query failed: {e}")
+            logger.warning(f"get_synonyms query failed: {e}")
 
-        return [(term, 1.0)]
+        return [term]
 
     async def expand_concept(
         self,
@@ -273,12 +265,10 @@ class Neo4jOntologyLoader:
                 result.append(canonical)
                 seen.add(canonical)
 
-            # 2. 동의어 조회 (가중치 필터링 적용)
+            # 2. 동의어 조회
             if config.include_synonyms:
-                synonyms = await self.get_synonyms_with_weights(
-                    canonical, category, config.min_weight
-                )
-                for syn, _ in synonyms[:config.max_synonyms]:
+                synonyms = await self.get_synonyms(canonical, category)
+                for syn in synonyms[:config.max_synonyms]:
                     if syn not in seen:
                         result.append(syn)
                         seen.add(syn)

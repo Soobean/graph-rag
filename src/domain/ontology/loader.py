@@ -190,8 +190,6 @@ class ExpansionConfig:
         max_total: 전체 확장 최대 개수 (기본 15)
         include_synonyms: 동의어 포함 여부 (기본 True)
         include_children: 하위 개념 포함 여부 (기본 True)
-        min_weight: 최소 가중치 임계값 (기본 0.0 = 필터링 없음)
-        sort_by_weight: 가중치 기준 정렬 여부 (기본 True)
     """
 
     max_synonyms: int = 5
@@ -199,8 +197,6 @@ class ExpansionConfig:
     max_total: int = 15
     include_synonyms: bool = True
     include_children: bool = True
-    min_weight: float = 0.0
-    sort_by_weight: bool = True
 
     def __post_init__(self) -> None:
         """기본 유효성 검사 (음수 방지)"""
@@ -210,8 +206,6 @@ class ExpansionConfig:
             raise ValueError("max_children must be non-negative")
         if self.max_total < 1:
             raise ValueError("max_total must be at least 1")
-        if not 0.0 <= self.min_weight <= 1.0:
-            raise ValueError("min_weight must be between 0.0 and 1.0")
 
 
 # 기본 확장 설정 (전역)
@@ -330,27 +324,27 @@ class OntologyLoader:
                 # main_term → canonical
                 self._reverse_index[category][main_term.lower()] = canonical
 
-                # 각 alias → canonical (하위호환: str 또는 dict 형식 지원)
+                # 각 alias → canonical
                 for alias in aliases:
-                    alias_name, _ = self._parse_alias(alias)
+                    alias_name = self._parse_alias(alias)
                     self._reverse_index[category][alias_name.lower()] = canonical
 
         logger.debug(f"Reverse index built: {len(self._reverse_index)} categories")
 
     @staticmethod
-    def _parse_alias(alias_entry: str | dict[str, Any]) -> tuple[str, float]:
+    def _parse_alias(alias_entry: str | dict[str, Any]) -> str:
         """
-        alias 엔트리에서 이름과 가중치 추출 (하위호환)
+        alias 엔트리에서 이름 추출
 
         Args:
-            alias_entry: 문자열 또는 {name, weight} 형식의 딕셔너리
+            alias_entry: 문자열 또는 {name: ...} 형식의 딕셔너리
 
         Returns:
-            (이름, 가중치) 튜플. 문자열이면 가중치는 1.0
+            별칭 이름
         """
         if isinstance(alias_entry, dict):
-            return alias_entry.get("name", ""), float(alias_entry.get("weight", 1.0))
-        return alias_entry, 1.0
+            return alias_entry.get("name", "")
+        return alias_entry
 
     # =========================================================================
     # 동의어 조회
@@ -388,23 +382,6 @@ class OntologyLoader:
             동의어 목록 (canonical 포함)
             찾지 못하면 [term] 반환
         """
-        synonyms_with_weights = self.get_synonyms_with_weights(term, category)
-        return [name for name, _ in synonyms_with_weights]
-
-    def get_synonyms_with_weights(
-        self, term: str, category: str = "skills"
-    ) -> list[tuple[str, float]]:
-        """
-        동의어와 가중치 목록 반환 (양방향 조회)
-
-        Args:
-            term: 검색어
-            category: 카테고리
-
-        Returns:
-            (동의어, 가중치) 튜플 목록
-            찾지 못하면 [(term, 1.0)] 반환
-        """
         synonyms_data = self.load_synonyms()
 
         # 먼저 canonical 이름 찾기
@@ -419,20 +396,19 @@ class OntologyLoader:
 
             entry_canonical = info.get("canonical", main_term)
             if entry_canonical == canonical:
-                # canonical (weight=1.0) + 모든 aliases (with weights)
-                result: list[tuple[str, float]] = [(canonical, 1.0)]
+                result: list[str] = [canonical]
                 seen = {canonical}
 
                 for alias in info.get("aliases", []):
-                    alias_name, alias_weight = self._parse_alias(alias)
+                    alias_name = self._parse_alias(alias)
                     if alias_name and alias_name not in seen:
-                        result.append((alias_name, alias_weight))
+                        result.append(alias_name)
                         seen.add(alias_name)
 
                 return result
 
         # 찾지 못한 경우 원본 반환
-        return [(term, 1.0)]
+        return [term]
 
     # =========================================================================
     # 개념 계층 조회
@@ -586,10 +562,6 @@ class OntologyLoader:
 
         Returns:
             확장된 개념 목록 (중복 제거, 최대 max_total개)
-
-        Note:
-            - min_weight > 0: 해당 가중치 이상인 동의어만 포함
-            - sort_by_weight=True: 가중치 내림차순 정렬
         """
         if config is None:
             config = DEFAULT_EXPANSION_CONFIG
@@ -598,21 +570,8 @@ class OntologyLoader:
         seen: set[str] = {term}
 
         if config.include_synonyms:
-            # 가중치와 함께 동의어 조회
-            synonyms_with_weights = self.get_synonyms_with_weights(term, category)
-
-            # 임계값 필터링
-            if config.min_weight > 0:
-                synonyms_with_weights = [
-                    (s, w) for s, w in synonyms_with_weights if w >= config.min_weight
-                ]
-
-            # 가중치 기준 정렬
-            if config.sort_by_weight:
-                synonyms_with_weights.sort(key=lambda x: x[1], reverse=True)
-
-            # 결과 추가
-            for syn, _ in synonyms_with_weights[: config.max_synonyms]:
+            synonyms = self.get_synonyms(term, category)
+            for syn in synonyms[: config.max_synonyms]:
                 if syn not in seen:
                     result.append(syn)
                     seen.add(syn)
