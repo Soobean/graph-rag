@@ -283,7 +283,12 @@ if FRONTEND_DIR.exists():
         - 없으면 index.html 반환 (React Router가 처리)
         """
         # API 경로는 여기 도달하지 않음 (위에서 먼저 매칭)
-        file_path = FRONTEND_DIR / full_path
+        file_path = (FRONTEND_DIR / full_path).resolve()
+
+        # Path Traversal 방지: FRONTEND_DIR 외부 접근 차단
+        if not file_path.is_relative_to(FRONTEND_DIR.resolve()):
+            return FileResponse(FRONTEND_DIR / "index.html")
+
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
         return FileResponse(FRONTEND_DIR / "index.html")
