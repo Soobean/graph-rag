@@ -20,6 +20,23 @@ class CoverageStatus(str, Enum):
     GAP = "gap"  # 관련 인력 없음
 
 
+class InsightType(str, Enum):
+    """인사이트 유형"""
+
+    RARE_SKILL = "rare_skill"  # 희소 스킬 경고 (보유자 3명 이하)
+    SYNERGY = "synergy"  # 숨겨진 시너지 (추천 인원과 기존 팀원의 협업 이력)
+    BRIDGE = "bridge"  # 브릿지 인재 (여러 카테고리 스킬 보유)
+    ALTERNATIVE = "alternative"  # 대안 제시 (같은 카테고리 다른 기술 스택)
+
+
+class InsightSeverity(str, Enum):
+    """인사이트 심각도"""
+
+    WARNING = "warning"
+    INFO = "info"
+    SUCCESS = "success"
+
+
 class MatchType(str, Enum):
     """스킬 매칭 타입"""
 
@@ -162,6 +179,22 @@ class RecommendedEmployee(BaseModel):
 # =============================================================================
 
 
+class Insight(BaseModel):
+    """그래프 기반 인사이트"""
+
+    type: InsightType = Field(..., description="인사이트 유형")
+    title: str = Field(..., description="인사이트 제목")
+    description: str = Field(..., description="인사이트 상세 설명")
+    related_people: list[str] = Field(
+        default_factory=list,
+        description="관련 인물 목록",
+    )
+    severity: InsightSeverity = Field(
+        default=InsightSeverity.INFO,
+        description="심각도 (warning, info, success)",
+    )
+
+
 class SkillGapAnalyzeResponse(BaseModel):
     """스킬 갭 분석 결과"""
 
@@ -192,6 +225,12 @@ class SkillGapAnalyzeResponse(BaseModel):
     recommendations: list[str] = Field(
         default_factory=list,
         description="갭 해소 추천 메시지",
+    )
+
+    # 그래프 기반 인사이트
+    insights: list[Insight] = Field(
+        default_factory=list,
+        description="그래프 기반 인사이트 (희소 스킬, 시너지, 브릿지 인재 등)",
     )
 
 

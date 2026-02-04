@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.api.schemas.skill_gap import CoverageStatus, MatchType
+from src.api.schemas.skill_gap import CoverageStatus, InsightSeverity, InsightType, MatchType
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.skill_gap_service import (
     CACHE_TTL_SECONDS,
@@ -758,3 +758,373 @@ class TestProjectIdResolution:
         # Then
         assert result.team_members == ["홍길동"]
         assert result.overall_status == CoverageStatus.COVERED
+
+
+# =============================================================================
+# 인사이트 생성 테스트
+# =============================================================================
+
+
+class TestInsightGeneration:
+    """_generate_insights() 및 하위 메서드 테스트"""
+
+    async def test_check_rare_skills_returns_warning_for_single_holder(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """보유자가 1명인 스킬에 대해 경고 인사이트 생성"""
+        # Given
+        mock_neo4j.execute_cypher = AsyncMock(
+            return_value=[
+                {
+                    "skill_name": "LangChain",
+                    "holder_count": 1,
+                    "holders": ["홍길동"],
+                }
+            ]
+        )
+
+        # When
+        insights = await skill_gap_service._check_rare_skills(["LangChain"])
+
+        # Then
+        assert len(insights) == 1
+        assert insights[0].type == InsightType.RARE_SKILL
+        assert insights[0].severity == InsightSeverity.WARNING
+        assert "홍길동" in insights[0].related_people
+        assert "버스 팩터" in insights[0].description
+
+    async def test_check_rare_skills_returns_warning_for_no_holder(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """보유자가 없는 스킬에 대해 경고 인사이트 생성"""
+        # Given
+        mock_neo4j.execute_cypher = AsyncMock(
+            return_value=[
+                {
+                    "skill_name": "Rust",
+                    "holder_count": 0,
+                    "holders": [],
+                }
+            ]
+        )
+
+        # When
+        insights = await skill_gap_service._check_rare_skills(["Rust"])
+
+        # Then
+        assert len(insights) == 1
+        assert insights[0].type == InsightType.RARE_SKILL
+        assert insights[0].severity == InsightSeverity.WARNING
+        assert "보유자 없음" in insights[0].title
+
+    async def test_check_rare_skills_returns_info_for_few_holders(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """보유자가 2~3명인 스킬에 대해 info 인사이트 생성"""
+        # Given
+        mock_neo4j.execute_cypher = AsyncMock(
+            return_value=[
+                {
+                    "skill_name": "Kubernetes",
+                    "holder_count": 2,
+                    "holders": ["홍길동", "김철수"],
+                }
+            ]
+        )
+
+        # When
+        insights = await skill_gap_service._check_rare_skills(["Kubernetes"])
+
+        # Then
+        assert len(insights) == 1
+        assert insights[0].type == InsightType.RARE_SKILL
+        assert insights[0].severity == InsightSeverity.INFO
+
+    async def test_check_rare_skills_handles_db_error(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """DB 오류 시 빈 리스트 반환"""
+        # Given
+        mock_neo4j.execute_cypher = AsyncMock(side_effect=Exception("DB Error"))
+
+        # When
+        insights = await skill_gap_service._check_rare_skills(["Python"])
+
+        # Then: 예외 대신 빈 리스트 반환
+        assert insights == []
+
+    async def test_find_synergies_returns_success_insight(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """협업 이력이 있는 경우 시너지 인사이트 생성"""
+        # Given
+        from src.api.schemas.skill_gap import SkillCoverage, SkillMatch
+
+        skill_details = [
+            SkillCoverage(
+                skill="NLP",
+                category="AI/ML",
+                status=CoverageStatus.PARTIAL,
+                exact_matches=[],
+                similar_matches=[
+                    SkillMatch(
+                        employee_name="김철수",
+                        possessed_skill="TensorFlow",
+                        match_type=MatchType.SAME_CATEGORY,
+                        explanation="같은 AI/ML 카테고리",
+                    )
+                ],
+                explanation="유사 스킬 보유자 있음",
+            )
+        ]
+
+        mock_neo4j.execute_cypher = AsyncMock(
+            return_value=[
+                {
+                    "candidate_name": "김철수",
+                    "team_member_name": "홍길동",
+                    "shared_projects": 2,
+                    "projects": ["AI 챗봇", "추천 시스템"],
+                }
+            ]
+        )
+
+        # When
+        insights = await skill_gap_service._find_synergies(
+            team_members=["홍길동"],
+            skill_details=skill_details,
+        )
+
+        # Then
+        assert len(insights) == 1
+        assert insights[0].type == InsightType.SYNERGY
+        assert insights[0].severity == InsightSeverity.SUCCESS
+        assert "김철수" in insights[0].related_people
+        assert "홍길동" in insights[0].related_people
+        assert "AI 챗봇" in insights[0].description
+
+    async def test_find_synergies_returns_empty_when_no_partial(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """PARTIAL 스킬이 없으면 빈 리스트 반환"""
+        # Given
+        from src.api.schemas.skill_gap import SkillCoverage
+
+        skill_details = [
+            SkillCoverage(
+                skill="Python",
+                category="Backend",
+                status=CoverageStatus.COVERED,
+                exact_matches=["홍길동"],
+                similar_matches=[],
+                explanation="직접 보유",
+            )
+        ]
+
+        # When
+        insights = await skill_gap_service._find_synergies(
+            team_members=["홍길동"],
+            skill_details=skill_details,
+        )
+
+        # Then
+        assert insights == []
+        mock_neo4j.execute_cypher.assert_not_called()
+
+    async def test_find_bridge_candidates_returns_info_insight(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """다중 카테고리 스킬 보유자에 대해 브릿지 인사이트 생성"""
+        # Given
+        mock_neo4j.execute_cypher = AsyncMock(
+            return_value=[
+                {
+                    "name": "박지수",
+                    "categories": ["Backend", "DevOps", "Cloud"],
+                    "sample_skills": ["Python", "Docker", "Kubernetes", "AWS"],
+                    "matching_categories": ["Backend"],
+                    "project_count": 1,
+                }
+            ]
+        )
+
+        # When
+        insights = await skill_gap_service._find_bridge_candidates(
+            gaps=["FastAPI"],
+            team_members=["홍길동"],
+        )
+
+        # Then
+        assert len(insights) == 1
+        assert insights[0].type == InsightType.BRIDGE
+        assert insights[0].severity == InsightSeverity.INFO
+        assert "박지수" in insights[0].related_people
+        assert "다양한 분야" in insights[0].description
+
+    async def test_find_bridge_candidates_returns_empty_when_no_gaps(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """갭 스킬이 없으면 빈 리스트 반환"""
+        # When
+        insights = await skill_gap_service._find_bridge_candidates(
+            gaps=[],
+            team_members=["홍길동"],
+        )
+
+        # Then
+        assert insights == []
+        mock_neo4j.execute_cypher.assert_not_called()
+
+    async def test_generate_insights_combines_all_types(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """모든 인사이트 타입이 결합되어 반환"""
+        # Given
+        from src.api.schemas.skill_gap import SkillCoverage
+
+        skill_details = [
+            SkillCoverage(
+                skill="NLP",
+                category="AI/ML",
+                status=CoverageStatus.GAP,
+                exact_matches=[],
+                similar_matches=[],
+                explanation="관련 스킬 보유자 없음",
+            )
+        ]
+
+        call_count = 0
+
+        async def mock_execute(query, params=None):
+            nonlocal call_count
+            call_count += 1
+
+            if "holder_count" in query:
+                # _check_rare_skills
+                return [
+                    {
+                        "skill_name": "NLP",
+                        "holder_count": 1,
+                        "holders": ["김철수"],
+                    }
+                ]
+            elif "WORKS_ON" in query and "candidate" in query:
+                # _find_synergies - 매칭되는 후보 없음
+                return []
+            elif "gap_categories" in query:
+                # _find_bridge_candidates
+                return [
+                    {
+                        "name": "박지수",
+                        "categories": ["AI/ML", "Data"],
+                        "sample_skills": ["TensorFlow", "Pandas"],
+                        "matching_categories": ["AI/ML"],
+                        "project_count": 1,
+                    }
+                ]
+            return []
+
+        mock_neo4j.execute_cypher = AsyncMock(side_effect=mock_execute)
+
+        # When
+        insights = await skill_gap_service._generate_insights(
+            required_skills=["NLP"],
+            team_members=["홍길동"],
+            skill_details=skill_details,
+            gaps=["NLP"],
+        )
+
+        # Then: 희소 스킬 + 브릿지 인재 인사이트
+        assert len(insights) == 2
+        insight_types = [i.type for i in insights]
+        assert InsightType.RARE_SKILL in insight_types
+        assert InsightType.BRIDGE in insight_types
+
+    async def test_analyze_includes_insights_in_response(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """analyze() 결과에 insights 필드 포함"""
+        # Given
+        async def mock_execute(query, params=None):
+            if "HAS_SKILL" in query and "Employee" in query:
+                # _get_team_skills
+                return [{"employee": "홍길동", "skills": []}]
+            elif "UNWIND" in query and "skill_name" in query:
+                # _prefetch_skill_metadata
+                return [
+                    {"skill_name": "Python", "canonical": None, "category": "Backend"}
+                ]
+            elif "holder_count" in query:
+                # _check_rare_skills
+                return [
+                    {
+                        "skill_name": "Python",
+                        "holder_count": 2,
+                        "holders": ["김철수", "박지수"],
+                    }
+                ]
+            return []
+
+        mock_neo4j.execute_cypher = AsyncMock(side_effect=mock_execute)
+
+        # When
+        result = await skill_gap_service.analyze(
+            required_skills=["Python"],
+            team_members=["홍길동"],
+        )
+
+        # Then: insights 필드가 있어야 함
+        assert hasattr(result, "insights")
+        assert isinstance(result.insights, list)
+
+    async def test_find_synergies_handles_db_error(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """_find_synergies DB 오류 시 빈 리스트 반환"""
+        # Given
+        from src.api.schemas.skill_gap import SkillCoverage, SkillMatch
+
+        skill_details = [
+            SkillCoverage(
+                skill="NLP",
+                category="AI/ML",
+                status=CoverageStatus.PARTIAL,
+                exact_matches=[],
+                similar_matches=[
+                    SkillMatch(
+                        employee_name="김철수",
+                        possessed_skill="TensorFlow",
+                        match_type=MatchType.SAME_CATEGORY,
+                        explanation="같은 카테고리",
+                    )
+                ],
+                explanation="유사 스킬 보유",
+            )
+        ]
+
+        mock_neo4j.execute_cypher = AsyncMock(side_effect=Exception("DB Error"))
+
+        # When
+        insights = await skill_gap_service._find_synergies(
+            team_members=["홍길동"],
+            skill_details=skill_details,
+        )
+
+        # Then
+        assert insights == []
+
+    async def test_find_bridge_candidates_handles_db_error(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """_find_bridge_candidates DB 오류 시 빈 리스트 반환"""
+        # Given
+        mock_neo4j.execute_cypher = AsyncMock(side_effect=Exception("DB Error"))
+
+        # When
+        insights = await skill_gap_service._find_bridge_candidates(
+            gaps=["Python"],
+            team_members=["홍길동"],
+        )
+
+        # Then
+        assert insights == []
