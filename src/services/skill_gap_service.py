@@ -15,6 +15,9 @@ from typing import Any
 from src.api.schemas.skill_gap import (
     CategoryCoverage,
     CoverageStatus,
+    Insight,
+    InsightSeverity,
+    InsightType,
     MatchType,
     RecommendedEmployee,
     SkillCategory,
@@ -67,6 +70,15 @@ LCA_MAX_DEPTH = 3
 
 # 캐시 TTL (초) - 5분 후 자동 만료
 CACHE_TTL_SECONDS = 300
+
+# 희소 스킬 기준 (이 인원 이하면 희소 스킬로 판단)
+RARE_SKILL_THRESHOLD = 3
+
+# 브릿지 인재 기준 (이 개수 이상의 카테고리 스킬 보유)
+BRIDGE_CATEGORY_THRESHOLD = 2
+
+# 브릿지 인재 프로젝트 부하 기준 (이 개수 이하면 여유 있음)
+BRIDGE_PROJECT_THRESHOLD = 3
 
 
 class SkillGapService:
@@ -196,6 +208,14 @@ class SkillGapService:
         # 7. 추천 생성
         recommendations = self._generate_recommendations(list(skill_details))
 
+        # 8. 그래프 기반 인사이트 생성
+        insights = await self._generate_insights(
+            required_skills=required_skills,
+            team_members=resolved_members,
+            skill_details=list(skill_details),
+            gaps=gaps,
+        )
+
         return SkillGapAnalyzeResponse(
             team_members=resolved_members,
             total_required_skills=len(required_skills),
@@ -204,6 +224,7 @@ class SkillGapService:
             skill_details=list(skill_details),
             gaps=gaps,
             recommendations=recommendations,
+            insights=insights,
         )
 
     async def recommend_for_skill(
@@ -496,7 +517,7 @@ class SkillGapService:
         limit: int,
     ) -> list[RecommendedEmployee]:
         """내부 교육 추천 인력 찾기 (N+1 쿼리 제거)"""
-        # 단일 쿼리로 후보자와 스킬을 함께 조회
+        # 단일 쿼리로 후보자와 스킬, 프로젝트 수를 함께 조회
         query = """
         // 타겟 스킬의 형제 스킬 찾기
         MATCH (target:Concept {name: $skill})-[:IS_A]->(parent)
@@ -512,15 +533,21 @@ class SkillGapService:
         // 해당 직원의 모든 스킬도 함께 조회
         OPTIONAL MATCH (e)-[:HAS_SKILL]->(all_skills:Skill)
 
+        // 현재 참여 중인 프로젝트 수 조회
+        OPTIONAL MATCH (e)-[:WORKS_ON]->(project:Project)
+
         WITH e, parent, d,
              collect(DISTINCT sibling.name) AS matched_skills,
-             collect(DISTINCT all_skills.name) AS all_skills
+             collect(DISTINCT all_skills.name) AS all_skills,
+             count(DISTINCT project) AS project_count
 
         RETURN e.name AS employee,
                d.name AS department,
                matched_skills,
                parent.name AS common_category,
-               all_skills
+               all_skills,
+               project_count
+        ORDER BY project_count ASC
         LIMIT $limit
         """
 
@@ -546,6 +573,7 @@ class SkillGapService:
                         match_type=MatchType.SAME_CATEGORY,
                         matched_skill=matched_skill,
                         reason=f"{matched_skill} 보유 (같은 {row['common_category']})",
+                        current_projects=row["project_count"],
                     )
                 )
 
@@ -666,3 +694,270 @@ class SkillGapService:
                 recommendations.append(f"{skill.skill} 전문가 충원 필요")
 
         return recommendations
+
+    # =========================================================================
+    # Insight Generation Methods
+    # =========================================================================
+
+    async def _generate_insights(
+        self,
+        required_skills: list[str],
+        team_members: list[str],
+        skill_details: list[SkillCoverage],
+        gaps: list[str],
+    ) -> list[Insight]:
+        """
+        그래프 기반 인사이트 생성
+
+        Args:
+            required_skills: 필요 스킬 목록
+            team_members: 팀원 목록
+            skill_details: 스킬별 상세 분석 결과
+            gaps: 갭 스킬 목록
+
+        Returns:
+            인사이트 목록
+        """
+        insights: list[Insight] = []
+
+        # 병렬로 인사이트 생성
+        rare_skill_task = self._check_rare_skills(required_skills)
+        synergy_task = self._find_synergies(team_members, skill_details)
+        bridge_task = self._find_bridge_candidates(gaps, team_members)
+
+        rare_insights, synergy_insights, bridge_insights = await asyncio.gather(
+            rare_skill_task,
+            synergy_task,
+            bridge_task,
+        )
+
+        insights.extend(rare_insights)
+        insights.extend(synergy_insights)
+        insights.extend(bridge_insights)
+
+        return insights
+
+    async def _check_rare_skills(self, required_skills: list[str]) -> list[Insight]:
+        """
+        희소 스킬 경고 생성
+
+        보유자가 3명 이하인 스킬을 찾아 경고 인사이트 생성
+        """
+        query = """
+        UNWIND $skills AS skill_name
+        MATCH (s:Skill {name: skill_name})<-[:HAS_SKILL]-(p:Employee)
+        WITH skill_name, count(p) AS holder_count, collect(p.name)[0..3] AS holders
+        WHERE holder_count <= $threshold
+        RETURN skill_name, holder_count, holders
+        ORDER BY holder_count ASC
+        """
+
+        insights: list[Insight] = []
+
+        try:
+            results = await self._neo4j.execute_cypher(
+                query,
+                {"skills": required_skills, "threshold": RARE_SKILL_THRESHOLD},
+            )
+
+            for row in results:
+                skill_name = row["skill_name"]
+                holder_count = row["holder_count"]
+                holders = row["holders"]
+
+                if holder_count == 0:
+                    title = f"'{skill_name}' 보유자 없음"
+                    description = (
+                        f"조직 내 {skill_name} 보유자가 없습니다. "
+                        "외부 채용 또는 교육 프로그램을 검토하세요."
+                    )
+                    severity = InsightSeverity.WARNING
+                elif holder_count == 1:
+                    title = f"'{skill_name}' 희소 스킬 경고"
+                    description = (
+                        f"조직 내 {skill_name} 보유자가 {holders[0]} 1명뿐입니다. "
+                        "버스 팩터(Bus Factor) 리스크가 있습니다."
+                    )
+                    severity = InsightSeverity.WARNING
+                else:
+                    title = f"'{skill_name}' 희소 스킬"
+                    description = (
+                        f"조직 내 {skill_name} 보유자가 {holder_count}명으로 적습니다."
+                    )
+                    severity = InsightSeverity.INFO
+
+                insights.append(
+                    Insight(
+                        type=InsightType.RARE_SKILL,
+                        title=title,
+                        description=description,
+                        related_people=holders,
+                        severity=severity,
+                    )
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to check rare skills: {e}")
+
+        return insights
+
+    async def _find_synergies(
+        self,
+        team_members: list[str],
+        skill_details: list[SkillCoverage],
+    ) -> list[Insight]:
+        """
+        협업 시너지 발견
+
+        유사 스킬 보유자(추천 후보)와 기존 팀원의 협업 이력을 찾음
+        """
+        # 유사 스킬 보유자 추출 (partial 상태인 스킬의 similar_matches)
+        candidates: set[str] = set()
+        for detail in skill_details:
+            if detail.status == CoverageStatus.PARTIAL:
+                for match in detail.similar_matches:
+                    candidates.add(match.employee_name)
+
+        if not candidates or not team_members:
+            return []
+
+        query = """
+        MATCH (candidate:Employee)-[:WORKS_ON]->(project:Project)<-[:WORKS_ON]-(team_member:Employee)
+        WHERE candidate.name IN $candidates
+          AND team_member.name IN $team_members
+          AND candidate.name <> team_member.name
+        WITH candidate, team_member, count(project) AS shared_projects,
+             collect(project.name)[0..2] AS projects
+        WHERE shared_projects >= 1
+        RETURN candidate.name AS candidate_name,
+               team_member.name AS team_member_name,
+               shared_projects,
+               projects
+        ORDER BY shared_projects DESC
+        LIMIT 5
+        """
+
+        insights: list[Insight] = []
+
+        try:
+            results = await self._neo4j.execute_cypher(
+                query,
+                {"candidates": list(candidates), "team_members": team_members},
+            )
+
+            for row in results:
+                candidate_name = row["candidate_name"]
+                team_member_name = row["team_member_name"]
+                shared_projects = row["shared_projects"]
+                projects = row["projects"]
+
+                project_names = ", ".join(projects)
+
+                insights.append(
+                    Insight(
+                        type=InsightType.SYNERGY,
+                        title=f"협업 이력 발견: {candidate_name} ↔ {team_member_name}",
+                        description=(
+                            f"{candidate_name}님과 {team_member_name}님은 "
+                            f"'{project_names}' 등 {shared_projects}개 프로젝트에서 "
+                            "함께 일한 경험이 있습니다. 빠른 온보딩이 기대됩니다."
+                        ),
+                        related_people=[candidate_name, team_member_name],
+                        severity=InsightSeverity.SUCCESS,
+                    )
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to find synergies: {e}")
+
+        return insights
+
+    async def _find_bridge_candidates(
+        self,
+        gaps: list[str],
+        team_members: list[str],
+    ) -> list[Insight]:
+        """
+        브릿지 인재 발견
+
+        여러 카테고리의 스킬을 보유하고, 현재 프로젝트 부하가 적은 인재 추천
+        """
+        if not gaps:
+            return []
+
+        query = """
+        // 갭 스킬의 카테고리 찾기
+        UNWIND $gaps AS gap_skill
+        MATCH (s:Concept {name: gap_skill})-[:IS_A]->(cat:Concept)
+        WITH collect(DISTINCT cat.name) AS gap_categories
+
+        // 여러 카테고리 스킬을 보유한 후보 찾기
+        MATCH (p:Employee)-[:HAS_SKILL]->(s:Skill)-[:IS_A*0..2]->(cat:Concept)
+        WHERE NOT p.name IN $team_members
+        WITH p, gap_categories,
+             collect(DISTINCT cat.name) AS person_categories,
+             collect(DISTINCT s.name) AS skills
+
+        // 갭 카테고리와 겹치는 카테고리가 있는 후보만
+        WITH p, skills, person_categories,
+             [c IN person_categories WHERE c IN gap_categories] AS matching_categories
+        WHERE size(person_categories) >= $bridge_threshold
+          AND size(matching_categories) > 0
+
+        // 프로젝트 부하 확인
+        OPTIONAL MATCH (p)-[:WORKS_ON]->(proj:Project)
+        WITH p, skills, person_categories, matching_categories,
+             count(proj) AS project_count
+        WHERE project_count <= $project_threshold
+
+        RETURN p.name AS name,
+               person_categories AS categories,
+               skills[0..5] AS sample_skills,
+               matching_categories,
+               project_count
+        ORDER BY size(matching_categories) DESC, project_count ASC
+        LIMIT 3
+        """
+
+        insights: list[Insight] = []
+
+        try:
+            results = await self._neo4j.execute_cypher(
+                query,
+                {
+                    "gaps": gaps,
+                    "team_members": team_members,
+                    "bridge_threshold": BRIDGE_CATEGORY_THRESHOLD,
+                    "project_threshold": BRIDGE_PROJECT_THRESHOLD,
+                },
+            )
+
+            for row in results:
+                name = row["name"]
+                categories = row["categories"]
+                sample_skills = row["sample_skills"]
+                matching_categories = row["matching_categories"]
+                project_count = row["project_count"]
+
+                category_list = ", ".join(categories[:3])
+                skill_list = ", ".join(sample_skills)
+
+                availability = "여유 있음" if project_count <= 1 else f"프로젝트 {project_count}개 참여 중"
+
+                insights.append(
+                    Insight(
+                        type=InsightType.BRIDGE,
+                        title=f"브릿지 인재 추천: {name}",
+                        description=(
+                            f"{name}님은 {category_list} 등 다양한 분야의 스킬을 보유하고 있습니다. "
+                            f"보유 스킬: {skill_list}. 현재 {availability}."
+                        ),
+                        related_people=[name],
+                        severity=InsightSeverity.INFO,
+                    )
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to find bridge candidates: {e}")
+
+        return insights
