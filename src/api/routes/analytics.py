@@ -5,10 +5,11 @@ GDS 기반 분석 API 엔드포인트
 - 커뮤니티 탐지
 - 유사 직원 탐색
 - 팀 추천
+- 스킬 갭 분석
 """
 
 import logging
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -24,8 +25,18 @@ from src.api.schemas.analytics import (
     TeamRecommendRequest,
     TeamRecommendResponse,
 )
-from src.dependencies import get_gds_service
+from src.api.schemas.skill_gap import (
+    SkillCategoryListResponse,
+    SkillGapAnalyzeRequest,
+    SkillGapAnalyzeResponse,
+    SkillRecommendRequest,
+    SkillRecommendResponse,
+)
+from src.dependencies import get_gds_service, get_skill_gap_service
 from src.services.gds_service import GDSService
+
+if TYPE_CHECKING:
+    from src.services.skill_gap_service import SkillGapService
 
 logger = logging.getLogger(__name__)
 
@@ -336,4 +347,106 @@ async def recommend_team(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"팀 추천 실패: {e}",
+        ) from e
+
+
+# ============================================
+# Skill Gap Analysis (온톨로지 기반)
+# ============================================
+
+
+@router.post("/skill-gap/analyze", response_model=SkillGapAnalyzeResponse)
+async def analyze_skill_gap(
+    request: SkillGapAnalyzeRequest,
+    service: Annotated["SkillGapService", Depends(get_skill_gap_service)],
+) -> SkillGapAnalyzeResponse:
+    """
+    스킬 갭 분석
+
+    온톨로지 기반으로 팀의 스킬 커버리지를 분석합니다.
+    - 필요 스킬 vs 팀원 보유 스킬 비교
+    - 유사 스킬 보유자 탐색 (IS_A 관계 기반)
+    - 카테고리별 커버리지 시각화
+
+    팀원 지정 방법:
+    - team_members: 팀원 이름 직접 지정
+    - project_id: 프로젝트에서 팀원 자동 조회
+    - 둘 중 하나는 필수 (Pydantic 검증)
+    """
+    logger.info(
+        f"Skill gap analysis: skills={request.required_skills}, "
+        f"members={request.team_members}, project={request.project_id}"
+    )
+
+    try:
+        result = await service.analyze(
+            required_skills=request.required_skills,
+            team_members=request.team_members,
+            project_id=request.project_id,
+        )
+        return result
+
+    except ValueError as e:
+        # 팀원 조회 실패 등 비즈니스 로직 에러
+        logger.warning(f"Skill gap analysis validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error(f"Skill gap analysis failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"스킬 갭 분석 실패: {e}",
+        ) from e
+
+
+@router.post("/skill-gap/recommend", response_model=SkillRecommendResponse)
+async def recommend_for_skill_gap(
+    request: SkillRecommendRequest,
+    service: Annotated["SkillGapService", Depends(get_skill_gap_service)],
+) -> SkillRecommendResponse:
+    """
+    스킬 갭 해소 추천
+
+    특정 스킬 갭을 해소하기 위한 인력을 추천합니다.
+    - 내부 교육 추천: 유사 스킬 보유자
+    - 외부 채용 키워드: 동의어 기반 검색어
+    """
+    logger.info(f"Skill gap recommend: skill={request.skill}")
+
+    try:
+        result = await service.recommend_for_skill(
+            skill=request.skill,
+            exclude_members=request.exclude_members,
+            limit=request.limit,
+        )
+        return result
+
+    except Exception as e:
+        logger.error(f"Skill gap recommend failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"추천 실패: {e}",
+        ) from e
+
+
+@router.get("/skill-gap/categories", response_model=SkillCategoryListResponse)
+async def get_skill_categories(
+    service: Annotated["SkillGapService", Depends(get_skill_gap_service)],
+) -> SkillCategoryListResponse:
+    """
+    스킬 카테고리 목록 조회
+
+    온톨로지에 정의된 스킬 카테고리와 소속 스킬 목록을 반환합니다.
+    """
+    try:
+        categories = await service.get_categories()
+        return SkillCategoryListResponse(categories=categories)
+
+    except Exception as e:
+        logger.error(f"Get categories failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"카테고리 조회 실패: {e}",
         ) from e

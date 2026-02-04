@@ -24,6 +24,7 @@ from src.services.ontology_service import OntologyService
 
 if TYPE_CHECKING:
     from src.api.services.explainability import ExplainabilityService
+    from src.services.skill_gap_service import SkillGapService
 
 logger = logging.getLogger(__name__)
 
@@ -102,15 +103,24 @@ def get_ontology_service(request: Request) -> OntologyService:
 def get_ontology_registry(request: Request) -> OntologyRegistry:
     """
     OntologyRegistry 의존성 주입
-    app.state에서 초기화된 인스턴스를 가져옵니다.
 
-    Raises:
-        RuntimeError: registry가 초기화되지 않은 경우
+    main.py lifespan에서 초기화된 인스턴스를 반환합니다.
     """
-    registry = getattr(request.app.state, "ontology_registry", None)
-    if registry is None:
-        raise RuntimeError("OntologyRegistry not initialized")
-    return registry
+    return request.app.state.ontology_registry
+
+
+# ============================================
+# Skill Gap Service 의존성
+# ============================================
+
+
+def get_skill_gap_service(request: Request) -> "SkillGapService":
+    """
+    SkillGapService 의존성 주입
+
+    main.py lifespan에서 초기화된 인스턴스를 반환합니다.
+    """
+    return request.app.state.skill_gap_service
 
 
 # ============================================
