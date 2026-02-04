@@ -252,6 +252,7 @@ class ConceptExpanderUpdate(TypedDict, total=False):
     """ConceptExpander 노드 반환 타입 (온톨로지 기반 개념 확장)"""
 
     expanded_entities: dict[str, list[str]]  # 확장된 엔티티 (원본 + 동의어 + 하위개념)
+    expanded_entities_by_original: dict[str, dict[str, list[str]]]  # 원본별 확장 매핑
     original_entities: dict[str, list[str]]  # 원본 엔티티 (확장 전)
     expansion_count: int  # 확장된 개념 수
     expansion_strategy: Literal["strict", "normal", "broad"]  # 사용된 확장 전략
