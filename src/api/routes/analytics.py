@@ -367,25 +367,32 @@ async def analyze_skill_gap(
     - 필요 스킬 vs 팀원 보유 스킬 비교
     - 유사 스킬 보유자 탐색 (IS_A 관계 기반)
     - 카테고리별 커버리지 시각화
+
+    팀원 지정 방법:
+    - team_members: 팀원 이름 직접 지정
+    - project_id: 프로젝트에서 팀원 자동 조회
+    - 둘 중 하나는 필수 (Pydantic 검증)
     """
     logger.info(
         f"Skill gap analysis: skills={request.required_skills}, "
-        f"members={request.team_members}"
+        f"members={request.team_members}, project={request.project_id}"
     )
-
-    if not request.team_members:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="team_members를 지정해주세요.",
-        )
 
     try:
         result = await service.analyze(
             required_skills=request.required_skills,
             team_members=request.team_members,
+            project_id=request.project_id,
         )
         return result
 
+    except ValueError as e:
+        # 팀원 조회 실패 등 비즈니스 로직 에러
+        logger.warning(f"Skill gap analysis validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
     except Exception as e:
         logger.error(f"Skill gap analysis failed: {e}")
         raise HTTPException(
