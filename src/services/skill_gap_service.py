@@ -496,7 +496,7 @@ class SkillGapService:
         limit: int,
     ) -> list[RecommendedEmployee]:
         """내부 교육 추천 인력 찾기 (N+1 쿼리 제거)"""
-        # 단일 쿼리로 후보자와 스킬을 함께 조회
+        # 단일 쿼리로 후보자와 스킬, 프로젝트 수를 함께 조회
         query = """
         // 타겟 스킬의 형제 스킬 찾기
         MATCH (target:Concept {name: $skill})-[:IS_A]->(parent)
@@ -512,15 +512,21 @@ class SkillGapService:
         // 해당 직원의 모든 스킬도 함께 조회
         OPTIONAL MATCH (e)-[:HAS_SKILL]->(all_skills:Skill)
 
+        // 현재 참여 중인 프로젝트 수 조회
+        OPTIONAL MATCH (e)-[:WORKS_ON]->(project:Project)
+
         WITH e, parent, d,
              collect(DISTINCT sibling.name) AS matched_skills,
-             collect(DISTINCT all_skills.name) AS all_skills
+             collect(DISTINCT all_skills.name) AS all_skills,
+             count(DISTINCT project) AS project_count
 
         RETURN e.name AS employee,
                d.name AS department,
                matched_skills,
                parent.name AS common_category,
-               all_skills
+               all_skills,
+               project_count
+        ORDER BY project_count ASC
         LIMIT $limit
         """
 
@@ -546,6 +552,7 @@ class SkillGapService:
                         match_type=MatchType.SAME_CATEGORY,
                         matched_skill=matched_skill,
                         reason=f"{matched_skill} 보유 (같은 {row['common_category']})",
+                        current_projects=row["project_count"],
                     )
                 )
 

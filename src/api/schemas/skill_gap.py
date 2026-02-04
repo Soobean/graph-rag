@@ -150,6 +150,11 @@ class RecommendedEmployee(BaseModel):
     match_type: MatchType = Field(..., description="매칭 타입")
     matched_skill: str = Field(..., description="매칭된 스킬")
     reason: str = Field(..., description="추천 사유")
+    current_projects: int = Field(
+        default=0,
+        ge=0,
+        description="현재 참여 중인 프로젝트 수",
+    )
 
 
 # =============================================================================

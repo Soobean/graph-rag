@@ -273,6 +273,7 @@ class TestRecommendForSkill:
                         "matched_skills": ["TensorFlow"],
                         "common_category": "AI/ML",
                         "all_skills": ["TensorFlow", "Python", "Keras"],
+                        "project_count": 2,
                     }
                 ]
             elif "IS_A]->(category)" in query:
