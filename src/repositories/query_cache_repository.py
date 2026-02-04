@@ -306,9 +306,10 @@ class QueryCacheRepository:
         """
         query = f"""
         MATCH (c:{QUERY_CACHE_LABEL})
-        WITH c, count(*) as total
-        DELETE c
-        RETURN total as deleted_count
+        WITH collect(c) as nodes
+        UNWIND nodes as n
+        DELETE n
+        RETURN size(nodes) as deleted_count
         """
 
         try:
