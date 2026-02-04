@@ -47,11 +47,9 @@ DEFAULT_COLOR = "#6B7280"
 
 # 매칭 타입별 우선순위 (낮을수록 더 강한 매칭)
 MATCH_TYPE_PRIORITY: dict[MatchType, int] = {
-    MatchType.EXACT: 0,
-    MatchType.SYNONYM: 1,
-    MatchType.SAME_CATEGORY: 2,
-    MatchType.PARENT_CATEGORY: 3,
-    MatchType.RELATED: 4,
+    MatchType.SAME_CATEGORY: 0,
+    MatchType.PARENT_CATEGORY: 1,
+    MatchType.RELATED: 2,
     MatchType.NONE: 99,
 }
 
@@ -78,7 +76,6 @@ class SkillGapService:
         self._neo4j = neo4j_repository
         # 캐시: 반복 조회 방지 (TTL 적용으로 메모리 누수 방지)
         self._category_cache: dict[str, str | None] = {}
-        self._canonical_cache: dict[str, str | None] = {}
         self._relation_cache: dict[tuple[str, str], dict[str, Any] | None] = {}
         self._cache_timestamp: float = time()
 
@@ -86,35 +83,95 @@ class SkillGapService:
         """TTL 초과 시 캐시 초기화 (메모리 누수 방지)"""
         if time() - self._cache_timestamp > CACHE_TTL_SECONDS:
             self._category_cache.clear()
-            self._canonical_cache.clear()
             self._relation_cache.clear()
             self._cache_timestamp = time()
             logger.debug("Cache cleared due to TTL expiration")
 
+    async def _resolve_team_members(
+        self,
+        team_members: list[str] | None,
+        project_id: str | None,
+    ) -> list[str]:
+        """
+        팀원 목록 확정 (직접 지정 또는 프로젝트에서 조회)
+
+        Args:
+            team_members: 직접 지정된 팀원 목록
+            project_id: 프로젝트 이름
+
+        Returns:
+            확정된 팀원 목록
+
+        Raises:
+            ValueError: 둘 다 없거나 프로젝트에 팀원이 없는 경우
+        """
+        # 직접 지정된 팀원이 있으면 우선 사용 (빈 리스트는 허용하지 않음)
+        if team_members is not None:
+            if not team_members:
+                raise ValueError("team_members는 빈 리스트일 수 없습니다")
+            return team_members
+
+        if not project_id:
+            raise ValueError("team_members 또는 project_id 중 하나는 필수입니다")
+
+        # 프로젝트에서 팀원 조회
+        query = """
+        MATCH (e:Employee)-[:WORKS_ON]->(p:Project {name: $project_id})
+        RETURN collect(e.name) AS members
+        """
+
+        try:
+            results = await self._neo4j.execute_cypher(
+                query, {"project_id": project_id}
+            )
+
+            if not results or not results[0]["members"]:
+                raise ValueError(
+                    f"프로젝트 '{project_id}'에 참여 중인 팀원이 없습니다"
+                )
+
+            members: list[str] = results[0]["members"]
+            logger.info(f"Resolved {len(members)} members from project '{project_id}'")
+            return members
+
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to resolve team members from project: {e}")
+            raise ValueError(f"프로젝트 '{project_id}' 조회 실패: {e}") from e
+
     async def analyze(
         self,
         required_skills: list[str],
-        team_members: list[str],
+        team_members: list[str] | None = None,
+        project_id: str | None = None,
     ) -> SkillGapAnalyzeResponse:
         """
         스킬 갭 분석 메인 로직
 
         Args:
             required_skills: 필요한 스킬 목록
-            team_members: 분석 대상 팀원 목록
+            team_members: 분석 대상 팀원 목록 (직접 지정)
+            project_id: 프로젝트 이름 (팀원 자동 조회용)
 
         Returns:
             SkillGapAnalyzeResponse
+
+        Raises:
+            ValueError: team_members와 project_id 모두 없거나, 프로젝트에 팀원이 없는 경우
         """
         # TTL 초과 시 캐시 자동 정리 (메모리 누수 방지)
         self._clear_cache_if_expired()
 
+        # 0. 팀원 목록 확정 (직접 지정 또는 프로젝트에서 조회)
+        resolved_members = await self._resolve_team_members(team_members, project_id)
+
         logger.info(
-            f"Analyzing skill gap: skills={required_skills}, members={team_members}"
+            f"Analyzing skill gap: skills={required_skills}, members={resolved_members}"
         )
 
         # 1. 팀원들의 스킬 수집
-        team_skills = await self._get_team_skills(team_members)
+        team_skills = await self._get_team_skills(resolved_members)
         logger.debug(f"Team skills: {team_skills}")
 
         # 2. 모든 스킬의 메타데이터 미리 로드 (N+1 쿼리 방지)
@@ -140,7 +197,7 @@ class SkillGapService:
         recommendations = self._generate_recommendations(list(skill_details))
 
         return SkillGapAnalyzeResponse(
-            team_members=team_members,
+            team_members=resolved_members,
             total_required_skills=len(required_skills),
             overall_status=overall_status,
             category_summary=category_summary,
@@ -166,6 +223,8 @@ class SkillGapService:
         Returns:
             SkillRecommendResponse
         """
+        self._clear_cache_if_expired()
+
         logger.info(f"Recommending for skill: {skill}, exclude={exclude_members}")
 
         # 스킬 카테고리 조회
@@ -188,6 +247,9 @@ class SkillGapService:
 
     async def get_categories(self) -> list[SkillCategory]:
         """스킬 카테고리 목록 조회"""
+        # TTL 초과 시 캐시 자동 정리
+        self._clear_cache_if_expired()
+
         query = """
         MATCH (skill:Concept {type: 'skill'})-[:IS_A]->(category:Concept)
         WHERE category.type IN ['subcategory', 'category']
@@ -223,9 +285,7 @@ class SkillGapService:
         team_skills: dict[str, list[str]],
     ) -> None:
         """
-        모든 스킬의 메타데이터 일괄 조회 (N+1 쿼리 방지)
-
-        canonical 이름과 카테고리를 한 번의 쿼리로 조회하여 캐시에 저장합니다.
+        모든 스킬의 카테고리 일괄 조회 (N+1 쿼리 방지)
         """
         # 모든 스킬 수집
         all_skills: set[str] = set(required_skills)
@@ -233,11 +293,7 @@ class SkillGapService:
             all_skills.update(skills)
 
         # 캐시되지 않은 스킬만 필터링
-        # (canonical과 category는 동시에 캐싱되므로 하나만 체크)
-        uncached_skills = [
-            s for s in all_skills
-            if s not in self._canonical_cache
-        ]
+        uncached_skills = [s for s in all_skills if s not in self._category_cache]
 
         if not uncached_skills:
             return
@@ -245,11 +301,8 @@ class SkillGapService:
         query = """
         UNWIND $skills AS skill_name
         OPTIONAL MATCH (s:Concept {name: skill_name})
-        OPTIONAL MATCH (s)-[:SAME_AS]->(canonical:Concept {is_canonical: true})
         OPTIONAL MATCH (s)-[:IS_A]->(category)
-        RETURN skill_name,
-               canonical.name AS canonical,
-               category.name AS category
+        RETURN skill_name, category.name AS category
         """
 
         try:
@@ -258,18 +311,14 @@ class SkillGapService:
             )
 
             for row in results:
-                skill = row["skill_name"]
-                self._canonical_cache[skill] = row.get("canonical")
-                self._category_cache[skill] = row.get("category")
+                self._category_cache[row["skill_name"]] = row.get("category")
 
             logger.debug(f"Prefetched metadata for {len(uncached_skills)} skills")
 
         except Exception as e:
             logger.warning(f"Failed to prefetch skill metadata: {e}")
 
-    async def _get_team_skills(
-        self, team_members: list[str]
-    ) -> dict[str, list[str]]:
+    async def _get_team_skills(self, team_members: list[str]) -> dict[str, list[str]]:
         """팀원들의 스킬 조회"""
         query = """
         MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)
@@ -277,14 +326,8 @@ class SkillGapService:
         RETURN e.name AS employee, collect(s.name) AS skills
         """
 
-        try:
-            results = await self._neo4j.execute_cypher(
-                query, {"members": team_members}
-            )
-            return {row["employee"]: row["skills"] for row in results}
-        except Exception as e:
-            logger.error(f"Failed to get team skills: {e}")
-            return {}
+        results = await self._neo4j.execute_cypher(query, {"members": team_members})
+        return {row["employee"]: row["skills"] for row in results}
 
     async def _analyze_skill_coverage(
         self,
@@ -298,28 +341,13 @@ class SkillGapService:
         # 스킬 카테고리 조회 (캐시 사용)
         category = await self._get_skill_category(required_skill)
 
-        # 필요 스킬의 canonical 이름 (없으면 자기 자신이 canonical)
-        required_canonical = await self._get_canonical_skill(required_skill) or required_skill
-
         for employee, skills in team_skills.items():
             # 1. 정확히 일치하는지 확인
             if required_skill in skills:
                 exact_matches.append(employee)
                 continue
 
-            # 2. 동의어 확인: 팀원 스킬의 canonical이 required_canonical과 같으면 동의어
-            synonym_found = False
-            for skill in skills:
-                skill_canonical = await self._get_canonical_skill(skill) or skill
-                if skill_canonical == required_canonical:
-                    exact_matches.append(employee)
-                    synonym_found = True
-                    break
-
-            if synonym_found:
-                continue
-
-            # 3. 유사 스킬 확인 - 가장 강한 매칭 선택
+            # 2. 유사 스킬 확인 - 가장 강한 매칭 선택
             best_match: SkillMatch | None = None
             best_priority = 99
 
@@ -343,14 +371,13 @@ class SkillGapService:
         # 상태 결정
         if exact_matches:
             status = CoverageStatus.COVERED
-            explanation = f"{', '.join(exact_matches)}이(가) {required_skill}을(를) 직접 보유"
+            explanation = (
+                f"{', '.join(exact_matches)}이(가) {required_skill}을(를) 직접 보유"
+            )
         elif similar_matches:
             status = CoverageStatus.PARTIAL
             names = [m.employee_name for m in similar_matches]
-            explanation = (
-                f"직접 보유자 없음. "
-                f"{', '.join(names)}이(가) 유사 스킬 보유"
-            )
+            explanation = f"직접 보유자 없음. {', '.join(names)}이(가) 유사 스킬 보유"
         else:
             status = CoverageStatus.GAP
             explanation = "관련 스킬 보유자 없음"
@@ -358,7 +385,9 @@ class SkillGapService:
         return SkillCoverage(
             skill=required_skill,
             category=category,
-            category_color=CATEGORY_COLORS.get(category, DEFAULT_COLOR) if category is not None else None,
+            category_color=CATEGORY_COLORS.get(category, DEFAULT_COLOR)
+            if category is not None
+            else None,
             status=status,
             exact_matches=exact_matches,
             similar_matches=similar_matches,
@@ -386,27 +415,6 @@ class SkillGapService:
             self._category_cache[skill] = None
             return None
 
-    async def _get_canonical_skill(self, skill: str) -> str | None:
-        """동의어의 정규 이름 조회 (캐시 사용)"""
-        if skill in self._canonical_cache:
-            return self._canonical_cache[skill]
-
-        query = """
-        MATCH (s:Concept {name: $skill})-[:SAME_AS]->(canonical:Concept {is_canonical: true})
-        RETURN canonical.name AS canonical
-        LIMIT 1
-        """
-
-        try:
-            results = await self._neo4j.execute_cypher(query, {"skill": skill})
-            canonical = results[0]["canonical"] if results else None
-            self._canonical_cache[skill] = canonical
-            return canonical
-        except Exception as e:
-            logger.warning(f"Failed to get canonical for {skill}: {e}")
-            self._canonical_cache[skill] = None
-            return None
-
     async def _find_skill_relation(
         self,
         required: str,
@@ -422,9 +430,18 @@ class SkillGapService:
         if cache_key in self._relation_cache:
             return self._relation_cache[cache_key]
 
-        query = """
-        MATCH (s1:Concept {name: $required})-[:IS_A*0..3]->(ancestor)<-[:IS_A*0..3]-(s2:Concept {name: $possessed})
-        RETURN ancestor.name AS common_ancestor
+        # LCA_MAX_DEPTH를 사용한 동적 쿼리 생성
+        # Note: Cypher는 파라미터로 관계 깊이를 받을 수 없어 f-string 사용
+        # 가장 가까운 공통 조상을 선택하기 위해 거리 기준으로 정렬
+        query = f"""
+        MATCH (s1:Concept {{name: $required}})
+        MATCH (s2:Concept {{name: $possessed}})
+        MATCH p1=(s1)-[:IS_A*0..{LCA_MAX_DEPTH}]->(ancestor)
+        MATCH p2=(s2)-[:IS_A*0..{LCA_MAX_DEPTH}]->(ancestor)
+        RETURN ancestor.name AS common_ancestor,
+               length(p1) AS dist_required,
+               length(p2) AS dist_possessed
+        ORDER BY dist_required + dist_possessed ASC, dist_required ASC, dist_possessed ASC
         LIMIT 1
         """
 
@@ -444,12 +461,18 @@ class SkillGapService:
                 self._relation_cache[cache_key] = None
                 return None
 
-            # 공통 조상이 스킬 자체인 경우 (동의어)
-            if common_ancestor == required or common_ancestor == possessed:
+            # 공통 조상이 한쪽 스킬과 동일한 경우는 계층 포함 관계로 분류
+            if common_ancestor == possessed:
                 result = {
-                    "match_type": MatchType.SYNONYM,
-                    "common_ancestor": None,
-                    "explanation": f"{possessed}은(는) {required}의 동의어",
+                    "match_type": MatchType.PARENT_CATEGORY,
+                    "common_ancestor": common_ancestor,
+                    "explanation": f"{possessed} 경험 보유 (상위 카테고리)",
+                }
+            elif common_ancestor == required:
+                result = {
+                    "match_type": MatchType.RELATED,
+                    "common_ancestor": common_ancestor,
+                    "explanation": f"{required}의 하위 스킬 {possessed} 보유",
                 }
             else:
                 result = {
@@ -460,6 +483,8 @@ class SkillGapService:
 
         except Exception as e:
             logger.warning(f"Failed to find relation: {required} ↔ {possessed}: {e}")
+            # 예외 발생 시 캐시하지 않음 (일시적 DB 오류로 인한 캐시 오염 방지)
+            return None
 
         self._relation_cache[cache_key] = result
         return result
@@ -487,13 +512,13 @@ class SkillGapService:
         // 해당 직원의 모든 스킬도 함께 조회
         OPTIONAL MATCH (e)-[:HAS_SKILL]->(all_skills:Skill)
 
-        WITH e, sibling, parent, d,
-             sibling.name AS matched_skill,
+        WITH e, parent, d,
+             collect(DISTINCT sibling.name) AS matched_skills,
              collect(DISTINCT all_skills.name) AS all_skills
 
         RETURN e.name AS employee,
                d.name AS department,
-               matched_skill,
+               matched_skills,
                parent.name AS common_category,
                all_skills
         LIMIT $limit
@@ -509,14 +534,18 @@ class SkillGapService:
             for row in results:
                 # COLLECT는 항상 리스트 반환 (None 아님)
                 all_skills = row["all_skills"]
+                matched_skills = row.get("matched_skills", [])
+                if not matched_skills:
+                    continue
+                matched_skill = sorted(matched_skills)[0]
                 candidates.append(
                     RecommendedEmployee(
                         name=row["employee"],
                         department=row["department"],
                         current_skills=all_skills[:MAX_DISPLAY_SKILLS],
                         match_type=MatchType.SAME_CATEGORY,
-                        matched_skill=row["matched_skill"],
-                        reason=f"{row['matched_skill']} 보유 (같은 {row['common_category']})",
+                        matched_skill=matched_skill,
+                        reason=f"{matched_skill} 보유 (같은 {row['common_category']})",
                     )
                 )
 
@@ -539,7 +568,9 @@ class SkillGapService:
             synonyms = results[0]["synonyms"] if results else []
 
             # 검색 키워드 조합
-            keywords = [skill] + [s for s in synonyms if s != skill][:MAX_EXTERNAL_SEARCH_KEYWORDS]
+            keywords = [skill] + [s for s in synonyms if s != skill][
+                :MAX_EXTERNAL_SEARCH_KEYWORDS
+            ]
             return " OR ".join(keywords)
 
         except Exception as e:
@@ -579,7 +610,11 @@ class SkillGapService:
             partial = stats["partial"]
 
             # 커버리지 비율 계산
-            ratio = (covered + partial * PARTIAL_COVERAGE_WEIGHT) / total if total > 0 else 0
+            ratio = (
+                (covered + partial * PARTIAL_COVERAGE_WEIGHT) / total
+                if total > 0
+                else 0
+            )
 
             result.append(
                 CategoryCoverage(

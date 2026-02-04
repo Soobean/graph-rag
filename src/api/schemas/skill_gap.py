@@ -5,8 +5,9 @@ Skill Gap Analysis 스키마 정의
 """
 
 from enum import Enum
+from typing import Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Enums
 
@@ -22,8 +23,6 @@ class CoverageStatus(str, Enum):
 class MatchType(str, Enum):
     """스킬 매칭 타입"""
 
-    EXACT = "exact"  # Python == Python
-    SYNONYM = "synonym"  # 파이썬 == Python
     SAME_CATEGORY = "same_category"  # Java ↔ Python (같은 Backend)
     PARENT_CATEGORY = "parent"  # Backend 경험 → Python 필요
     RELATED = "related"  # 같은 상위 카테고리 (Programming)
@@ -45,14 +44,22 @@ class SkillGapAnalyzeRequest(BaseModel):
     )
     team_members: list[str] | None = Field(
         default=None,
-        description="분석 대상 팀원 이름 목록",
+        description="분석 대상 팀원 이름 목록 (project_id 미지정 시 필수)",
+        min_length=1,
         examples=[["홍길동", "김철수", "박지수"]],
     )
-    # TODO: project_id 기반 팀원 자동 조회 기능 구현 예정
     project_id: str | None = Field(
         default=None,
-        description="프로젝트 ID (팀원 자동 조회용) - 미구현",
+        description="프로젝트 이름 (팀원 자동 조회용, team_members 미지정 시 필수)",
+        examples=["GraphRAG 프로젝트", "AI 챗봇 개발"],
     )
+
+    @model_validator(mode="after")
+    def check_team_source(self) -> Self:
+        """team_members 또는 project_id 중 하나는 필수"""
+        if self.team_members is None and not self.project_id:
+            raise ValueError("team_members 또는 project_id 중 하나는 필수입니다")
+        return self
 
 
 class SkillRecommendRequest(BaseModel):
