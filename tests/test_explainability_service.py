@@ -95,6 +95,9 @@ class TestBuildThoughtProcess:
         full_state = {
             "original_entities": {"Skill": ["Python"]},
             "expanded_entities": {"Skill": ["Python", "Django", "FastAPI"]},
+            "expanded_entities_by_original": {
+                "Skill": {"Python": ["Python", "Django", "FastAPI"]}
+            },
             "expansion_strategy": "normal",
             "expansion_count": 2,
         }
@@ -150,6 +153,9 @@ class TestBuildThoughtProcess:
         full_state = {
             "original_entities": {"Skill": ["파이썬"]},
             "expanded_entities": {"Skill": ["파이썬", "Python", "Django"]},
+            "expanded_entities_by_original": {
+                "Skill": {"파이썬": ["파이썬", "Python", "Django"]}
+            },
             "expansion_strategy": "normal",
             "expansion_count": 2,
         }
@@ -174,6 +180,12 @@ class TestBuildThoughtProcess:
             },
             "expanded_entities": {
                 "Skill": ["파이썬", "Python", "자바스크립트", "JavaScript", "React"],
+            },
+            "expanded_entities_by_original": {
+                "Skill": {
+                    "파이썬": ["파이썬", "Python"],
+                    "자바스크립트": ["자바스크립트", "JavaScript", "React"],
+                }
             },
             "expansion_strategy": "broad",
             "expansion_count": 3,

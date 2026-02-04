@@ -143,6 +143,9 @@ class TestQueryEndpointWithExplanation:
                 "_full_state": {
                     "original_entities": {"Skill": ["Python"]},
                     "expanded_entities": {"Skill": ["Python", "Django"]},
+                    "expanded_entities_by_original": {
+                        "Skill": {"Python": ["Python", "Django"]}
+                    },
                     "expansion_strategy": "normal",
                     "expansion_count": 1,
                     "graph_results": [],

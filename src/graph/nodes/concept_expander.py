@@ -102,6 +102,7 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
             self._logger.info("No entities to expand")
             return ConceptExpanderUpdate(
                 expanded_entities={},
+                expanded_entities_by_original={},
                 original_entities={},
                 expansion_count=0,
                 expansion_strategy="normal",
@@ -112,6 +113,7 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
         self._logger.info(f"Expanding with strategy={strategy.value}")
 
         expanded_entities: dict[str, list[str]] = {}
+        expanded_by_original: dict[str, dict[str, list[str]]] = {}
         total_expansion_count = 0
 
         for entity_type, values in original_entities.items():
@@ -119,18 +121,23 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
 
             if category is None:
                 expanded_entities[entity_type] = list(values)
+                expanded_by_original[entity_type] = {v: [v] for v in values}
                 continue
 
             expanded_values: set[str] = set()
+            type_by_original: dict[str, list[str]] = {}
             for value in values:
                 expanded = await self._expand_concept(value, category, config)
                 expanded_values.update(expanded)
+                type_by_original[value] = expanded
 
             expanded_entities[entity_type] = list(expanded_values)
+            expanded_by_original[entity_type] = type_by_original
             total_expansion_count += max(0, len(expanded_values) - len(set(values)))
 
         return ConceptExpanderUpdate(
             expanded_entities=expanded_entities,
+            expanded_entities_by_original=expanded_by_original,
             original_entities=dict(original_entities),
             expansion_count=total_expansion_count,
             expansion_strategy=strategy.value,

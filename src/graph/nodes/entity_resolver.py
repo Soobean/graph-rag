@@ -43,17 +43,31 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
         Returns:
             업데이트할 상태 딕셔너리 (resolved + unresolved 엔티티 포함)
         """
-        expanded_map = state.get("expanded_entities")
+        expanded_by_original = state.get("expanded_entities_by_original")
         original_map = state.get("original_entities")
 
         # concept_expander를 거쳤는지 확인
-        has_expansion = expanded_map is not None and original_map is not None
+        has_expansion = expanded_by_original is not None and original_map is not None
 
         # entities_map: 실제 DB 검색에 사용할 맵
         # reference_map: unresolved 판단 기준이 되는 원본 맵
+        expanded_to_originals: dict[str, dict[str, set[str]]] = {}
         if has_expansion:
-            entities_map = expanded_map
+            entities_map = {}
             reference_map = original_map
+            for entity_type, original_to_expanded in expanded_by_original.items():
+                expanded_values: set[str] = set()
+                expanded_to_originals[entity_type] = {}
+                for original_value, expanded_values_list in original_to_expanded.items():
+                    for expanded_value in expanded_values_list:
+                        expanded_value = expanded_value.strip()
+                        if not expanded_value:
+                            continue
+                        expanded_values.add(expanded_value)
+                        expanded_to_originals[entity_type].setdefault(
+                            expanded_value, set()
+                        ).add(original_value)
+                entities_map[entity_type] = list(expanded_values)
         else:
             entities_map = state.get("entities", {})
             reference_map = entities_map
@@ -111,9 +125,8 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
                         )
 
                         if has_expansion:
-                            # concept_expander 거친 경우: 모든 원본을 resolved로 마킹
-                            # (같은 타입의 원본들은 같은 그룹의 확장으로 간주)
-                            for orig in reference_map.get(entity_type, []):
+                            # 확장 맵을 통해 원본별 resolved 처리
+                            for orig in expanded_to_originals.get(entity_type, {}).get(value, set()):
                                 resolved_originals.add((entity_type, orig))
                         else:
                             # 개별 처리: 찾은 값만 resolved로 마킹

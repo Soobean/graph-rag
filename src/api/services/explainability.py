@@ -115,12 +115,14 @@ class ExplainabilityService:
             elif clean_name == "concept_expander" and full_state:
                 original = full_state.get("original_entities", {})
                 expanded = full_state.get("expanded_entities", {})
+                expanded_by_original = full_state.get("expanded_entities_by_original", {})
                 strategy = full_state.get("expansion_strategy", "normal")
                 count = full_state.get("expansion_count", 0)
                 step.output_summary = f"확장 전략: {strategy}, +{count}개 개념 추가"
                 step.details = {
                     "original_entities": original,
                     "expanded_entities": expanded,
+                    "expanded_entities_by_original": expanded_by_original,
                     "expansion_strategy": strategy,
                     "expansion_count": count,
                 }
@@ -140,27 +142,47 @@ class ExplainabilityService:
         if full_state:
             original = full_state.get("original_entities", {})
             expanded = full_state.get("expanded_entities", {})
+            expanded_by_original = full_state.get("expanded_entities_by_original", {})
             strategy = full_state.get("expansion_strategy") or "normal"
 
-            for entity_type, orig_values in original.items():
-                exp_values = expanded.get(entity_type, [])
-                for orig in orig_values:
-                    # 확장된 개념만 추출 (원본 제외)
-                    expanded_only = [v for v in exp_values if v != orig]
-                    if expanded_only:
-                        expansion_path = [
-                            {"from": orig, "to": v, "relation": "synonym/subconcept"}
-                            for v in expanded_only
-                        ]
-                        concept_expansions.append(
-                            ConceptExpansionTree(
-                                original_concept=orig,
-                                entity_type=entity_type,
-                                expansion_strategy=strategy,
-                                expanded_concepts=expanded_only,
-                                expansion_path=expansion_path,
+            if expanded_by_original:
+                for entity_type, original_map in expanded_by_original.items():
+                    for orig, exp_values in original_map.items():
+                        expanded_only = [v for v in exp_values if v != orig]
+                        if expanded_only:
+                            expansion_path = [
+                                {"from": orig, "to": v, "relation": "synonym/subconcept"}
+                                for v in expanded_only
+                            ]
+                            concept_expansions.append(
+                                ConceptExpansionTree(
+                                    original_concept=orig,
+                                    entity_type=entity_type,
+                                    expansion_strategy=strategy,
+                                    expanded_concepts=expanded_only,
+                                    expansion_path=expansion_path,
+                                )
                             )
-                        )
+            else:
+                for entity_type, orig_values in original.items():
+                    exp_values = expanded.get(entity_type, [])
+                    for orig in orig_values:
+                        # 확장된 개념만 추출 (원본 제외)
+                        expanded_only = [v for v in exp_values if v != orig]
+                        if expanded_only:
+                            expansion_path = [
+                                {"from": orig, "to": v, "relation": "synonym/subconcept"}
+                                for v in expanded_only
+                            ]
+                            concept_expansions.append(
+                                ConceptExpansionTree(
+                                    original_concept=orig,
+                                    entity_type=entity_type,
+                                    expansion_strategy=strategy,
+                                    expanded_concepts=expanded_only,
+                                    expansion_path=expansion_path,
+                                )
+                            )
 
         return ThoughtProcessVisualization(
             steps=steps,

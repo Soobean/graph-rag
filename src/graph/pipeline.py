@@ -420,8 +420,11 @@ class GraphRAGPipeline:
             # Explainability: full_state 추가 (요청 시에만)
             if return_full_state:
                 metadata["_full_state"] = {
-                    "original_entities": final_state.get("entities", {}),
+                    "original_entities": final_state.get("original_entities", final_state.get("entities", {})),
                     "expanded_entities": final_state.get("expanded_entities", {}),
+                    "expanded_entities_by_original": final_state.get(
+                        "expanded_entities_by_original", {}
+                    ),
                     "expansion_strategy": final_state.get("expansion_strategy"),
                     "expansion_count": final_state.get("expansion_count", 0),
                     "graph_results": final_state.get("graph_results", []),
