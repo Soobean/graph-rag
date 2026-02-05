@@ -409,7 +409,8 @@ class GDSService:
             # Jaccard 유사도 기반 검색
             result = self.gds.run_cypher(
                 """
-                MATCH (target:Employee {name: $name})-[:HAS_SKILL]->(s:Skill)
+                MATCH (target:Employee)-[:HAS_SKILL]->(s:Skill)
+                WHERE toLower(target.name) = toLower($name)
                 WITH target, collect(s) AS targetSkills
                 MATCH (other:Employee)-[:HAS_SKILL]->(s2:Skill)
                 WHERE other <> target

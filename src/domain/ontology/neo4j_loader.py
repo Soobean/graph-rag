@@ -171,7 +171,8 @@ class Neo4jOntologyLoader:
 
         # 재귀적 IS_A 탐색 (최대 3단계)
         query = """
-        MATCH (parent:Concept {name: $concept})
+        MATCH (parent:Concept)
+        WHERE toLower(parent.name) = toLower($concept)
 
         // 1~3단계 하위 개념 탐색
         OPTIONAL MATCH (child:Concept)-[:IS_A*1..3]->(parent)

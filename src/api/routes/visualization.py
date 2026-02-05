@@ -79,7 +79,7 @@ async def get_subgraph(
             label_filter = f":{_validate_label(request.node_label)}" if request.node_label else ""
             center_query = f"""
             MATCH (n{label_filter})
-            WHERE n.name = $node_name
+            WHERE toLower(n.name) = toLower($node_name)
             RETURN elementId(n) as node_id, labels(n) as labels, properties(n) as props
             LIMIT 1
             """
@@ -647,7 +647,7 @@ def _build_path_visualization_query(
     # 노드와 관계를 모두 추출하는 쿼리 (SIMILAR 제외, 시각화용 제한)
     query = f"""
     MATCH (start)
-    WHERE start.name IN $start_names
+    WHERE ANY(name IN $start_names WHERE toLower(start.name) = toLower(name))
     CALL {{
         WITH start
         MATCH path = (start)-[*1..{hop_count}]-(connected)
@@ -681,7 +681,7 @@ def _extract_path_graph(
     """쿼리 결과에서 그래프 데이터 추출 (노드 + 엣지, 시작점/끝점 표시)"""
     nodes_map: dict[str, GraphNode] = {}
     edges_map: dict[str, GraphEdge] = {}
-    start_names_set = set(start_names) if start_names else set()
+    start_names_set = {n.lower() for n in start_names} if start_names else set()
 
     for row in results:
         # 노드 추출
@@ -693,7 +693,7 @@ def _extract_path_graph(
 
         # 노드 역할 결정
         role = None
-        if node_name in start_names_set:
+        if node_name.lower() in start_names_set:
             role = "start"
         elif end_label and node_label == end_label:
             role = "end"
