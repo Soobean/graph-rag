@@ -299,16 +299,34 @@ class GraphRAGPipeline:
             if state.get("error"):
                 return "response_generator"
 
-            # 미해결 엔티티가 있는 경우 명확화 요청
             unresolved_entities = state.get("unresolved_entities", [])
-            has_unresolved = len(unresolved_entities) > 0
-            if has_unresolved:
-                logger.info(
-                    "Unresolved entities found. Routing to clarification_handler."
-                )
-                return "clarification_handler"
+            resolved_entities = state.get("resolved_entities", [])
 
-            return "cypher_generator"
+            if not unresolved_entities:
+                return "cypher_generator"
+
+            # resolved 엔티티가 있으면 Cypher 생성으로 진행
+            # (미해결 엔티티는 Adaptive Ontology가 백그라운드 학습)
+            if resolved_entities:
+                logger.info(
+                    f"{len(unresolved_entities)} unresolved entities, "
+                    f"but {len(resolved_entities)} resolved. Proceeding to cypher_generator."
+                )
+                return "cypher_generator"
+
+            # 모든 엔티티가 미해결이어도 Cypher 생성기가 스키마 + 엔티티 이름으로 쿼리 생성 가능
+            # (예: "Python 스킬 가진 사람" → MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill {name:'Python'}))
+            entities = state.get("entities", {})
+            if entities:
+                logger.info(
+                    f"All {len(unresolved_entities)} entities unresolved, "
+                    "but proceeding to cypher_generator (schema-based generation)."
+                )
+                return "cypher_generator"
+
+            # 엔티티 자체가 없는 경우만 명확화 요청
+            logger.info("No entities found. Routing to clarification_handler.")
+            return "clarification_handler"
 
         workflow.add_conditional_edges(
             "entity_resolver",

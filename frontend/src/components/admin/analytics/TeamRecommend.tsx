@@ -17,6 +17,7 @@ export function TeamRecommend() {
   const recommendTeam = useRecommendTeam();
 
   const handleAddSkill = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter' && skillInput.trim()) {
       e.preventDefault();
       if (!skills.includes(skillInput.trim())) {

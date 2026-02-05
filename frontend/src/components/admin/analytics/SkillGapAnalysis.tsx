@@ -207,6 +207,7 @@ export function SkillGapAnalysis() {
   const recommendSolution = useRecommendGapSolution();
 
   const handleAddSkill = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter' && skillInput.trim()) {
       e.preventDefault();
       if (!skills.includes(skillInput.trim())) {
@@ -221,6 +222,7 @@ export function SkillGapAnalysis() {
   };
 
   const handleAddMember = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter' && memberInput.trim()) {
       e.preventDefault();
       if (!members.includes(memberInput.trim())) {
