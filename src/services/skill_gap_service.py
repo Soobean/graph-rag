@@ -68,6 +68,9 @@ PARTIAL_COVERAGE_WEIGHT = 0.5
 # LCA 쿼리 최대 깊이 (온톨로지 계층 탐색 제한)
 LCA_MAX_DEPTH = 3
 
+# 너무 넓은 공통 조상은 유사 매칭에서 제외 (최상위 루트 노드)
+EXCLUDED_ANCESTORS: set[str] = {"Programming"}
+
 # 캐시 TTL (초) - 5분 후 자동 만료
 CACHE_TTL_SECONDS = 300
 
@@ -333,7 +336,11 @@ class SkillGapService:
             )
 
             for row in results:
-                self._category_cache[row["skill_name"]] = row.get("category")
+                skill_name = row["skill_name"]
+                category = row.get("category")
+                # 중복 Concept 노드(예: 'Python'/'python') 중 카테고리가 있는 것을 우선
+                if category is not None or skill_name not in self._category_cache:
+                    self._category_cache[skill_name] = category
 
             logger.debug(f"Prefetched metadata for {len(uncached_skills)} skills")
 
@@ -482,6 +489,11 @@ class SkillGapService:
 
             common_ancestor = results[0].get("common_ancestor")
             if not common_ancestor:
+                self._relation_cache[cache_key] = None
+                return None
+
+            # 최상위 루트 노드(Programming)는 너무 넓어 유의미한 매칭이 아님
+            if common_ancestor in EXCLUDED_ANCESTORS:
                 self._relation_cache[cache_key] = None
                 return None
 
