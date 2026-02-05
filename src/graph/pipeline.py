@@ -314,17 +314,17 @@ class GraphRAGPipeline:
                 )
                 return "cypher_generator"
 
-            # 모든 엔티티가 미해결이어도 Cypher 생성기가 스키마 + 엔티티 이름으로 쿼리 생성 가능
-            # (예: "Python 스킬 가진 사람" → MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill {name:'Python'}))
+            # 모든 엔티티가 미해결인 경우 → 사용자에게 확인 (추가 제안)
+            # (프롬프트에서 "새로운 스킬로 추가할까요?" 등 제안)
             entities = state.get("entities", {})
             if entities:
                 logger.info(
-                    f"All {len(unresolved_entities)} entities unresolved, "
-                    "but proceeding to cypher_generator (schema-based generation)."
+                    f"All {len(unresolved_entities)} entities unresolved. "
+                    "Routing to clarification_handler for user confirmation."
                 )
-                return "cypher_generator"
+                return "clarification_handler"
 
-            # 엔티티 자체가 없는 경우만 명확화 요청
+            # 엔티티 자체가 없는 경우도 명확화 요청
             logger.info("No entities found. Routing to clarification_handler.")
             return "clarification_handler"
 
