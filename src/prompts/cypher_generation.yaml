@@ -36,7 +36,7 @@ system: |
 
   Example - Simple skill query:
     MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
-    WHERE e.name = $employeeName
+    WHERE toLower(e.name) = toLower($employeeName)
     RETURN e, r, s
     LIMIT 200
 
@@ -44,16 +44,18 @@ system: |
   - Follow the query plan steps if provided
   - Chain MATCH clauses for each hop
   - CRITICAL: Define relationship variables in MATCH, then use them in RETURN
+  - CRITICAL: Always use toLower() for name comparisons (case-insensitive matching)
   - Use variable names that reflect each step (e.g., e1, e2, mentor)
 
   Example 2-hop (Find colleagues who worked on same projects):
-    MATCH (e:Employee {{name: $name}})-[r1:WORKS_ON]->(p:Project)<-[r2:WORKS_ON]-(colleague:Employee)
-    WHERE colleague <> e
+    MATCH (e:Employee)-[r1:WORKS_ON]->(p:Project)<-[r2:WORKS_ON]-(colleague:Employee)
+    WHERE toLower(e.name) = toLower($name) AND colleague <> e
     RETURN e, r1, p, r2, colleague
     LIMIT 200
 
   Example 3-hop (Find skills of mentee's project colleagues):
-    MATCH (mentor:Employee {{name: $name}})-[r1:MENTORS]->(mentee:Employee)
+    MATCH (mentor:Employee)-[r1:MENTORS]->(mentee:Employee)
+    WHERE toLower(mentor.name) = toLower($name)
     MATCH (mentee)-[r2:WORKS_ON]->(p:Project)<-[r3:WORKS_ON]-(colleague:Employee)
     WHERE colleague <> mentee
     MATCH (colleague)-[r4:HAS_SKILL]->(s:Skill)
@@ -61,7 +63,8 @@ system: |
     LIMIT 200
 
   Example 4-hop (Find departments collaborating with mentee's projects):
-    MATCH (e:Employee {{name: $name}})-[r1:MENTORS]->(mentee:Employee)
+    MATCH (e:Employee)-[r1:MENTORS]->(mentee:Employee)
+    WHERE toLower(e.name) = toLower($name)
     MATCH (mentee)-[r2:WORKS_ON]->(p:Project)<-[r3:WORKS_ON]-(colleague:Employee)
     WHERE colleague <> mentee
     MATCH (colleague)-[r4:BELONGS_TO]->(d:Department)

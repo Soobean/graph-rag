@@ -129,9 +129,10 @@ class SkillGapService:
         if not project_id:
             raise ValueError("team_members 또는 project_id 중 하나는 필수입니다")
 
-        # 프로젝트에서 팀원 조회
+        # 프로젝트에서 팀원 조회 (대소문자 무시)
         query = """
-        MATCH (e:Employee)-[:WORKS_ON]->(p:Project {name: $project_id})
+        MATCH (e:Employee)-[:WORKS_ON]->(p:Project)
+        WHERE toLower(p.name) = toLower($project_id)
         RETURN collect(e.name) AS members
         """
 
@@ -348,11 +349,12 @@ class SkillGapService:
             logger.warning(f"Failed to prefetch skill metadata: {e}")
 
     async def _get_team_skills(self, team_members: list[str]) -> dict[str, list[str]]:
-        """팀원들의 스킬 조회"""
+        """팀원들의 스킬 조회 (대소문자 무시, 중복 노드 통합)"""
         query = """
         MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)
-        WHERE e.name IN $members
-        RETURN e.name AS employee, collect(s.name) AS skills
+        WHERE ANY(m IN $members WHERE toLower(e.name) = toLower(m))
+        WITH e.name AS employee, collect(DISTINCT s.name) AS skills
+        RETURN employee, skills
         """
 
         results = await self._neo4j.execute_cypher(query, {"members": team_members})
@@ -540,26 +542,27 @@ class SkillGapService:
         MATCH (sibling:Concept)-[:IS_A]->(parent)
         WHERE toLower(sibling.name) <> toLower($skill)
 
-        // 형제 스킬을 가진 직원 찾기
+        // 형제 스킬을 가진 직원 찾기 (이름 기반 그룹핑으로 중복 노드 대응)
         MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)
         WHERE toLower(s.name) = toLower(sibling.name)
-        AND NOT e.name IN $exclude
+        AND NOT ANY(m IN $exclude WHERE toLower(e.name) = toLower(m))
+        WITH e.name AS emp_name, parent,
+             collect(DISTINCT sibling.name) AS matched_skills
 
-        OPTIONAL MATCH (e)-[:BELONGS_TO]->(d:Department)
+        // 동명 Employee 노드 전체에서 관계 집계 (중복 노드 보정)
+        MATCH (e2:Employee)
+        WHERE e2.name = emp_name
+        OPTIONAL MATCH (e2)-[:BELONGS_TO]->(d:Department)
+        OPTIONAL MATCH (e2)-[:HAS_SKILL]->(all_skills:Skill)
+        OPTIONAL MATCH (e2)-[:WORKS_ON]->(project:Project)
 
-        // 해당 직원의 모든 스킬도 함께 조회
-        OPTIONAL MATCH (e)-[:HAS_SKILL]->(all_skills:Skill)
-
-        // 현재 참여 중인 프로젝트 수 조회
-        OPTIONAL MATCH (e)-[:WORKS_ON]->(project:Project)
-
-        WITH e, parent, d,
-             collect(DISTINCT sibling.name) AS matched_skills,
+        WITH emp_name, parent, matched_skills,
+             collect(DISTINCT d.name)[0] AS department,
              collect(DISTINCT all_skills.name) AS all_skills,
              count(DISTINCT project) AS project_count
 
-        RETURN e.name AS employee,
-               d.name AS department,
+        RETURN emp_name AS employee,
+               department,
                matched_skills,
                parent.name AS common_category,
                all_skills,
@@ -843,7 +846,7 @@ class SkillGapService:
         query = """
         MATCH (candidate:Employee)-[:WORKS_ON]->(project:Project)<-[:WORKS_ON]-(team_member:Employee)
         WHERE candidate.name IN $candidates
-          AND team_member.name IN $team_members
+          AND ANY(m IN $team_members WHERE toLower(team_member.name) = toLower(m))
           AND candidate.name <> team_member.name
         WITH candidate, team_member, count(project) AS shared_projects,
              collect(project.name)[0..2] AS projects
@@ -907,16 +910,26 @@ class SkillGapService:
         query = """
         // 갭 스킬의 카테고리 찾기
         UNWIND $gaps AS gap_skill
-        MATCH (s:Concept)-[:IS_A]->(cat:Concept)
-        WHERE toLower(s.name) = toLower(gap_skill)
-        WITH collect(DISTINCT cat.name) AS gap_categories
+        MATCH (gs:Concept)-[:IS_A]->(gcat:Concept)
+        WHERE toLower(gs.name) = toLower(gap_skill)
+        WITH collect(DISTINCT gcat.name) AS gap_categories
 
-        // 여러 카테고리 스킬을 보유한 후보 찾기
-        MATCH (p:Employee)-[:HAS_SKILL]->(s:Skill)-[:IS_A*0..2]->(cat:Concept)
-        WHERE NOT p.name IN $team_members
+        // 후보 직원의 스킬 조회
+        MATCH (p:Employee)-[:HAS_SKILL]->(sk:Skill)
+        WHERE NOT ANY(m IN $team_members WHERE toLower(p.name) = toLower(m))
+
+        // Skill → Concept 이름 기반 브리지로 카테고리 매핑
+        OPTIONAL MATCH (c:Concept)-[:IS_A]->(cat:Concept)
+        WHERE toLower(c.name) = toLower(sk.name)
+
         WITH p, gap_categories,
-             collect(DISTINCT cat.name) AS person_categories,
-             collect(DISTINCT s.name) AS skills
+             collect(DISTINCT cat.name) AS raw_categories,
+             collect(DISTINCT sk.name) AS skills
+
+        // null 제거 (OPTIONAL MATCH 미매칭 시)
+        WITH p, skills,
+             [c IN raw_categories WHERE c IS NOT NULL] AS person_categories,
+             gap_categories
 
         // 갭 카테고리와 겹치는 카테고리가 있는 후보만
         WITH p, skills, person_categories,

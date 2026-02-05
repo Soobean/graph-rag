@@ -13,7 +13,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.api.schemas.skill_gap import CoverageStatus, InsightSeverity, InsightType, MatchType
+from src.api.schemas.skill_gap import (
+    CoverageStatus,
+    InsightSeverity,
+    InsightType,
+    MatchType,
+)
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.skill_gap_service import (
     CACHE_TTL_SECONDS,
@@ -129,6 +134,7 @@ class TestAnalyzeHappyPath:
 
     async def test_analyze_no_match_returns_gap(self, skill_gap_service, mock_neo4j):
         """관련 스킬 없을 시 GAP 상태 반환"""
+
         # Given: 팀원의 스킬이 필요 스킬과 무관
         async def mock_execute(query, params=None):
             if "HAS_SKILL" in query:
@@ -165,6 +171,35 @@ class TestAnalyzeHappyPath:
 class TestAnalyzeEdgeCases:
     """analyze() 메서드의 엣지 케이스 테스트"""
 
+    async def test_analyze_case_insensitive_member_name(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """팀원 이름 대소문자 무시 매칭"""
+
+        async def mock_execute(query, params=None):
+            if "HAS_SKILL" in query:
+                # toLower 매칭이므로 대소문자 달라도 결과 반환
+                return [{"employee": "Hong GilDong", "skills": ["Python"]}]
+            elif "UNWIND" in query:
+                return [
+                    {"skill_name": "Python", "canonical": None, "category": "Backend"}
+                ]
+            return []
+
+        mock_neo4j.execute_cypher = AsyncMock(side_effect=mock_execute)
+
+        # When: 소문자로 팀원 이름 입력
+        result = await skill_gap_service.analyze(
+            required_skills=["Python"],
+            team_members=["hong gildong"],
+        )
+
+        # Then: Cypher 쿼리에 toLower 매칭이 포함됨
+        first_call = mock_neo4j.execute_cypher.call_args_list[0]
+        assert "toLower" in first_call[0][0]
+        # 결과도 정상 반환
+        assert result.overall_status == CoverageStatus.COVERED
+
     async def test_analyze_empty_team_raises_error(self, skill_gap_service):
         """빈 team_members는 허용하지 않음"""
         # When/Then
@@ -180,6 +215,7 @@ class TestAnalyzeEdgeCases:
         self, skill_gap_service, mock_neo4j
     ):
         """온톨로지에 없는 스킬은 GAP 처리"""
+
         # Given: 온톨로지에 존재하지 않는 스킬
         async def mock_execute(query, params=None):
             if "HAS_SKILL" in query:
@@ -218,6 +254,7 @@ class TestAnalyzeEdgeCases:
         self, skill_gap_service, mock_neo4j
     ):
         """여러 스킬 분석 시 혼합된 상태 처리"""
+
         # Given: 일부 스킬만 보유
         async def mock_execute(query, params=None):
             if "HAS_SKILL" in query:
@@ -261,6 +298,7 @@ class TestRecommendForSkill:
         self, skill_gap_service, mock_neo4j
     ):
         """유사 스킬 보유자를 내부 추천으로 반환"""
+
         # Given: 형제 스킬 보유자 존재
         async def mock_execute(query, params=None):
             # 쿼리 패턴에 따라 결과 반환 (순서 중요: 구체적인 패턴 먼저)
@@ -304,6 +342,7 @@ class TestRecommendForSkill:
         self, skill_gap_service, mock_neo4j
     ):
         """동의어 기반 외부 검색 키워드 생성"""
+
         # Given
         async def mock_execute(query, params=None):
             if "SAME_AS" in query:
@@ -469,6 +508,7 @@ class TestCategorySummary:
         self, skill_gap_service, mock_neo4j
     ):
         """카테고리별 커버리지 비율 계산"""
+
         # Given: Backend 2개 스킬 - 1 covered, 1 partial
         async def mock_execute(query, params=None):
             if "HAS_SKILL" in query:
@@ -519,6 +559,7 @@ class TestRecommendations:
         self, skill_gap_service, mock_neo4j
     ):
         """PARTIAL 상태 스킬에 대한 교육 추천"""
+
         # Given
         async def mock_execute(query, params=None):
             if "HAS_SKILL" in query:
@@ -717,7 +758,9 @@ class TestProjectIdResolution:
     ):
         """DB 조회 실패 시 에러"""
         # Given
-        mock_neo4j.execute_cypher = AsyncMock(side_effect=Exception("Connection failed"))
+        mock_neo4j.execute_cypher = AsyncMock(
+            side_effect=Exception("Connection failed")
+        )
 
         # When/Then
         with pytest.raises(ValueError) as exc_info:
@@ -728,10 +771,30 @@ class TestProjectIdResolution:
 
         assert "조회 실패" in str(exc_info.value)
 
+    async def test_resolve_with_project_id_case_insensitive(
+        self, skill_gap_service, mock_neo4j
+    ):
+        """project_id 대소문자 무시 매칭"""
+        # Given: DB에 "GraphRAG 프로젝트"가 있지만 소문자로 검색
+        mock_neo4j.execute_cypher = AsyncMock(return_value=[{"members": ["홍길동"]}])
+
+        # When: toLower() 처리된 쿼리로 호출되므로 매칭됨
+        result = await skill_gap_service._resolve_team_members(
+            team_members=None,
+            project_id="graphrag 프로젝트",
+        )
+
+        # Then
+        assert result == ["홍길동"]
+        # Cypher 쿼리에 toLower가 포함되어야 함
+        call_args = mock_neo4j.execute_cypher.call_args
+        assert "toLower" in call_args[0][0]
+
     async def test_analyze_with_project_id_resolves_members(
         self, skill_gap_service, mock_neo4j
     ):
         """analyze()에서 project_id로 팀원 조회 후 분석"""
+
         # Given
         async def mock_execute(query, params=None):
             if "WORKS_ON" in query:
@@ -1044,6 +1107,7 @@ class TestInsightGeneration:
         self, skill_gap_service, mock_neo4j
     ):
         """analyze() 결과에 insights 필드 포함"""
+
         # Given
         async def mock_execute(query, params=None):
             if "HAS_SKILL" in query and "Employee" in query:
@@ -1077,9 +1141,7 @@ class TestInsightGeneration:
         assert hasattr(result, "insights")
         assert isinstance(result.insights, list)
 
-    async def test_find_synergies_handles_db_error(
-        self, skill_gap_service, mock_neo4j
-    ):
+    async def test_find_synergies_handles_db_error(self, skill_gap_service, mock_neo4j):
         """_find_synergies DB 오류 시 빈 리스트 반환"""
         # Given
         from src.api.schemas.skill_gap import SkillCoverage, SkillMatch

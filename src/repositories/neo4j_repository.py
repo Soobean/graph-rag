@@ -413,10 +413,15 @@ class Neo4jRepository:
 
             async with self._schema_fetch_lock:
                 # Double-check after acquiring lock (다른 태스크가 이미 갱신했을 수 있음)
-                if force_refresh or self._schema_cache is None or (
-                    time.time() - self._schema_cache_time
-                ) > self.SCHEMA_CACHE_TTL_SECONDS:
-                    logger.debug("Fetching schema from database (cache miss or expired)")
+                if (
+                    force_refresh
+                    or self._schema_cache is None
+                    or (time.time() - self._schema_cache_time)
+                    > self.SCHEMA_CACHE_TTL_SECONDS
+                ):
+                    logger.debug(
+                        "Fetching schema from database (cache miss or expired)"
+                    )
                     self._schema_cache = await self._client.get_schema_info()
                     self._schema_cache_time = time.time()
                 else:
@@ -738,7 +743,9 @@ class Neo4jRepository:
         # 제외 노드 필터링
         if exclude_ids:
             exclude_set = set(exclude_ids)
-            results = [(node, score) for node, score in results if node.id not in exclude_set]
+            results = [
+                (node, score) for node, score in results if node.id not in exclude_set
+            ]
 
         return results[:limit]
 
@@ -1538,10 +1545,12 @@ class Neo4jRepository:
             return await self.get_proposal_by_id(proposal_id)
 
         # 버전 증가 및 updated_at 추가
-        set_clauses.extend([
-            "p.version = p.version + 1",
-            "p.updated_at = datetime()",
-        ])
+        set_clauses.extend(
+            [
+                "p.version = p.version + 1",
+                "p.updated_at = datetime()",
+            ]
+        )
 
         query = f"""
         MATCH (p:OntologyProposal {{id: $id}})
@@ -1764,7 +1773,8 @@ class Neo4jRepository:
         validated_name = self._validate_concept_name(name)
 
         query = """
-        MATCH (c:Concept {name: $name})
+        MATCH (c:Concept)
+        WHERE toLower(c.name) = toLower($name)
         RETURN count(c) > 0 as exists
         """
 
@@ -1804,15 +1814,27 @@ class Neo4jRepository:
         validated_name = self._validate_concept_name(name)
 
         query = """
-        MERGE (c:Concept {name: $name})
-        ON CREATE SET
-            c.type = $type,
-            c.is_canonical = $is_canonical,
-            c.description = $description,
-            c.source = $source,
-            c.created_at = datetime()
-        ON MATCH SET
-            c.updated_at = datetime()
+        OPTIONAL MATCH (existing:Concept)
+        WHERE toLower(existing.name) = toLower($name)
+        WITH existing
+        CALL {
+            WITH existing
+            WITH existing WHERE existing IS NOT NULL
+            SET existing.updated_at = datetime()
+            RETURN existing AS c
+          UNION
+            WITH existing
+            WITH existing WHERE existing IS NULL
+            CREATE (new:Concept {
+                name: $name,
+                type: $type,
+                is_canonical: $is_canonical,
+                description: $description,
+                source: $source,
+                created_at: datetime()
+            })
+            RETURN new AS c
+        }
         RETURN
             elementId(c) as id,
             c.name as name,
@@ -1869,11 +1891,15 @@ class Neo4jRepository:
             ValidationError: 이름이 유효하지 않은 경우
         """
         validated_alias = self._validate_concept_name(alias_name, "alias_name")
-        validated_canonical = self._validate_concept_name(canonical_name, "canonical_name")
+        validated_canonical = self._validate_concept_name(
+            canonical_name, "canonical_name"
+        )
 
         query = """
-        MATCH (alias:Concept {name: $alias_name})
-        MATCH (canonical:Concept {name: $canonical_name})
+        MATCH (alias:Concept)
+        WHERE toLower(alias.name) = toLower($alias_name)
+        MATCH (canonical:Concept)
+        WHERE toLower(canonical.name) = toLower($canonical_name)
         MERGE (alias)-[r:SAME_AS]->(canonical)
         ON CREATE SET
             r.weight = $weight,
@@ -1932,8 +1958,10 @@ class Neo4jRepository:
         validated_parent = self._validate_concept_name(parent_name, "parent_name")
 
         query = """
-        MATCH (child:Concept {name: $child_name})
-        MATCH (parent:Concept {name: $parent_name})
+        MATCH (child:Concept)
+        WHERE toLower(child.name) = toLower($child_name)
+        MATCH (parent:Concept)
+        WHERE toLower(parent.name) = toLower($parent_name)
         MERGE (child)-[r:IS_A]->(parent)
         ON CREATE SET
             r.depth = $depth,
@@ -1990,8 +2018,10 @@ class Neo4jRepository:
         validated_skill = self._validate_concept_name(skill_name, "skill_name")
 
         query = """
-        MATCH (entity:Concept {name: $entity_name})
-        MATCH (skill:Concept {name: $skill_name})
+        MATCH (entity:Concept)
+        WHERE toLower(entity.name) = toLower($entity_name)
+        MATCH (skill:Concept)
+        WHERE toLower(skill.name) = toLower($skill_name)
         MERGE (entity)-[r:REQUIRES]->(skill)
         ON CREATE SET
             r.proposal_id = $proposal_id,
@@ -2046,8 +2076,10 @@ class Neo4jRepository:
         validated_whole = self._validate_concept_name(whole_name, "whole_name")
 
         query = """
-        MATCH (part:Concept {name: $part_name})
-        MATCH (whole:Concept {name: $whole_name})
+        MATCH (part:Concept)
+        WHERE toLower(part.name) = toLower($part_name)
+        MATCH (whole:Concept)
+        WHERE toLower(whole.name) = toLower($whole_name)
         MERGE (part)-[r:PART_OF]->(whole)
         ON CREATE SET
             r.proposal_id = $proposal_id,
