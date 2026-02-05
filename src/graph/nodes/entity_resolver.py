@@ -159,8 +159,33 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
             f"Resolved {len(resolved)} entities, {len(unresolved)} unresolved"
         )
 
-        return EntityResolverUpdate(
+        # 3단계: entities를 DB 실제 이름으로 보정
+        # (예: "AI 연구소" → "AI연구소", Cypher generator가 정확한 이름 사용)
+        corrected_entities: dict[str, list[str]] | None = None
+        original_entities = state.get("entities", {})
+        for r in resolved:
+            db_name = r.get("name", "")
+            original_value = r.get("original_value", "")
+            if db_name and original_value and db_name != original_value:
+                if corrected_entities is None:
+                    corrected_entities = {
+                        k: list(v) for k, v in original_entities.items()
+                    }
+                for entity_type, values in corrected_entities.items():
+                    corrected_entities[entity_type] = [
+                        db_name if v == original_value else v for v in values
+                    ]
+                self._logger.info(
+                    f"Corrected entity: '{original_value}' → '{db_name}'"
+                )
+
+        result = EntityResolverUpdate(
             resolved_entities=resolved,
             unresolved_entities=unresolved,
             execution_path=[self.name],
         )
+
+        if corrected_entities is not None:
+            result["entities"] = corrected_entities
+
+        return result

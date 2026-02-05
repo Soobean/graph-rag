@@ -265,6 +265,7 @@ class EntityResolverUpdate(TypedDict, total=False):
 
     resolved_entities: list[ResolvedEntity]
     unresolved_entities: list[UnresolvedEntity]  # Adaptive Ontology Phase 1
+    entities: dict[str, list[str]]  # DB 실제 이름으로 보정된 엔티티
     execution_path: list[str]
     error: str | None
 

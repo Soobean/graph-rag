@@ -178,6 +178,19 @@ class Neo4jRepository:
             results = await self._client.execute_query(
                 query, {"name": name, "limit": limit}
             )
+
+            # 2단계: 결과 없으면 공백 제거 후 재시도 (예: "AI 연구소" → "AI연구소")
+            if not results:
+                query_no_space = f"""
+                MATCH (n{label_filter})
+                WHERE replace(toLower(n.name), ' ', '') = replace(toLower($name), ' ', '')
+                RETURN elementId(n) as id, labels(n) as labels, properties(n) as properties
+                LIMIT $limit
+                """
+                results = await self._client.execute_query(
+                    query_no_space, {"name": name, "limit": limit}
+                )
+
             return [
                 NodeResult(
                     id=r["id"],
