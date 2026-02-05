@@ -321,7 +321,8 @@ class SkillGapService:
 
         query = """
         UNWIND $skills AS skill_name
-        OPTIONAL MATCH (s:Concept {name: skill_name})
+        OPTIONAL MATCH (s:Concept)
+        WHERE toLower(s.name) = toLower(skill_name)
         OPTIONAL MATCH (s)-[:IS_A]->(category)
         RETURN skill_name, category.name AS category
         """
@@ -363,8 +364,9 @@ class SkillGapService:
         category = await self._get_skill_category(required_skill)
 
         for employee, skills in team_skills.items():
-            # 1. 정확히 일치하는지 확인
-            if required_skill in skills:
+            # 1. 정확히 일치하는지 확인 (대소문자 무시)
+            required_lower = required_skill.lower()
+            if any(s.lower() == required_lower for s in skills):
                 exact_matches.append(employee)
                 continue
 
@@ -421,7 +423,8 @@ class SkillGapService:
             return self._category_cache[skill]
 
         query = """
-        MATCH (s:Concept {name: $skill})-[:IS_A]->(category)
+        MATCH (s:Concept)-[:IS_A]->(category)
+        WHERE toLower(s.name) = toLower($skill)
         RETURN category.name AS category
         LIMIT 1
         """
@@ -455,8 +458,8 @@ class SkillGapService:
         # Note: Cypher는 파라미터로 관계 깊이를 받을 수 없어 f-string 사용
         # 가장 가까운 공통 조상을 선택하기 위해 거리 기준으로 정렬
         query = f"""
-        MATCH (s1:Concept {{name: $required}})
-        MATCH (s2:Concept {{name: $possessed}})
+        MATCH (s1:Concept) WHERE toLower(s1.name) = toLower($required)
+        MATCH (s2:Concept) WHERE toLower(s2.name) = toLower($possessed)
         MATCH p1=(s1)-[:IS_A*0..{LCA_MAX_DEPTH}]->(ancestor)
         MATCH p2=(s2)-[:IS_A*0..{LCA_MAX_DEPTH}]->(ancestor)
         RETURN ancestor.name AS common_ancestor,
@@ -520,12 +523,14 @@ class SkillGapService:
         # 단일 쿼리로 후보자와 스킬, 프로젝트 수를 함께 조회
         query = """
         // 타겟 스킬의 형제 스킬 찾기
-        MATCH (target:Concept {name: $skill})-[:IS_A]->(parent)
+        MATCH (target:Concept)-[:IS_A]->(parent)
+        WHERE toLower(target.name) = toLower($skill)
         MATCH (sibling:Concept)-[:IS_A]->(parent)
-        WHERE sibling.name <> $skill
+        WHERE toLower(sibling.name) <> toLower($skill)
 
         // 형제 스킬을 가진 직원 찾기
-        MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill {name: sibling.name})
+        MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)
+        WHERE toLower(s.name) = toLower(sibling.name)
         WHERE NOT e.name IN $exclude
 
         OPTIONAL MATCH (e)-[:BELONGS_TO]->(d:Department)
@@ -587,7 +592,8 @@ class SkillGapService:
         """외부 채용 검색 키워드 생성"""
         # 동의어 조회
         query = """
-        MATCH (s:Concept {name: $skill})-[:SAME_AS]-(synonym)
+        MATCH (s:Concept)-[:SAME_AS]-(synonym)
+        WHERE toLower(s.name) = toLower($skill)
         RETURN collect(DISTINCT synonym.name) AS synonyms
         """
 
@@ -745,7 +751,8 @@ class SkillGapService:
         """
         query = """
         UNWIND $skills AS skill_name
-        MATCH (s:Skill {name: skill_name})<-[:HAS_SKILL]-(p:Employee)
+        MATCH (s:Skill)<-[:HAS_SKILL]-(p:Employee)
+        WHERE toLower(s.name) = toLower(skill_name)
         WITH skill_name, count(p) AS holder_count, collect(p.name)[0..3] AS holders
         WHERE holder_count <= $threshold
         RETURN skill_name, holder_count, holders
@@ -888,7 +895,8 @@ class SkillGapService:
         query = """
         // 갭 스킬의 카테고리 찾기
         UNWIND $gaps AS gap_skill
-        MATCH (s:Concept {name: gap_skill})-[:IS_A]->(cat:Concept)
+        MATCH (s:Concept)-[:IS_A]->(cat:Concept)
+        WHERE toLower(s.name) = toLower(gap_skill)
         WITH collect(DISTINCT cat.name) AS gap_categories
 
         // 여러 카테고리 스킬을 보유한 후보 찾기
