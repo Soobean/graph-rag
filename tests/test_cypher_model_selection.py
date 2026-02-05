@@ -520,3 +520,122 @@ class TestParameterCorrection:
 
         # 파라미터가 엔티티 값으로 보정되었는지 확인
         assert result["cypher_parameters"]["projectName"] == "챗봇 리뉴얼"
+
+    def test_correct_parameters_list_values(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """리스트 타입 파라미터도 보정"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        parameters = {"skills": ["python", "JAVA", "go lang"]}
+        entities = {"skills": ["Python", "Java", "Go"]}
+
+        result = node._correct_parameters(parameters, entities)
+        assert result["skills"] == ["Python", "Java", "Go"]
+
+    def test_correct_parameters_mixed_list(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """리스트 내 숫자 등 비문자열은 그대로 유지"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        parameters = {"values": ["python", 100, "java"]}
+        entities = {"skills": ["Python", "Java"]}
+
+        result = node._correct_parameters(parameters, entities)
+        assert result["values"] == ["Python", 100, "Java"]
+
+
+class TestErrorHandling:
+    """에러 처리 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_returns_error(
+        self,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """LLM 호출 실패 시 에러 반환"""
+        mock_llm = MagicMock(spec=LLMRepository)
+        mock_llm.generate_cypher = AsyncMock(
+            side_effect=Exception("API timeout")
+        )
+
+        node = CypherGeneratorNode(mock_llm, mock_neo4j_repository)
+
+        state: GraphRAGState = {
+            "question": "Python 잘하는 사람",
+            "session_id": "test",
+            "messages": [],
+            "execution_path": [],
+            "intent": "personnel_search",
+            "entities": {"skills": ["Python"]},
+            "schema": {
+                "node_labels": ["Employee"],
+                "relationship_types": [],
+            },
+        }
+
+        result = await node._process(state)
+
+        assert result.get("error") is not None
+        assert "API timeout" in result["error"]
+        assert "cypher_generator_error" in result.get("execution_path", [])
+
+    @pytest.mark.asyncio
+    async def test_empty_cypher_returns_error(
+        self,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """빈 Cypher 생성 시 에러 반환"""
+        mock_llm = MagicMock(spec=LLMRepository)
+        mock_llm.generate_cypher = AsyncMock(
+            return_value={"cypher": "", "parameters": {}}
+        )
+
+        node = CypherGeneratorNode(mock_llm, mock_neo4j_repository)
+
+        state: GraphRAGState = {
+            "question": "Python 잘하는 사람",
+            "session_id": "test",
+            "messages": [],
+            "execution_path": [],
+            "intent": "personnel_search",
+            "entities": {"skills": ["Python"]},
+            "schema": {
+                "node_labels": ["Employee"],
+                "relationship_types": [],
+            },
+        }
+
+        result = await node._process(state)
+
+        assert result.get("error") is not None
+        assert "Empty Cypher" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_schema_fetch_when_not_in_state(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """State에 스키마가 없으면 Neo4j에서 조회"""
+        node = CypherGeneratorNode(mock_llm_repository, mock_neo4j_repository)
+
+        state: GraphRAGState = {
+            "question": "Python 잘하는 사람",
+            "session_id": "test",
+            "messages": [],
+            "execution_path": [],
+            "intent": "personnel_search",
+            "entities": {"skills": ["Python"]},
+            # schema 없음
+        }
+
+        await node._process(state)
+
+        # Neo4j에서 스키마 조회가 호출되었는지 검증
+        mock_neo4j_repository.get_schema.assert_called_once()
