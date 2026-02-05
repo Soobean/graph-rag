@@ -543,7 +543,7 @@ class SkillGapService:
         // 형제 스킬을 가진 직원 찾기
         MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)
         WHERE toLower(s.name) = toLower(sibling.name)
-        WHERE NOT e.name IN $exclude
+        AND NOT e.name IN $exclude
 
         OPTIONAL MATCH (e)-[:BELONGS_TO]->(d:Department)
 
