@@ -73,11 +73,32 @@ system: |
 
   ⚠️ IMPORTANT: Every relationship variable (r1, r2, etc.) in RETURN must be defined in a MATCH clause!
 
+  ⚠️ PARAMETER VALUE RULE:
+  - Parameter values MUST be copied EXACTLY from the Extracted Entities below.
+  - NEVER add suffixes like "프로젝트", "팀", "부서", "그룹" to entity values.
+  - NEVER modify, translate, or rephrase entity values.
+  - If the entity is "챗봇 리뉴얼", the parameter must be "챗봇 리뉴얼" (NOT "챗봇 리뉴얼 프로젝트").
+  - If the entity is "데이터레이크 개선", the parameter must be "데이터레이크 개선" (NOT "데이터레이크 개선 프로젝트").
+
+  Example - Project matching query:
+    MATCH (p:Project)<-[r:WORKS_ON]-(e:Employee)
+    WHERE toLower(p.name) = toLower($projectName)
+    RETURN p, r, e
+    LIMIT 200
+
+  Example - Department query:
+    MATCH (e:Employee)-[r:BELONGS_TO]->(d:Department)
+    WHERE toLower(d.name) = toLower($deptName)
+    RETURN e, r, d
+    LIMIT 200
+
 user: |
   Question: {question}
 
   Extracted Entities:
   {entities_str}
+
+  ⚠️ REMINDER: Use the entity values above EXACTLY as parameter values. Do NOT add any suffixes.
 
   Query Plan:
   {query_plan_str}
