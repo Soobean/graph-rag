@@ -128,6 +128,77 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
         )
         return QueryComplexity.SIMPLE
 
+    def _correct_parameters(
+        self,
+        parameters: dict[str, Any],
+        entities: dict[str, list[str]],
+    ) -> dict[str, Any]:
+        """
+        LLM이 생성한 파라미터 값을 엔티티 값으로 보정.
+
+        LLM이 파라미터에 접미사(프로젝트, 팀, 부서 등)를 추가하거나
+        공백을 변경하는 경우, 원래 엔티티 값으로 교체합니다.
+
+        매칭 전략 (우선순위):
+        1. 정확 일치 → 그대로
+        2. 파라미터가 entity를 포함 → entity 값으로 교체
+        3. entity가 파라미터를 포함 → entity 값으로 교체
+        4. 매칭 실패 → LLM 값 그대로 (fallback)
+        """
+        # 모든 엔티티 값을 flat set으로 수집
+        entity_values: list[str] = []
+        for values in entities.values():
+            entity_values.extend(values)
+
+        if not entity_values:
+            return parameters
+
+        corrected = {}
+        for key, value in parameters.items():
+            if not isinstance(value, str):
+                corrected[key] = value
+                continue
+
+            # 1) 정확 일치 (대소문자 무시)
+            exact = next(
+                (ev for ev in entity_values if ev.lower() == value.lower()),
+                None,
+            )
+            if exact is not None:
+                corrected[key] = exact
+                continue
+
+            # 2) 파라미터가 entity를 포함 (e.g. "챗봇 리뉴얼 프로젝트" contains "챗봇 리뉴얼")
+            #    가장 긴 매칭을 선택 (더 구체적인 것 우선)
+            val_lower = value.lower()
+            contains_matches = [
+                ev for ev in entity_values if ev.lower() in val_lower
+            ]
+            if contains_matches:
+                best = max(contains_matches, key=len)
+                self._logger.info(
+                    f"Parameter correction: '{value}' → '{best}' (param contains entity)"
+                )
+                corrected[key] = best
+                continue
+
+            # 3) entity가 파라미터를 포함 (e.g. entity "데이터레이크 개선" contains param "데이터레이크")
+            reverse_matches = [
+                ev for ev in entity_values if val_lower in ev.lower()
+            ]
+            if reverse_matches:
+                best = min(reverse_matches, key=len)
+                self._logger.info(
+                    f"Parameter correction: '{value}' → '{best}' (entity contains param)"
+                )
+                corrected[key] = best
+                continue
+
+            # 4) 매칭 실패 → 원래 값 유지
+            corrected[key] = value
+
+        return corrected
+
     async def _process(self, state: GraphRAGState) -> CypherGeneratorUpdate:
         """
         Cypher 쿼리 생성
@@ -193,6 +264,9 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
             cypher = result.get("cypher", "")
             parameters = result.get("parameters", {})
+
+            # 파라미터를 엔티티 값으로 보정 (LLM 접미사 추가 방지)
+            parameters = self._correct_parameters(parameters, raw_entities)
 
             # 기본적인 쿼리 검증
             if not cypher or not cypher.strip():
