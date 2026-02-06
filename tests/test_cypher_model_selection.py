@@ -550,6 +550,166 @@ class TestParameterCorrection:
         assert result["values"] == ["Python", 100, "Java"]
 
 
+class TestCoerceToLowerParams:
+    """toLower() 파라미터 타입 변환 테스트"""
+
+    def _make_node(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> CypherGeneratorNode:
+        return CypherGeneratorNode(
+            mock_llm_repository,
+            mock_neo4j_repository,
+        )
+
+    def test_coerce_int_param_to_string(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """toLower()에 사용되는 int 파라미터를 str로 변환"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = "MATCH (e:Employee) WHERE toLower(e.name) = toLower($name) RETURN e"
+        parameters = {"name": 4}
+
+        result = node._coerce_tolower_params(cypher, parameters)
+        assert result["name"] == "4"
+        assert isinstance(result["name"], str)
+
+    def test_coerce_float_param_to_string(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """toLower()에 사용되는 float 파라미터를 str로 변환"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = "MATCH (s:Skill) WHERE toLower(s.name) = toLower($skill) RETURN s"
+        parameters = {"skill": 3.14}
+
+        result = node._coerce_tolower_params(cypher, parameters)
+        assert result["skill"] == "3.14"
+
+    def test_no_coerce_when_not_in_tolower(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """toLower()에 사용되지 않는 숫자 파라미터는 그대로 유지"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = "MATCH (e:Employee) WHERE e.age > $age RETURN e LIMIT $limit"
+        parameters = {"age": 30, "limit": 10}
+
+        result = node._coerce_tolower_params(cypher, parameters)
+        assert result["age"] == 30
+        assert result["limit"] == 10
+
+    def test_coerce_only_tolower_params(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """toLower() 파라미터만 변환, 나머지는 유지"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee) "
+            "WHERE toLower(e.name) = toLower($name) AND e.age > $age "
+            "RETURN e LIMIT $limit"
+        )
+        parameters = {"name": 4, "age": 30, "limit": 10}
+
+        result = node._coerce_tolower_params(cypher, parameters)
+        assert result["name"] == "4"  # 변환됨
+        assert result["age"] == 30     # 유지
+        assert result["limit"] == 10   # 유지
+
+    def test_coerce_string_param_unchanged(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """이미 str인 파라미터는 변환하지 않음"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = "MATCH (e:Employee) WHERE toLower(e.name) = toLower($name) RETURN e"
+        parameters = {"name": "홍길동"}
+
+        result = node._coerce_tolower_params(cypher, parameters)
+        assert result["name"] == "홍길동"
+
+    def test_coerce_list_param_with_numbers(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """toLower()에 사용되는 리스트 내 숫자도 str로 변환"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "WHERE ANY(m IN $names WHERE toLower(e.name) = toLower(m))"
+        )
+        parameters = {"names": ["홍길동", 4, "김영희"]}
+
+        result = node._coerce_tolower_params(cypher, parameters)
+        assert result["names"] == ["홍길동", "4", "김영희"]
+
+    def test_no_tolower_no_changes(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """Cypher에 toLower()가 없으면 파라미터 변경 없음"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = "MATCH (e:Employee) WHERE e.name = $name RETURN e"
+        parameters = {"name": 42}
+
+        result = node._coerce_tolower_params(cypher, parameters)
+        assert result["name"] == 42
+
+    @pytest.mark.asyncio
+    async def test_process_coerces_tolower_params(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """_process에서 toLower 파라미터 변환이 실제로 적용되는지 검증"""
+        mock_llm_repository.generate_cypher = AsyncMock(
+            return_value={
+                "cypher": "MATCH (e:Employee) WHERE toLower(e.name) = toLower($name) RETURN e",
+                "parameters": {"name": 4},
+            }
+        )
+
+        node = CypherGeneratorNode(
+            mock_llm_repository,
+            mock_neo4j_repository,
+        )
+
+        state: GraphRAGState = {
+            "question": "4번 직원 찾아줘",
+            "session_id": "test",
+            "messages": [],
+            "execution_path": [],
+            "intent": "personnel_search",
+            "entities": {"employees": ["4"]},
+            "schema": {
+                "node_labels": ["Employee"],
+                "relationship_types": [],
+            },
+        }
+
+        result = await node._process(state)
+
+        # 숫자 4가 문자열 "4"로 변환되었는지 확인
+        assert result["cypher_parameters"]["name"] == "4"
+        assert isinstance(result["cypher_parameters"]["name"], str)
+
+
 class TestErrorHandling:
     """에러 처리 테스트"""
 

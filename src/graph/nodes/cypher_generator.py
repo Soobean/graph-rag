@@ -9,6 +9,7 @@ Latency Optimization:
 - 복잡한 쿼리(multi-hop, 복잡한 의도)에는 HEAVY 모델 사용
 """
 
+import re
 from enum import Enum
 from typing import Any
 
@@ -206,6 +207,48 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
         return corrected
 
+    def _coerce_tolower_params(
+        self,
+        cypher: str,
+        parameters: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Cypher에서 toLower()에 사용되는 파라미터가 숫자 타입이면
+        문자열로 변환합니다.
+
+        두 가지 패턴을 감지합니다:
+        1. 직접: toLower($param)
+        2. 간접: ANY(var IN $param WHERE ... toLower(var))
+        """
+        tolower_params: set[str] = set()
+
+        # 패턴 1: toLower($paramName) — 직접 사용
+        tolower_params.update(re.findall(r"toLower\(\s*\$(\w+)\s*\)", cypher))
+
+        # 패턴 2: var IN $param ... toLower(var) — 리스트 순회 간접 사용
+        for iter_var, param_name in re.findall(r"(\w+)\s+IN\s+\$(\w+)", cypher):
+            if re.search(rf"toLower\(\s*{re.escape(iter_var)}\s*\)", cypher):
+                tolower_params.add(param_name)
+
+        if not tolower_params:
+            return parameters
+
+        coerced = dict(parameters)
+        for param_name in tolower_params:
+            if param_name in coerced:
+                value = coerced[param_name]
+                if isinstance(value, (int, float)):
+                    self._logger.info(
+                        f"Coercing toLower param '{param_name}': "
+                        f"{type(value).__name__}({value}) → str('{value}')"
+                    )
+                    coerced[param_name] = str(value)
+                elif isinstance(value, list):
+                    coerced[param_name] = [
+                        str(v) if isinstance(v, (int, float)) else v for v in value
+                    ]
+        return coerced
+
     async def _process(self, state: GraphRAGState) -> CypherGeneratorUpdate:
         """
         Cypher 쿼리 생성
@@ -276,6 +319,7 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
             # 파라미터를 엔티티 값으로 보정 (LLM 접미사 추가 방지)
             parameters = self._correct_parameters(parameters, raw_entities)
+            parameters = self._coerce_tolower_params(cypher, parameters)
 
             # 기본적인 쿼리 검증
             if not cypher or not cypher.strip():
