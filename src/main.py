@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api import (
     analytics_router,
+    graph_edit_router,
     ingest_router,
     ontology_admin_router,
     ontology_router,
@@ -35,6 +36,7 @@ from src.graph import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
 from src.services.gds_service import GDSService
+from src.services.graph_edit_service import GraphEditService
 from src.services.ontology_service import OntologyService
 from src.services.skill_gap_service import SkillGapService
 
@@ -133,6 +135,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     explainability_service = ExplainabilityService()
     logger.info("ExplainabilityService initialized")
 
+    # GraphEditService 초기화
+    graph_edit_service = GraphEditService(neo4j_repo)
+    logger.info("GraphEditService initialized")
+
     # SkillGapService 초기화
     skill_gap_service = SkillGapService(neo4j_repo)
     logger.info("SkillGapService initialized")
@@ -146,6 +152,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.ontology_service = ontology_service
     app.state.ontology_registry = ontology_registry
     app.state.explainability_service = explainability_service
+    app.state.graph_edit_service = graph_edit_service
     app.state.skill_gap_service = skill_gap_service
 
     yield
@@ -179,7 +186,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],  # PATCH 추가 (Admin API)
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],  # DELETE 추가 (Graph Edit API)
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
 )
 
@@ -252,6 +259,7 @@ app.include_router(analytics_router)
 app.include_router(visualization_router)
 app.include_router(ontology_router)
 app.include_router(ontology_admin_router)
+app.include_router(graph_edit_router)
 
 # Frontend 정적 파일 경로
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
