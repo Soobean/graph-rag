@@ -25,7 +25,6 @@ ALLOWED_LABELS = {
     "Department",
     "Position",
     "Certificate",
-    "Concept",
     "Office",
 }
 
@@ -42,10 +41,11 @@ VALID_RELATIONSHIP_COMBINATIONS: dict[str, list[tuple[str, str]]] = {
     "REQUIRES": [("Project", "Skill")],
     "MENTORS": [("Employee", "Employee")],
     "OWNED_BY": [("Project", "Department")],
-    "SAME_AS": [("Concept", "Concept")],
-    "IS_A": [("Concept", "Concept")],
     "LOCATED_AT": [("Department", "Office")],
 }
+
+# 시스템 메타데이터 보호 (사용자가 수정/삭제 불가)
+PROTECTED_PROPERTIES = {"created_at", "created_by", "updated_at", "updated_by"}
 
 # 검색 기본값
 DEFAULT_SEARCH_LIMIT = 50
@@ -152,47 +152,19 @@ class GraphEditService:
         노드 속성 수정
 
         null 값은 속성 삭제로 처리합니다.
+        시스템 메타데이터(created_at 등)는 자동 무시됩니다.
         """
-        # 1. 존재 확인
         existing = await self._neo4j.find_entity_by_id(node_id)
 
-        # 2. null 값 분리 → REMOVE 처리
-        update_props = {}
-        remove_keys = []
-        for key, value in properties.items():
-            if value is None:
-                remove_keys.append(key)
-            else:
-                update_props[key] = value
+        # 시스템 메타데이터 필터링 + null 값 분리
+        update_props, remove_keys = self._split_update_properties(properties)
 
-        # 3. 이름 변경 시 중복 확인
+        # 이름 변경 시 검증
         if "name" in update_props:
-            new_name = str(update_props["name"]).strip()
-            if not new_name:
-                raise ValidationError("name cannot be empty", field="name")
-            update_props["name"] = new_name
+            await self._validate_name_update(update_props, existing)
 
-            # 현재 이름과 다를 때만 중복 확인
-            current_name = existing.properties.get("name", "")
-            if new_name.lower() != str(current_name).lower():
-                label = existing.labels[0] if existing.labels else ""
-                if label:
-                    is_duplicate = await self._neo4j.check_duplicate_node(label, new_name)
-                    if is_duplicate:
-                        raise GraphEditConflictError(
-                            f"Node with name '{new_name}' already exists in label '{label}'"
-                        )
-
-        # 4. 필수 속성 삭제 방지
-        if remove_keys:
-            label = existing.labels[0] if existing.labels else ""
-            required = REQUIRED_PROPERTIES.get(label, [])
-            blocked = [k for k in remove_keys if k in required]
-            if blocked:
-                raise ValidationError(
-                    f"Cannot remove required properties: {blocked}",
-                    field="properties",
-                )
+        # 필수 속성 삭제 방지
+        self._validate_remove_keys(remove_keys, existing)
 
         update_props["updated_by"] = ANONYMOUS_ADMIN
 
@@ -201,6 +173,57 @@ class GraphEditService:
         )
         logger.info(f"Node updated: {node_id}")
         return result
+
+    @staticmethod
+    def _split_update_properties(
+        properties: dict[str, Any],
+    ) -> tuple[dict[str, Any], list[str]]:
+        """속성을 업데이트/삭제로 분리하고 시스템 메타데이터를 필터링"""
+        update_props: dict[str, Any] = {}
+        remove_keys: list[str] = []
+        for key, value in properties.items():
+            if key in PROTECTED_PROPERTIES:
+                continue
+            if value is None:
+                remove_keys.append(key)
+            else:
+                update_props[key] = value
+        return update_props, remove_keys
+
+    async def _validate_name_update(
+        self,
+        update_props: dict[str, Any],
+        existing: Any,
+    ) -> None:
+        """이름 변경 시 빈 값 및 중복 검증"""
+        new_name = str(update_props["name"]).strip()
+        if not new_name:
+            raise ValidationError("name cannot be empty", field="name")
+        update_props["name"] = new_name
+
+        current_name = existing.properties.get("name", "")
+        if new_name.lower() != str(current_name).lower():
+            label = existing.labels[0] if existing.labels else ""
+            if label:
+                is_duplicate = await self._neo4j.check_duplicate_node(label, new_name)
+                if is_duplicate:
+                    raise GraphEditConflictError(
+                        f"Node with name '{new_name}' already exists in label '{label}'"
+                    )
+
+    @staticmethod
+    def _validate_remove_keys(remove_keys: list[str], existing: Any) -> None:
+        """필수 속성 삭제 방지"""
+        if not remove_keys:
+            return
+        label = existing.labels[0] if existing.labels else ""
+        required = REQUIRED_PROPERTIES.get(label, [])
+        blocked = [k for k in remove_keys if k in required]
+        if blocked:
+            raise ValidationError(
+                f"Cannot remove required properties: {blocked}",
+                field="properties",
+            )
 
     async def delete_node(
         self,
@@ -317,10 +340,7 @@ class GraphEditService:
             "allowed_labels": sorted(ALLOWED_LABELS),
             "required_properties": REQUIRED_PROPERTIES,
             "valid_relationships": {
-                rel_type: [
-                    {"source": src, "target": tgt}
-                    for src, tgt in combos
-                ]
+                rel_type: [{"source": src, "target": tgt} for src, tgt in combos]
                 for rel_type, combos in VALID_RELATIONSHIP_COMBINATIONS.items()
             },
         }

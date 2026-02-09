@@ -2222,10 +2222,14 @@ class Neo4jRepository:
         Raises:
             EntityNotFoundError: 노드가 존재하지 않는 경우
         """
-        # REMOVE 절 동적 생성 (키 이름은 화이트리스트 검증 불필요 — 속성명은 Cypher injection 위험 없음)
+        # REMOVE 절 동적 생성 (속성명도 Cypher identifier 검증 필요)
         remove_clause = ""
         if remove_keys:
-            remove_parts = [f"n.{key}" for key in remove_keys]
+            validated_keys = [
+                self._validate_identifier(key, "property_name")
+                for key in remove_keys
+            ]
+            remove_parts = [f"n.{key}" for key in validated_keys]
             remove_clause = "REMOVE " + ", ".join(remove_parts)
 
         query = f"""

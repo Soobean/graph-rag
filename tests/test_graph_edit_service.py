@@ -176,6 +176,25 @@ class TestUpdateNode:
         with pytest.raises(ValidationError, match="empty"):
             await service.update_node("4:abc:0", {"name": "  "})
 
+    async def test_update_node_ignores_protected_properties(self, service, mock_repo):
+        """시스템 메타데이터(created_by 등)는 사용자가 수정 불가"""
+        await service.update_node("4:abc:0", {
+            "department": "개발팀",
+            "created_by": "hacker",
+            "created_at": None,
+            "updated_at": None,
+        })
+        call_args = mock_repo.update_node_properties.call_args
+        update_props = call_args[0][1]
+        remove_keys = call_args[0][2]
+        # created_by 덮어쓰기 시도는 무시됨
+        assert "created_by" not in update_props or update_props.get("created_by") != "hacker"
+        # created_at/updated_at null 삭제 시도도 무시됨
+        assert remove_keys is None or "created_at" not in remove_keys
+        assert remove_keys is None or "updated_at" not in remove_keys
+        # 일반 속성은 정상 처리
+        assert update_props["department"] == "개발팀"
+
 
 # =============================================================================
 # 노드 삭제
@@ -279,3 +298,6 @@ class TestSchemaInfo:
             {"source": "Employee", "target": "Skill"}
         ]
         assert result["required_properties"]["Employee"] == ["name"]
+        # Concept 전용 관계는 제외됨
+        assert "SAME_AS" not in result["valid_relationships"]
+        assert "IS_A" not in result["valid_relationships"]
