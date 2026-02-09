@@ -2133,3 +2133,321 @@ class Neo4jRepository:
         except Exception as e:
             logger.error(f"Failed to update proposal applied_at: {e}")
             return False
+
+    # ============================================
+    # Graph Edit CRUD 메서드
+    # ============================================
+
+    async def create_node_generic(
+        self,
+        label: str,
+        properties: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        범용 노드 생성
+
+        Args:
+            label: 노드 레이블 (사전 검증 필요)
+            properties: 노드 속성
+
+        Returns:
+            생성된 노드 정보 (id, labels, properties)
+        """
+        validated_label = self._validate_identifier(label, "label")
+
+        query = f"""
+        CREATE (n:{validated_label} $props)
+        SET n.created_at = datetime()
+        RETURN elementId(n) as id, labels(n) as labels, properties(n) as properties
+        """
+
+        try:
+            results = await self._client.execute_write(query, {"props": properties})
+            if not results:
+                raise QueryExecutionError(
+                    "Node creation returned no results", query=query
+                )
+            return results[0]
+        except QueryExecutionError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to create node with label '{label}': {e}")
+            raise QueryExecutionError(
+                f"Failed to create node: {e}", query=query
+            ) from e
+
+    async def check_duplicate_node(
+        self,
+        label: str,
+        name: str,
+    ) -> bool:
+        """
+        동일 레이블 내 이름 중복 확인 (대소문자 무시)
+
+        Args:
+            label: 노드 레이블
+            name: 확인할 이름
+
+        Returns:
+            중복 존재 여부
+        """
+        validated_label = self._validate_identifier(label, "label")
+
+        query = f"""
+        MATCH (n:{validated_label})
+        WHERE toLower(n.name) = toLower($name)
+        RETURN count(n) > 0 as exists
+        """
+
+        results = await self._client.execute_query(query, {"name": name})
+        return results[0]["exists"] if results else False
+
+    async def update_node_properties(
+        self,
+        node_id: str,
+        properties: dict[str, Any],
+        remove_keys: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        노드 속성 수정
+
+        Args:
+            node_id: 노드 elementId
+            properties: 추가/수정할 속성
+            remove_keys: 삭제할 속성 키 리스트
+
+        Returns:
+            수정된 노드 정보
+
+        Raises:
+            EntityNotFoundError: 노드가 존재하지 않는 경우
+        """
+        # REMOVE 절 동적 생성 (키 이름은 화이트리스트 검증 불필요 — 속성명은 Cypher injection 위험 없음)
+        remove_clause = ""
+        if remove_keys:
+            remove_parts = [f"n.{key}" for key in remove_keys]
+            remove_clause = "REMOVE " + ", ".join(remove_parts)
+
+        query = f"""
+        MATCH (n)
+        WHERE elementId(n) = $node_id
+        SET n += $props, n.updated_at = datetime()
+        {remove_clause}
+        RETURN elementId(n) as id, labels(n) as labels, properties(n) as properties
+        """
+
+        try:
+            results = await self._client.execute_write(
+                query, {"node_id": node_id, "props": properties}
+            )
+            if not results:
+                raise EntityNotFoundError("Node", node_id)
+            return results[0]
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update node {node_id}: {e}")
+            raise QueryExecutionError(
+                f"Failed to update node: {e}", query=query
+            ) from e
+
+    async def delete_node_generic(
+        self,
+        node_id: str,
+        force: bool = False,
+    ) -> bool:
+        """
+        노드 삭제
+
+        Args:
+            node_id: 노드 elementId
+            force: True면 연결된 관계도 함께 삭제 (DETACH DELETE)
+
+        Returns:
+            삭제 성공 여부
+        """
+        delete_keyword = "DETACH DELETE" if force else "DELETE"
+        query = f"""
+        MATCH (n)
+        WHERE elementId(n) = $node_id
+        {delete_keyword} n
+        RETURN true as deleted
+        """
+
+        try:
+            results = await self._client.execute_write(
+                query, {"node_id": node_id}
+            )
+            return len(results) > 0
+        except Exception as e:
+            logger.error(f"Failed to delete node {node_id}: {e}")
+            raise QueryExecutionError(
+                f"Failed to delete node: {e}", query=query
+            ) from e
+
+    async def get_node_relationship_count(self, node_id: str) -> int:
+        """
+        노드에 연결된 관계 수 조회
+
+        Args:
+            node_id: 노드 elementId
+
+        Returns:
+            관계 수
+        """
+        query = """
+        MATCH (n)
+        WHERE elementId(n) = $node_id
+        OPTIONAL MATCH (n)-[r]-()
+        RETURN count(r) as count
+        """
+
+        results = await self._client.execute_query(query, {"node_id": node_id})
+        return results[0]["count"] if results else 0
+
+    async def create_relationship_generic(
+        self,
+        source_id: str,
+        target_id: str,
+        rel_type: str,
+        properties: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        범용 관계 생성
+
+        Args:
+            source_id: 소스 노드 elementId
+            target_id: 타겟 노드 elementId
+            rel_type: 관계 타입 (사전 검증 필요)
+            properties: 관계 속성
+
+        Returns:
+            생성된 관계 정보
+        """
+        validated_type = self._validate_identifier(rel_type, "relationship_type")
+        props = properties or {}
+
+        query = f"""
+        MATCH (src), (tgt)
+        WHERE elementId(src) = $source_id AND elementId(tgt) = $target_id
+        CREATE (src)-[r:{validated_type} $props]->(tgt)
+        SET r.created_at = datetime()
+        RETURN
+            elementId(r) as id,
+            type(r) as type,
+            elementId(src) as source_id,
+            elementId(tgt) as target_id,
+            properties(r) as properties,
+            labels(src) as source_labels,
+            labels(tgt) as target_labels
+        """
+
+        try:
+            results = await self._client.execute_write(
+                query, {"source_id": source_id, "target_id": target_id, "props": props}
+            )
+            if not results:
+                raise EntityNotFoundError("Source or target node", f"{source_id}, {target_id}")
+            return results[0]
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to create relationship {rel_type}: {e}")
+            raise QueryExecutionError(
+                f"Failed to create relationship: {e}", query=query
+            ) from e
+
+    async def find_relationship_by_id(self, rel_id: str) -> dict[str, Any] | None:
+        """
+        ID로 관계 조회
+
+        Args:
+            rel_id: 관계 elementId
+
+        Returns:
+            관계 정보 또는 None
+        """
+        query = """
+        MATCH (src)-[r]->(tgt)
+        WHERE elementId(r) = $rel_id
+        RETURN
+            elementId(r) as id,
+            type(r) as type,
+            elementId(src) as source_id,
+            elementId(tgt) as target_id,
+            properties(r) as properties,
+            labels(src) as source_labels,
+            properties(src) as source_properties,
+            labels(tgt) as target_labels,
+            properties(tgt) as target_properties
+        """
+
+        results = await self._client.execute_query(query, {"rel_id": rel_id})
+        return results[0] if results else None
+
+    async def delete_relationship_generic(self, rel_id: str) -> bool:
+        """
+        관계 삭제
+
+        Args:
+            rel_id: 관계 elementId
+
+        Returns:
+            삭제 성공 여부
+        """
+        query = """
+        MATCH ()-[r]->()
+        WHERE elementId(r) = $rel_id
+        DELETE r
+        RETURN true as deleted
+        """
+
+        try:
+            results = await self._client.execute_write(query, {"rel_id": rel_id})
+            return len(results) > 0
+        except Exception as e:
+            logger.error(f"Failed to delete relationship {rel_id}: {e}")
+            raise QueryExecutionError(
+                f"Failed to delete relationship: {e}", query=query
+            ) from e
+
+    async def search_nodes(
+        self,
+        label: str | None = None,
+        search: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """
+        노드 검색 (레이블 필터, 이름 CONTAINS 검색)
+
+        Args:
+            label: 필터링할 레이블 (None이면 전체)
+            search: 이름 검색어 (CONTAINS, 대소문자 무시)
+            limit: 최대 결과 수
+
+        Returns:
+            노드 정보 리스트
+        """
+        label_filter = ""
+        if label:
+            validated_label = self._validate_identifier(label, "label")
+            label_filter = f":{validated_label}"
+
+        where_clauses = []
+        params: dict[str, Any] = {"limit": limit}
+
+        if search:
+            where_clauses.append("toLower(n.name) CONTAINS toLower($search)")
+            params["search"] = search
+
+        where_clause = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+        query = f"""
+        MATCH (n{label_filter})
+        {where_clause}
+        RETURN elementId(n) as id, labels(n) as labels, properties(n) as properties
+        ORDER BY n.name
+        LIMIT $limit
+        """
+
+        return await self._client.execute_query(query, params)

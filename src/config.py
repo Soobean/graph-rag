@@ -271,6 +271,14 @@ class Settings(BaseSettings):
     )
 
     # ============================================
+    # Graph Edit 설정
+    # ============================================
+    graph_edit_enabled: bool = Field(
+        default=True,
+        description="그래프 편집 API 활성화 여부 (관리자 CRUD)",
+    )
+
+    # ============================================
     # Adaptive Ontology 설정
     # ============================================
     adaptive_ontology: AdaptiveOntologySettings = Field(
