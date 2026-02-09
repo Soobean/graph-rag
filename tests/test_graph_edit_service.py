@@ -36,6 +36,10 @@ def mock_repo():
         "labels": ["Employee"],
         "properties": {"name": "홍길동", "updated_by": "anonymous_admin"},
     })
+    repo.delete_node_atomic = AsyncMock(return_value={
+        "deleted": True, "rel_count": 0, "not_found": False,
+    })
+    # 기존 메서드도 유지 (다른 테스트에서 사용 가능)
     repo.get_node_relationship_count = AsyncMock(return_value=0)
     repo.delete_node_generic = AsyncMock(return_value=True)
     repo.create_relationship_generic = AsyncMock(return_value={
@@ -90,8 +94,16 @@ class TestCreateNode:
         with pytest.raises(ValidationError, match="required"):
             await service.create_node("Employee", {"name": "  "})
 
-    async def test_create_node_duplicate(self, service, mock_repo):
+    async def test_create_node_duplicate_early_check(self, service, mock_repo):
+        """서비스 레이어 중복 확인 (빠른 UX 피드백)"""
         mock_repo.check_duplicate_node.return_value = True
+        with pytest.raises(GraphEditConflictError, match="already exists"):
+            await service.create_node("Employee", {"name": "홍길동"})
+
+    async def test_create_node_duplicate_atomic(self, service, mock_repo):
+        """repository가 None 반환 시 (atomic 중복 감지) 에러"""
+        mock_repo.check_duplicate_node.return_value = False
+        mock_repo.create_node_generic.return_value = None
         with pytest.raises(GraphEditConflictError, match="already exists"):
             await service.create_node("Employee", {"name": "홍길동"})
 
@@ -204,22 +216,25 @@ class TestUpdateNode:
 class TestDeleteNode:
     async def test_delete_node_success(self, service, mock_repo):
         await service.delete_node("4:abc:0")
-        mock_repo.delete_node_generic.assert_awaited_once_with("4:abc:0", force=False)
+        mock_repo.delete_node_atomic.assert_awaited_once_with("4:abc:0", force=False)
 
     async def test_delete_node_not_found(self, service, mock_repo):
-        mock_repo.find_entity_by_id.side_effect = EntityNotFoundError("Node", "invalid")
+        mock_repo.delete_node_atomic.return_value = {
+            "deleted": False, "rel_count": 0, "not_found": True,
+        }
         with pytest.raises(EntityNotFoundError):
             await service.delete_node("invalid")
 
     async def test_delete_node_has_relationships(self, service, mock_repo):
-        mock_repo.get_node_relationship_count.return_value = 3
+        mock_repo.delete_node_atomic.return_value = {
+            "deleted": False, "rel_count": 3, "not_found": False,
+        }
         with pytest.raises(GraphEditConflictError, match="3 relationship"):
             await service.delete_node("4:abc:0")
 
     async def test_delete_node_force(self, service, mock_repo):
-        mock_repo.get_node_relationship_count.return_value = 3
         await service.delete_node("4:abc:0", force=True)
-        mock_repo.delete_node_generic.assert_awaited_once_with("4:abc:0", force=True)
+        mock_repo.delete_node_atomic.assert_awaited_once_with("4:abc:0", force=True)
 
 
 # =============================================================================

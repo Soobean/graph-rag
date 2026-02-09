@@ -2142,34 +2142,40 @@ class Neo4jRepository:
         self,
         label: str,
         properties: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """
-        범용 노드 생성
+        범용 노드 생성 (atomic — 이름 중복 시 생성하지 않음)
+
+        OPTIONAL MATCH + WHERE NULL + CREATE 패턴으로 check-and-create를
+        단일 트랜잭션 내에서 수행합니다 (TOCTOU race condition 방지).
 
         Args:
             label: 노드 레이블 (사전 검증 필요)
-            properties: 노드 속성
+            properties: 노드 속성 (name 필드 필수)
 
         Returns:
-            생성된 노드 정보 (id, labels, properties)
+            생성된 노드 정보 (id, labels, properties) 또는 중복 시 None
         """
         validated_label = self._validate_identifier(label, "label")
 
         query = f"""
+        OPTIONAL MATCH (existing:{validated_label})
+        WHERE toLower(existing.name) = toLower($name)
+        WITH existing
+        WHERE existing IS NULL
         CREATE (n:{validated_label} $props)
         SET n.created_at = datetime()
         RETURN elementId(n) as id, labels(n) as labels, properties(n) as properties
         """
 
         try:
-            results = await self._client.execute_write(query, {"props": properties})
+            name = properties.get("name", "")
+            results = await self._client.execute_write(
+                query, {"props": properties, "name": name}
+            )
             if not results:
-                raise QueryExecutionError(
-                    "Node creation returned no results", query=query
-                )
+                return None
             return results[0]
-        except QueryExecutionError:
-            raise
         except Exception as e:
             logger.error(f"Failed to create node with label '{label}': {e}")
             raise QueryExecutionError(
@@ -2309,6 +2315,66 @@ class Neo4jRepository:
         results = await self._client.execute_query(query, {"node_id": node_id})
         return results[0]["count"] if results else 0
 
+    async def delete_node_atomic(
+        self,
+        node_id: str,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """
+        노드 삭제 (atomic — 관계 확인과 삭제를 단일 트랜잭션으로 수행)
+
+        force=False: 관계가 없을 때만 삭제, 관계 있으면 rel_count 반환
+        force=True: DETACH DELETE로 관계와 함께 삭제
+
+        Args:
+            node_id: 노드 elementId
+            force: True면 연결된 관계도 함께 삭제
+
+        Returns:
+            {"deleted": bool, "rel_count": int}
+            - deleted=True: 삭제 성공
+            - deleted=False, rel_count>0: 관계 존재로 삭제 거부
+            - 결과 비어있으면: 노드 자체가 없음
+        """
+        if force:
+            query = """
+            MATCH (n)
+            WHERE elementId(n) = $node_id
+            DETACH DELETE n
+            RETURN true as deleted, 0 as rel_count
+            """
+        else:
+            query = """
+            MATCH (n)
+            WHERE elementId(n) = $node_id
+            OPTIONAL MATCH (n)-[r]-()
+            WITH n, count(DISTINCT r) as rel_count
+            CALL {
+                WITH n, rel_count
+                WITH n WHERE rel_count = 0
+                DELETE n
+                RETURN true as was_deleted
+            }
+            RETURN rel_count, coalesce(was_deleted, false) as deleted
+            """
+
+        try:
+            results = await self._client.execute_write(
+                query, {"node_id": node_id}
+            )
+            if not results:
+                return {"deleted": False, "rel_count": 0, "not_found": True}
+            return {
+                "deleted": results[0]["deleted"],
+                "rel_count": results[0]["rel_count"],
+                "not_found": False,
+            }
+        except Exception as e:
+            logger.error(f"Failed to delete node {node_id}: {e}")
+            raise QueryExecutionError(
+                f"Failed to delete node: {e}", query=query
+            ) from e
+
     async def create_relationship_generic(
         self,
         source_id: str,
@@ -2427,16 +2493,72 @@ class Neo4jRepository:
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         """
-        노드 검색 (레이블 필터, 이름 CONTAINS 검색)
+        노드 검색 (레이블 필터, 이름 검색)
+
+        검색어가 있으면 Fulltext Index(graph_edit_name_fulltext)를 사용하고,
+        없으면 기존 MATCH 쿼리를 사용합니다. Fulltext Index 호출 실패 시
+        자동으로 기존 CONTAINS 방식으로 폴백합니다.
 
         Args:
             label: 필터링할 레이블 (None이면 전체)
-            search: 이름 검색어 (CONTAINS, 대소문자 무시)
+            search: 이름 검색어 (fulltext 검색, 대소문자 무시)
             limit: 최대 결과 수
 
         Returns:
             노드 정보 리스트
         """
+        if search:
+            try:
+                return await self._search_nodes_fulltext(label, search, limit)
+            except Exception as e:
+                err_msg = str(e).lower()
+                if "index" in err_msg or "fulltext" in err_msg or "procedure" in err_msg:
+                    logger.debug(
+                        "Fulltext index not available, falling back to CONTAINS: %s", e
+                    )
+                    return await self._search_nodes_contains(label, search, limit)
+                raise
+
+        return await self._search_nodes_contains(label, None, limit)
+
+    async def _search_nodes_fulltext(
+        self,
+        label: str | None,
+        search: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Fulltext Index를 사용한 검색"""
+        label_where = ""
+        if label:
+            self._validate_identifier(label, "label")
+            label_where = "WHERE $label IN labels(n)"
+
+        # Fulltext 쿼리 문법: 와일드카드 추가로 부분 일치 지원
+        fulltext_search = f"{search}*"
+
+        query = f"""
+        CALL db.index.fulltext.queryNodes('graph_edit_name_fulltext', $search)
+        YIELD node, score
+        WITH node as n, score
+        {label_where}
+        RETURN elementId(n) as id, labels(n) as labels, properties(n) as properties
+        ORDER BY score DESC
+        LIMIT $limit
+        """
+
+        params: dict[str, Any] = {"search": fulltext_search, "limit": limit}
+        if label:
+            params["label"] = label
+
+        return await self._client.execute_query(query, params)
+
+    async def _search_nodes_contains(
+        self,
+        label: str | None,
+        search: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """기존 CONTAINS 방식 검색 (폴백용)"""
         label_filter = ""
         if label:
             validated_label = self._validate_identifier(label, "label")
