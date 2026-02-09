@@ -22,7 +22,7 @@ def mock_settings():
     """Mock Settings"""
     settings = MagicMock(spec=Settings)
     settings.vector_search_enabled = False
-    settings.ontology_mode = "file"  # Multi-hop 테스트용
+    settings.ontology_mode = "yaml"  # Multi-hop 테스트용
     settings.adaptive_ontology = MagicMock()
     settings.adaptive_ontology.enabled = False
     # Latency Optimization 설정

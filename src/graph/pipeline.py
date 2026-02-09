@@ -473,11 +473,23 @@ class GraphRAGPipeline:
 
         except Exception as e:
             logger.error(f"Pipeline execution failed: {e}")
+            error_metadata: PipelineMetadata = {
+                "intent": "unknown",
+                "intent_confidence": 0.0,
+                "entities": {},
+                "resolved_entities": [],
+                "cypher_query": "",
+                "cypher_parameters": {},
+                "result_count": 0,
+                "execution_path": ["pipeline_error"],
+                "query_plan": None,
+                "error": str(e),
+            }
             return {
                 "success": False,
                 "question": question,
-                "response": f"죄송합니다. 질문을 처리하는 중 오류가 발생했습니다: {e}",
-                "metadata": {},
+                "response": "죄송합니다. 질문을 처리하는 중 오류가 발생했습니다.",
+                "metadata": error_metadata,
                 "error": str(e),
             }
 

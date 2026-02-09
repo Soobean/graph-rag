@@ -5,6 +5,7 @@ Graph Executor Node
 """
 
 from src.domain.types import GraphExecutorUpdate
+from src.domain.validators import validate_read_only_cypher
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
 from src.repositories.neo4j_repository import Neo4jRepository
@@ -48,6 +49,17 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
             )
 
         self._logger.info(f"Executing Cypher: {cypher_query[:100]}...")
+
+        try:
+            validate_read_only_cypher(cypher_query)
+        except ValueError as e:
+            self._logger.error(f"Write query blocked: {e}")
+            return GraphExecutorUpdate(
+                graph_results=[],
+                result_count=0,
+                error=f"Security: {e}",
+                execution_path=[f"{self.name}_blocked"],
+            )
 
         try:
             results = await self._neo4j.execute_cypher(

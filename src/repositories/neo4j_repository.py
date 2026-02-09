@@ -770,30 +770,44 @@ class Neo4jRepository:
             저장된 OntologyProposal (id 포함)
         """
         query = """
-        MERGE (p:OntologyProposal {term: $term, category: $category})
-        ON CREATE SET
-            p.id = $id,
-            p.version = 1,
-            p.proposal_type = $proposal_type,
-            p.suggested_action = $suggested_action,
-            p.suggested_parent = $suggested_parent,
-            p.suggested_canonical = $suggested_canonical,
-            p.evidence_questions = $evidence_questions,
-            p.frequency = $frequency,
-            p.confidence = $confidence,
-            p.status = $status,
-            p.source = $source,
-            p.created_at = datetime(),
-            p.updated_at = datetime()
-        ON MATCH SET
-            p.version = p.version + 1,
-            p.frequency = p.frequency + 1,
-            p.evidence_questions = CASE
-                WHEN $question <> '' AND NOT $question IN COALESCE(p.evidence_questions, [])
-                THEN COALESCE(p.evidence_questions, []) + [$question]
-                ELSE COALESCE(p.evidence_questions, [])
-            END,
-            p.updated_at = datetime()
+        OPTIONAL MATCH (existing:OntologyProposal)
+        WHERE toLower(existing.term) = toLower($term)
+          AND toLower(existing.category) = toLower($category)
+        WITH existing
+        CALL {
+            WITH existing
+            WITH existing WHERE existing IS NOT NULL
+            SET existing.version = existing.version + 1,
+                existing.frequency = existing.frequency + 1,
+                existing.evidence_questions = CASE
+                    WHEN $question <> '' AND NOT $question IN COALESCE(existing.evidence_questions, [])
+                    THEN COALESCE(existing.evidence_questions, []) + [$question]
+                    ELSE COALESCE(existing.evidence_questions, [])
+                END,
+                existing.updated_at = datetime()
+            RETURN existing AS p
+          UNION
+            WITH existing
+            WITH existing WHERE existing IS NULL
+            CREATE (new:OntologyProposal {
+                id: $id,
+                term: $term,
+                category: $category,
+                version: 1,
+                proposal_type: $proposal_type,
+                suggested_action: $suggested_action,
+                suggested_parent: $suggested_parent,
+                suggested_canonical: $suggested_canonical,
+                evidence_questions: $evidence_questions,
+                frequency: $frequency,
+                confidence: $confidence,
+                status: $status,
+                source: $source,
+                created_at: datetime(),
+                updated_at: datetime()
+            })
+            RETURN new AS p
+        }
         RETURN
             p.id as id,
             p.version as version,
@@ -820,7 +834,7 @@ class Neo4jRepository:
         question = evidence_questions[0] if evidence_questions else ""
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "id": data["id"],
@@ -865,7 +879,8 @@ class Neo4jRepository:
             찾은 OntologyProposal 또는 None
         """
         query = """
-        MATCH (p:OntologyProposal {term: $term, category: $category})
+        MATCH (p:OntologyProposal)
+        WHERE toLower(p.term) = toLower($term) AND toLower(p.category) = toLower($category)
         RETURN
             p.id as id,
             p.version as version,
@@ -931,7 +946,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query, {"id": proposal_id, "question": question}
             )
             return len(results) > 0
@@ -977,7 +992,7 @@ class Neo4jRepository:
         data = proposal.to_dict()
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "id": data["id"],
@@ -1096,7 +1111,7 @@ class Neo4jRepository:
             }
 
         try:
-            results = await self._client.execute_query(query, params)
+            results = await self._client.execute_write(query, params)
 
             if not results:
                 logger.debug(
@@ -1478,7 +1493,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "proposal_ids": proposal_ids,
@@ -1580,7 +1595,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(query, params)
+            results = await self._client.execute_write(query, params)
 
             if results:
                 return OntologyProposal.from_dict(results[0])
@@ -1655,7 +1670,7 @@ class Neo4jRepository:
         data = proposal.to_dict()
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "id": data["id"],
@@ -1845,7 +1860,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "name": validated_name,
@@ -1911,7 +1926,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "alias_name": validated_alias,
@@ -1973,7 +1988,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "child_name": validated_child,
@@ -2032,7 +2047,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "entity_name": validated_entity,
@@ -2090,7 +2105,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(
+            results = await self._client.execute_write(
                 query,
                 {
                     "part_name": validated_part,
@@ -2127,7 +2142,7 @@ class Neo4jRepository:
         """
 
         try:
-            results = await self._client.execute_query(query, {"id": proposal_id})
+            results = await self._client.execute_write(query, {"id": proposal_id})
             return len(results) > 0
 
         except Exception as e:
@@ -2400,8 +2415,9 @@ class Neo4jRepository:
         query = f"""
         MATCH (src), (tgt)
         WHERE elementId(src) = $source_id AND elementId(tgt) = $target_id
-        CREATE (src)-[r:{validated_type} $props]->(tgt)
-        SET r.created_at = datetime()
+        MERGE (src)-[r:{validated_type}]->(tgt)
+        ON CREATE SET r += $props, r.created_at = datetime()
+        ON MATCH SET r += $props, r.updated_at = datetime()
         RETURN
             elementId(r) as id,
             type(r) as type,

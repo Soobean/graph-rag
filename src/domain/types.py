@@ -153,7 +153,7 @@ class PromptTemplate(TypedDict):
 class SubGraphNode(TypedDict):
     """서브그래프 노드 구조"""
 
-    id: int
+    id: str
     labels: list[str]
     properties: dict[str, Any]
 
@@ -161,10 +161,10 @@ class SubGraphNode(TypedDict):
 class SubGraphRelationship(TypedDict):
     """서브그래프 관계 구조"""
 
-    id: int
+    id: str
     type: str
-    start_node_id: int
-    end_node_id: int
+    start_node_id: str
+    end_node_id: str
     properties: dict[str, Any]
 
 

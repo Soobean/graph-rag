@@ -15,6 +15,8 @@ from typing import Any, Literal
 
 from graphdatascience import GraphDataScience
 
+from src.domain.validators import validate_cypher_identifier
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,14 +84,14 @@ class GDSService:
         self._gds: GraphDataScience | None = None
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
 
-        logger.info(f"GDSService initialized: uri={uri}, database={database}")
+        logger.info(f"GDSService initialized: database={database}")
 
     async def connect(self) -> None:
         """GDS 클라이언트 연결"""
         if self._gds is not None:
             return
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self._gds = await loop.run_in_executor(
             self._executor,
             lambda: GraphDataScience(
@@ -149,7 +151,7 @@ class GDSService:
                 logger.error(f"Failed to list projections: {e}")
             return dropped
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, _cleanup)
 
     async def create_skill_similarity_projection(
@@ -250,7 +252,7 @@ class GDSService:
                 _cleanup_projections()
                 raise
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._executor, _create)
 
         logger.info(
@@ -269,7 +271,7 @@ class GDSService:
                 return True
             return False
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._executor, _drop)
 
         if result:
@@ -301,7 +303,7 @@ class GDSService:
                 "relationshipTypes": list(G.relationship_types()),
             }
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, _info)
 
     # =========================================================================
@@ -328,6 +330,7 @@ class GDSService:
             커뮤니티 탐지 결과
         """
         name = projection_name or self.SKILL_PROJECTION
+        validate_cypher_identifier(write_property, "write_property")
 
         def _detect():
             # 프로젝션 존재 확인
@@ -374,7 +377,7 @@ class GDSService:
                 "communities": communities.to_dict("records"),
             }
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._executor, _detect)
 
         logger.info(
@@ -437,7 +440,7 @@ class GDSService:
             )
             return result.to_dict("records")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._executor, _find)
 
         logger.info(f"Found {len(result)} similar employees for '{employee_name}'")
@@ -556,7 +559,7 @@ class GDSService:
                 "total_score": round(total_score, 3),
             }
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._executor, _recommend)
 
         logger.info(
@@ -624,7 +627,7 @@ class GDSService:
                 "top_skills": skill_stats.to_dict("records"),
             }
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._executor, _get_details)
 
         logger.info(

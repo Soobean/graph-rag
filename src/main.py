@@ -117,7 +117,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ontology_registry=ontology_registry,
         ontology_service=ontology_service,
     )
-    logger.info("Pipeline initialized with pre-loaded schema, ontology registry, and ontology service")
+    logger.info(
+        "Pipeline initialized with pre-loaded schema, ontology registry, and ontology service"
+    )
 
     # GDS 서비스 초기화
     gds_service = GDSService(
@@ -186,7 +188,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],  # DELETE 추가 (Graph Edit API)
+    allow_methods=[
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+    ],  # DELETE 추가 (Graph Edit API)
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
 )
 
@@ -241,9 +249,7 @@ async def invalid_state_handler(
 
 
 @app.exception_handler(GraphRAGError)
-async def graphrag_error_handler(
-    request: Request, exc: GraphRAGError
-) -> JSONResponse:
+async def graphrag_error_handler(request: Request, exc: GraphRAGError) -> JSONResponse:
     """기타 도메인 예외 시 500 응답"""
     logger.error(f"GraphRAGError: {exc.message}", exc_info=True)
     return JSONResponse(
@@ -263,11 +269,6 @@ app.include_router(graph_edit_router)
 
 # Frontend 정적 파일 경로
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
-
-@app.get("/api/v1/health")
-async def health_check():
-    """헬스체크 엔드포인트"""
-    return {"status": "healthy", "version": settings.app_version}
 
 
 # Frontend 정적 파일 서빙 (프로덕션용)
