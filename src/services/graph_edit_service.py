@@ -104,7 +104,8 @@ class GraphEditService:
                     field=prop,
                 )
 
-        # 3. 이름 중복 확인 (toLower)
+        # 중복 방지 2단계 전략:
+        # 1) Early check — 대부분의 중복을 빠르게 감지하여 즉시 UX 피드백
         name = str(properties["name"]).strip()
         properties["name"] = name
         is_duplicate = await self._neo4j.check_duplicate_node(label, name)
@@ -113,10 +114,15 @@ class GraphEditService:
                 f"Node with name '{name}' already exists in label '{label}'"
             )
 
-        # 4. 메타데이터 추가
+        # 2) Atomic create — 동시 요청 race condition 방지 (repository 레벨)
         properties["created_by"] = ANONYMOUS_ADMIN
 
         result = await self._neo4j.create_node_generic(label, properties)
+        if result is None:
+            # 두 요청이 동시에 1단계를 통과했지만 repository atomic 패턴이 차단
+            raise GraphEditConflictError(
+                f"Node with name '{name}' already exists in label '{label}'"
+            )
         logger.info(f"Node created: {label} '{name}' by {ANONYMOUS_ADMIN}")
         return result
 
@@ -231,26 +237,23 @@ class GraphEditService:
         force: bool = False,
     ) -> None:
         """
-        노드 삭제
+        노드 삭제 (atomic — 관계 확인과 삭제를 단일 트랜잭션으로 수행)
 
         force=False: 관계가 있으면 409 반환
         force=True: 연결된 관계도 함께 삭제 (DETACH DELETE)
         """
-        # 1. 존재 확인
-        await self._neo4j.find_entity_by_id(node_id)
+        result = await self._neo4j.delete_node_atomic(node_id, force=force)
 
-        # 2. force=False면 관계 수 확인
-        if not force:
-            rel_count = await self._neo4j.get_node_relationship_count(node_id)
-            if rel_count > 0:
-                raise GraphEditConflictError(
-                    f"Node has {rel_count} relationship(s). "
-                    f"Use force=true to delete with relationships."
-                )
-
-        deleted = await self._neo4j.delete_node_generic(node_id, force=force)
-        if not deleted:
+        if result["not_found"]:
             raise EntityNotFoundError("Node", node_id)
+
+        if not result["deleted"]:
+            rel_count = result["rel_count"]
+            raise GraphEditConflictError(
+                f"Node has {rel_count} relationship(s). "
+                f"Use force=true to delete with relationships."
+            )
+
         logger.info(f"Node deleted: {node_id} (force={force})")
 
     # ============================================
