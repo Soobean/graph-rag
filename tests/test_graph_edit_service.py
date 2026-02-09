@@ -278,7 +278,7 @@ class TestDeleteEdge:
         mock_repo.delete_relationship_generic.assert_awaited_once_with("5:abc:0")
 
     async def test_delete_edge_not_found(self, service, mock_repo):
-        mock_repo.find_relationship_by_id.return_value = None
+        mock_repo.find_relationship_by_id.side_effect = EntityNotFoundError("Edge", "invalid")
         with pytest.raises(EntityNotFoundError):
             await service.delete_edge("invalid")
 

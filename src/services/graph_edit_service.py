@@ -313,18 +313,11 @@ class GraphEditService:
 
     async def get_edge(self, edge_id: str) -> dict[str, Any]:
         """엣지 조회 (ID 기반)"""
-        result = await self._neo4j.find_relationship_by_id(edge_id)
-        if not result:
-            raise EntityNotFoundError("Edge", edge_id)
-        return result
+        return await self._neo4j.find_relationship_by_id(edge_id)
 
     async def delete_edge(self, edge_id: str) -> None:
         """엣지 삭제"""
-        # 존재 확인
-        existing = await self._neo4j.find_relationship_by_id(edge_id)
-        if not existing:
-            raise EntityNotFoundError("Edge", edge_id)
-
+        await self._neo4j.find_relationship_by_id(edge_id)
         deleted = await self._neo4j.delete_relationship_generic(edge_id)
         if not deleted:
             raise EntityNotFoundError("Edge", edge_id)

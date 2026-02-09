@@ -2361,7 +2361,7 @@ class Neo4jRepository:
                 f"Failed to create relationship: {e}", query=query
             ) from e
 
-    async def find_relationship_by_id(self, rel_id: str) -> dict[str, Any] | None:
+    async def find_relationship_by_id(self, rel_id: str) -> dict[str, Any]:
         """
         ID로 관계 조회
 
@@ -2369,7 +2369,10 @@ class Neo4jRepository:
             rel_id: 관계 elementId
 
         Returns:
-            관계 정보 또는 None
+            관계 정보
+
+        Raises:
+            EntityNotFoundError: 관계가 존재하지 않는 경우
         """
         query = """
         MATCH (src)-[r]->(tgt)
@@ -2387,7 +2390,9 @@ class Neo4jRepository:
         """
 
         results = await self._client.execute_query(query, {"rel_id": rel_id})
-        return results[0] if results else None
+        if not results:
+            raise EntityNotFoundError("Edge", rel_id)
+        return results[0]
 
     async def delete_relationship_generic(self, rel_id: str) -> bool:
         """

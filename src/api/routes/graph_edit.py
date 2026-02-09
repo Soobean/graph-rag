@@ -147,6 +147,8 @@ async def create_edge(
         raise HTTPException(status_code=404, detail=e.message) from e
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=e.message) from e
+    except GraphEditConflictError as e:
+        raise HTTPException(status_code=409, detail=e.message) from e
 
 
 @router.get("/edges/{edge_id}", response_model=EdgeResponse)
