@@ -20,6 +20,7 @@ from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.gds_service import GDSService
+from src.services.graph_edit_service import GraphEditService
 from src.services.ontology_service import OntologyService
 
 if TYPE_CHECKING:
@@ -107,6 +108,19 @@ def get_ontology_registry(request: Request) -> OntologyRegistry:
     main.py lifespan에서 초기화된 인스턴스를 반환합니다.
     """
     return request.app.state.ontology_registry
+
+
+# ============================================
+# Graph Edit Service 의존성
+# ============================================
+
+
+def get_graph_edit_service(request: Request) -> GraphEditService:
+    """
+    GraphEditService 의존성 주입
+    app.state에서 초기화된 인스턴스를 가져옵니다.
+    """
+    return request.app.state.graph_edit_service
 
 
 # ============================================
