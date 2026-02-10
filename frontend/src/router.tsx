@@ -20,9 +20,13 @@ const AnalyticsPage = lazy(() =>
   import('@/pages/admin/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage }))
 );
 const SkillGapPage = lazy(() =>
-  import('@/pages/admin/SkillGapPage').then((m) => ({ default: m.SkillGapPage }))
+  import('@/pages/SkillGapPage').then((m) => ({ default: m.SkillGapPage }))
+);
+const GraphEditPage = lazy(() =>
+  import('@/pages/admin/GraphEditPage').then((m) => ({ default: m.GraphEditPage }))
 );
 
+// eslint-disable-next-line react-refresh/only-export-components
 function PageLoader() {
   return (
     <div className="flex h-full items-center justify-center">
@@ -31,6 +35,7 @@ function PageLoader() {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
 }
@@ -39,6 +44,14 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <ChatPage />,
+  },
+  {
+    path: '/skill-gap',
+    element: (
+      <SuspenseWrapper>
+        <SkillGapPage />
+      </SuspenseWrapper>
+    ),
   },
   {
     path: '/admin',
@@ -85,10 +98,10 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'skill-gap',
+        path: 'graph-edit',
         element: (
           <SuspenseWrapper>
-            <SkillGapPage />
+            <GraphEditPage />
           </SuspenseWrapper>
         ),
       },

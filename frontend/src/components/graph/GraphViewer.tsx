@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -11,13 +11,18 @@ import {
   type NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { GitBranchPlus, CirclePlus } from 'lucide-react';
 
 import { QueryNode, ExpandedNode, ResultNode } from './nodes';
 import { AnimatedEdge } from './edges';
 import { NodeDetailPanel } from './NodeDetailPanel';
+import { CreateNodeDialog } from '@/components/admin/graph-edit/CreateNodeDialog';
+import { CreateEdgeDialog } from '@/components/admin/graph-edit/CreateEdgeDialog';
+import { Button } from '@/components/ui/button';
 import { useGraphStore } from '@/stores';
 import { cn } from '@/lib/utils';
 import type { FlowNode, FlowEdge } from '@/types/graph';
+import type { NodeResponse } from '@/types/graphEdit';
 
 const nodeTypes = {
   query: QueryNode,
@@ -34,14 +39,24 @@ interface GraphViewerProps {
 }
 
 function GraphViewerInner({ className }: GraphViewerProps) {
-  const { nodes: storeNodes, edges: storeEdges, selectNode } = useGraphStore();
+  const { nodes: storeNodes, edges: storeEdges, selectNode, addNode, addEdge } = useGraphStore();
+
+  const [createNodeOpen, setCreateNodeOpen] = useState(false);
+  const [createEdgeOpen, setCreateEdgeOpen] = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(storeNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(storeEdges);
 
-  // Store 변경 시 로컬 상태 동기화
+  // Store 변경 시 로컬 상태 동기화 (기존 노드의 드래그 위치 보존)
   useEffect(() => {
-    setNodes(storeNodes);
+    setNodes((currentNodes) => {
+      if (currentNodes.length === 0) return storeNodes;
+      const posMap = new Map(currentNodes.map((n) => [n.id, n.position]));
+      return storeNodes.map((sn) => ({
+        ...sn,
+        position: posMap.get(sn.id) ?? sn.position,
+      }));
+    });
   }, [storeNodes, setNodes]);
 
   useEffect(() => {
@@ -58,6 +73,25 @@ function GraphViewerInner({ className }: GraphViewerProps) {
   const handlePaneClick = useCallback(() => {
     selectNode(null);
   }, [selectNode]);
+
+  // Edge creation: add missing endpoint nodes to graph, then add the edge
+  const handleEdgeCreated = useCallback(
+    (
+      edge: { id: string; type: string; source_id: string; target_id: string },
+      sourceNode: NodeResponse,
+      targetNode: NodeResponse,
+    ) => {
+      const existingIds = new Set(storeNodes.map((n) => n.id));
+      if (!existingIds.has(sourceNode.id)) {
+        addNode({ id: sourceNode.id, labels: sourceNode.labels, properties: sourceNode.properties });
+      }
+      if (!existingIds.has(targetNode.id)) {
+        addNode({ id: targetNode.id, labels: targetNode.labels, properties: targetNode.properties });
+      }
+      addEdge(edge);
+    },
+    [storeNodes, addNode, addEdge],
+  );
 
   const defaultEdgeOptions = useMemo(
     () => ({
@@ -121,6 +155,42 @@ function GraphViewerInner({ className }: GraphViewerProps) {
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
       </ReactFlow>
       <NodeDetailPanel />
+
+      {/* Create Node / Edge floating buttons */}
+      <div className="absolute bottom-4 right-4 z-10 flex gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          className="shadow-lg"
+          title="Create node"
+          onClick={() => setCreateNodeOpen(true)}
+        >
+          <CirclePlus className="mr-1 h-4 w-4" />
+          Node
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="shadow-lg"
+          title="Create edge"
+          onClick={() => setCreateEdgeOpen(true)}
+        >
+          <GitBranchPlus className="mr-1 h-4 w-4" />
+          Edge
+        </Button>
+      </div>
+
+      {/* Create Dialogs */}
+      <CreateNodeDialog
+        open={createNodeOpen}
+        onOpenChange={setCreateNodeOpen}
+        onSuccess={addNode}
+      />
+      <CreateEdgeDialog
+        open={createEdgeOpen}
+        onOpenChange={setCreateEdgeOpen}
+        onSuccess={handleEdgeCreated}
+      />
     </div>
   );
 }

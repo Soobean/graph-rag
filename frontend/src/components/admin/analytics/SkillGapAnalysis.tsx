@@ -5,17 +5,22 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAnalyzeSkillGap, useRecommendGapSolution } from '@/api/hooks/admin';
+import { cn } from '@/lib/utils';
 import {
   Users,
   Loader2,
   Search,
   X,
-  ChevronDown,
-  ChevronRight,
+  Check,
+  Minus,
+  CircleAlert,
   UserPlus,
   AlertTriangle,
   GitMerge,
   Lightbulb,
+  Target,
+  ShieldAlert,
+  TrendingUp,
   type LucideIcon,
 } from 'lucide-react';
 import type {
@@ -28,6 +33,10 @@ import type {
   InsightType,
   InsightSeverity,
 } from '@/types/admin';
+
+// ============================================
+// Constants
+// ============================================
 
 const STATUS_BADGE_VARIANT: Record<CoverageStatus, 'success' | 'warning' | 'destructive'> = {
   covered: 'success',
@@ -53,6 +62,30 @@ const SEVERITY_STYLES: Record<InsightSeverity, string> = {
   info: 'bg-blue-50 border-blue-200',
   success: 'bg-green-50 border-green-200',
 };
+
+const CATEGORY_COLOR_MAP: Record<string, string> = {
+  blue: 'bg-blue-500',
+  green: 'bg-green-500',
+  purple: 'bg-purple-500',
+  orange: 'bg-orange-500',
+  red: 'bg-red-500',
+  yellow: 'bg-yellow-500',
+  indigo: 'bg-indigo-500',
+  pink: 'bg-pink-500',
+  teal: 'bg-teal-500',
+  cyan: 'bg-cyan-500',
+};
+
+type CellStatus = 'exact' | 'similar' | 'gap';
+
+interface MatrixCell {
+  status: CellStatus;
+  possessedSkill?: string;
+}
+
+// ============================================
+// Sub-components (unchanged)
+// ============================================
 
 function getAvailabilityInfo(projectCount: number) {
   if (projectCount <= 1) {
@@ -90,7 +123,6 @@ function CandidateRecommendations({
 
   return (
     <div className="space-y-3">
-      {/* Available Candidates */}
       {available.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">
@@ -101,8 +133,6 @@ function CandidateRecommendations({
           ))}
         </div>
       )}
-
-      {/* Busy Candidates - Alternative */}
       {busy.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">
@@ -113,7 +143,6 @@ function CandidateRecommendations({
           ))}
         </div>
       )}
-
       {externalSearchQuery && (
         <p className="text-xs text-muted-foreground">
           External search: {externalSearchQuery}
@@ -172,22 +201,202 @@ function InsightCard({ insight }: { insight: Insight }) {
   );
 }
 
-function InsightsSection({ insights }: { insights: Insight[] }) {
-  if (insights.length === 0) {
-    return null;
-  }
+// ============================================
+// Matrix Cell
+// ============================================
+
+function MatrixCellView({
+  cell,
+  isHighlighted,
+  onClick,
+}: {
+  cell: MatrixCell;
+  isHighlighted: boolean;
+  onClick?: () => void;
+}) {
+  const isClickable = cell.status !== 'exact' && !!onClick;
 
   return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium">Insights</p>
-      <div className="space-y-2">
-        {insights.map((insight, idx) => (
-          <InsightCard key={`${insight.type}-${idx}`} insight={insight} />
-        ))}
-      </div>
+    <button
+      type="button"
+      disabled={!isClickable}
+      onClick={isClickable ? onClick : undefined}
+      title={
+        cell.status === 'exact'
+          ? 'Has this skill'
+          : cell.status === 'similar'
+            ? `Has similar: ${cell.possessedSkill}`
+            : 'Skill gap — click for recommendations'
+      }
+      className={cn(
+        'flex h-9 w-9 items-center justify-center rounded-md transition-all',
+        cell.status === 'exact' && 'bg-emerald-500/20 text-emerald-600',
+        cell.status === 'similar' && 'bg-amber-400/20 text-amber-600',
+        cell.status === 'gap' && 'bg-red-500/10 text-red-400 border border-dashed border-red-300',
+        isHighlighted && 'ring-2 ring-primary ring-offset-1',
+        isClickable && 'cursor-pointer hover:scale-110',
+      )}
+    >
+      {cell.status === 'exact' && <Check className="h-4 w-4" />}
+      {cell.status === 'similar' && <Minus className="h-4 w-4" />}
+      {cell.status === 'gap' && <CircleAlert className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+// ============================================
+// Skill Matrix Grid
+// ============================================
+
+function SkillMatrix({
+  result,
+  expandedSkill,
+  onSkillClick,
+}: {
+  result: SkillGapAnalyzeResponse;
+  expandedSkill: string | null;
+  onSkillClick: (skill: SkillCoverage) => void;
+}) {
+  // Build matrix: rows = team members, columns = skills
+  const matrix: { member: string; cells: MatrixCell[] }[] = result.team_members.map(
+    (member) => ({
+      member,
+      cells: result.skill_details.map((skill) => {
+        if (skill.exact_matches.includes(member)) {
+          return { status: 'exact' as const };
+        }
+        const similar = skill.similar_matches.find((m) => m.employee_name === member);
+        if (similar) {
+          return { status: 'similar' as const, possessedSkill: similar.possessed_skill };
+        }
+        return { status: 'gap' as const };
+      }),
+    }),
+  );
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-separate border-spacing-1">
+        <thead>
+          <tr>
+            {/* Corner cell */}
+            <th className="sticky left-0 z-10 bg-background" />
+            {/* Skill column headers */}
+            {result.skill_details.map((skill) => (
+              <th key={skill.skill} className="pb-2 px-1">
+                <button
+                  type="button"
+                  onClick={() => onSkillClick(skill)}
+                  className={cn(
+                    'flex flex-col items-center gap-1 text-xs font-medium transition-colors',
+                    expandedSkill === skill.skill
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground',
+                    skill.status !== 'covered' && 'cursor-pointer',
+                  )}
+                >
+                  <span className="max-w-[80px] truncate">{skill.skill}</span>
+                  <Badge
+                    variant={STATUS_BADGE_VARIANT[skill.status]}
+                    className="text-[10px] px-1.5 py-0"
+                  >
+                    {STATUS_LABEL[skill.status]}
+                  </Badge>
+                </button>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {matrix.map((row) => (
+            <tr key={row.member}>
+              {/* Member name */}
+              <td className="sticky left-0 z-10 bg-background pr-3 text-sm font-medium whitespace-nowrap">
+                {row.member}
+              </td>
+              {/* Cells */}
+              {row.cells.map((cell, colIdx) => {
+                const skill = result.skill_details[colIdx];
+                return (
+                  <td key={skill.skill} className="text-center">
+                    <MatrixCellView
+                      cell={cell}
+                      isHighlighted={expandedSkill === skill.skill}
+                      onClick={
+                        skill.status !== 'covered'
+                          ? () => onSkillClick(skill)
+                          : undefined
+                      }
+                    />
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
+
+// ============================================
+// Summary Stats
+// ============================================
+
+function SummaryStats({ result }: { result: SkillGapAnalyzeResponse }) {
+  const totalSkills = result.skill_details.length;
+  const coveredCount = result.skill_details.filter((s) => s.status === 'covered').length;
+  const partialCount = result.skill_details.filter((s) => s.status === 'partial').length;
+  const gapCount = result.gaps.length;
+  const coveragePercent = totalSkills > 0 ? Math.round(((coveredCount + partialCount * 0.5) / totalSkills) * 100) : 0;
+
+  return (
+    <div className="grid grid-cols-4 gap-3">
+      <Card className="border-l-4 border-l-emerald-500">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+            <span className="text-xs text-muted-foreground">Coverage</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold">{coveragePercent}%</p>
+        </CardContent>
+      </Card>
+      <Card className="border-l-4 border-l-blue-500">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-blue-500" />
+            <span className="text-xs text-muted-foreground">Team</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold">{result.team_members.length}</p>
+        </CardContent>
+      </Card>
+      <Card className="border-l-4 border-l-amber-500">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2">
+            <Target className="h-4 w-4 text-amber-500" />
+            <span className="text-xs text-muted-foreground">Skills</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold">
+            {coveredCount}<span className="text-sm font-normal text-muted-foreground">/{totalSkills}</span>
+          </p>
+        </CardContent>
+      </Card>
+      <Card className="border-l-4 border-l-red-500">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-red-500" />
+            <span className="text-xs text-muted-foreground">Gaps</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold">{gapCount}</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================
+// Main Component
+// ============================================
 
 export function SkillGapAnalysis() {
   // Input state
@@ -284,309 +493,324 @@ export function SkillGapAnalysis() {
     }
   };
 
-  const getCategoryColor = (color: string) => {
-    const colorMap: Record<string, string> = {
-      blue: 'bg-blue-500',
-      green: 'bg-green-500',
-      purple: 'bg-purple-500',
-      orange: 'bg-orange-500',
-      red: 'bg-red-500',
-      yellow: 'bg-yellow-500',
-      indigo: 'bg-indigo-500',
-      pink: 'bg-pink-500',
-      teal: 'bg-teal-500',
-      cyan: 'bg-cyan-500',
-    };
-    return colorMap[color] || 'bg-gray-500';
-  };
+  // Find expanded skill detail
+  const expandedSkillDetail = expandedSkill
+    ? result?.skill_details.find((s) => s.skill === expandedSkill)
+    : null;
 
   return (
-    <Card>
-      <CardHeader className="pb-4">
-        <CardTitle className="text-lg">Skill Gap Analysis</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Required Skills Input */}
-        <div className="space-y-2">
-          <label htmlFor="required-skills" className="text-sm font-medium">
-            Required Skills
-          </label>
-          <Input
-            id="required-skills"
-            value={skillInput}
-            onChange={(e) => setSkillInput(e.target.value)}
-            onKeyDown={handleAddSkill}
-            placeholder="Type a skill and press Enter..."
-          />
-          {skills.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {skills.map((skill) => (
-                <Badge key={skill} variant="secondary" className="gap-1">
-                  {skill}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveSkill(skill)}
-                    className="ml-1 rounded-full hover:bg-muted"
-                    aria-label={`Remove ${skill}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Team Source Toggle */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Team Source</label>
-          <div className="flex gap-2">
-            <Button
-              variant={teamMode === 'members' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTeamMode('members')}
-            >
-              <Users className="mr-2 h-4 w-4" />
-              Members
-            </Button>
-            <Button
-              variant={teamMode === 'project' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTeamMode('project')}
-            >
-              <Search className="mr-2 h-4 w-4" />
-              Project
-            </Button>
-          </div>
-        </div>
-
-        {/* Team Members Input */}
-        {teamMode === 'members' && (
-          <div className="space-y-2">
-            <label htmlFor="team-members" className="text-sm font-medium">
-              Team Members
-            </label>
-            <Input
-              id="team-members"
-              value={memberInput}
-              onChange={(e) => setMemberInput(e.target.value)}
-              onKeyDown={handleAddMember}
-              placeholder="Type a member name and press Enter..."
-            />
-            {members.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {members.map((member) => (
-                  <Badge key={member} variant="outline" className="gap-1">
-                    {member}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMember(member)}
-                      className="ml-1 rounded-full hover:bg-muted"
-                      aria-label={`Remove ${member}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Project ID Input */}
-        {teamMode === 'project' && (
-          <div className="space-y-2">
-            <label htmlFor="project-id" className="text-sm font-medium">
-              Project ID
-            </label>
-            <Input
-              id="project-id"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              placeholder="Enter project ID..."
-            />
-          </div>
-        )}
-
-        {/* Analyze Button */}
-        <Button onClick={handleAnalyze} disabled={analyzeGap.isPending || !canAnalyze}>
-          {analyzeGap.isPending ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Search className="mr-2 h-4 w-4" />
-          )}
-          Analyze
-        </Button>
-
-        {/* Error */}
-        {analyzeGap.error && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">
-            {analyzeGap.error instanceof Error ? analyzeGap.error.message : 'An error occurred'}
-          </div>
-        )}
-
-        {/* Results */}
-        {result && (
-          <div className="space-y-4 border-t pt-4">
-            {/* Summary */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">
-                  {result.team_members.length} team members
-                </span>
-              </div>
-              <Badge variant={STATUS_BADGE_VARIANT[result.overall_status]}>
-                {STATUS_LABEL[result.overall_status]}
-              </Badge>
-            </div>
-
-            {/* Category Summary */}
-            <div className="space-y-3">
-              <p className="text-sm font-medium">Category Coverage</p>
-              {result.category_summary.map((cat) => (
-                <div key={cat.category} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`h-2 w-2 rounded-full ${getCategoryColor(cat.color)}`}
-                      />
-                      <span>{cat.category}</span>
-                    </div>
-                    <span className="text-muted-foreground">
-                      {cat.covered_count}/{cat.total_skills} ({(cat.coverage_ratio * 100).toFixed(0)}%)
-                    </span>
-                  </div>
-                  <Progress value={cat.coverage_ratio * 100} className="h-2" />
-                </div>
-              ))}
-            </div>
-
-            {/* Insights Section */}
-            {result.insights && result.insights.length > 0 && (
-              <InsightsSection insights={result.insights} />
-            )}
-
-            {/* Skill Details */}
+    <div className="space-y-6">
+      {/* ── Form Section ── */}
+      <Card>
+        <CardContent className="p-5">
+          <div className="grid gap-5 md:grid-cols-2">
+            {/* Left: Skills */}
             <div className="space-y-2">
-              <p className="text-sm font-medium">Skill Details</p>
-              <div className="max-h-[400px] space-y-2 overflow-y-auto">
-                {result.skill_details.map((detail) => (
-                  <div key={detail.skill} className="rounded-lg border">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between p-3 text-left hover:bg-muted/50"
-                      onClick={() => handleSkillClick(detail)}
-                      disabled={detail.status === 'covered'}
-                    >
-                      <div className="flex items-center gap-2">
-                        {detail.status !== 'covered' ? (
-                          expandedSkill === detail.skill ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )
-                        ) : (
-                          <span className="w-4" />
-                        )}
-                        <span className="font-medium">{detail.skill}</span>
-                        {detail.category && (
-                          <span className="text-xs text-muted-foreground">({detail.category})</span>
-                        )}
-                      </div>
-                      <Badge variant={STATUS_BADGE_VARIANT[detail.status]}>
-                        {STATUS_LABEL[detail.status]}
-                      </Badge>
-                    </button>
-
-                    {/* Skill Detail Expanded */}
-                    {expandedSkill === detail.skill && (
-                      <div className="border-t bg-muted/30 p-3 space-y-3">
-                        <p className="text-sm text-muted-foreground">{detail.explanation}</p>
-
-                        {/* Existing Matches */}
-                        {(detail.exact_matches.length > 0 || detail.similar_matches.length > 0) && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              Current Team Coverage
-                            </p>
-                            {detail.exact_matches.map((name, idx) => (
-                              <div
-                                key={`exact-${idx}`}
-                                className="flex items-center gap-2 text-sm"
-                              >
-                                <Badge variant="success" className="text-xs">
-                                  Exact
-                                </Badge>
-                                <span>{name}</span>
-                              </div>
-                            ))}
-                            {detail.similar_matches.map((match, idx) => (
-                              <div
-                                key={`similar-${idx}`}
-                                className="flex items-center gap-2 text-sm"
-                              >
-                                <Badge variant="outline" className="text-xs">
-                                  Similar
-                                </Badge>
-                                <span>{match.employee_name}</span>
-                                <span className="text-muted-foreground">({match.possessed_skill})</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Recommendations */}
-                        {recommendations[detail.skill] ? (
-                          <CandidateRecommendations
-                            candidates={recommendations[detail.skill].internal_candidates}
-                            externalSearchQuery={recommendations[detail.skill].external_search_query}
-                          />
-                        ) : recommendSolution.isPending && expandedSkill === detail.skill ? (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Loading recommendations...
-                          </div>
-                        ) : recommendSolution.error && expandedSkill === detail.skill ? (
-                          <p className="text-sm text-red-600">
-                            Failed to load recommendations
-                          </p>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Gaps Summary */}
-            {result.gaps.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Gap Skills ({result.gaps.length})</p>
-                <div className="flex flex-wrap gap-2">
-                  {result.gaps.map((gap) => (
-                    <Badge key={gap} variant="destructive">
-                      {gap}
+              <label htmlFor="required-skills" className="text-sm font-medium">
+                Required Skills
+              </label>
+              <Input
+                id="required-skills"
+                value={skillInput}
+                onChange={(e) => setSkillInput(e.target.value)}
+                onKeyDown={handleAddSkill}
+                placeholder="Type a skill and press Enter..."
+              />
+              {skills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {skills.map((skill) => (
+                    <Badge key={skill} variant="secondary" className="gap-1">
+                      {skill}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSkill(skill)}
+                        className="ml-1 rounded-full hover:bg-muted"
+                        aria-label={`Remove ${skill}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     </Badge>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Recommendations Summary */}
-            {result.recommendations.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Recommendations</p>
-                <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                  {result.recommendations.map((rec, idx) => (
-                    <li key={idx}>{rec}</li>
-                  ))}
-                </ul>
+            {/* Right: Team */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Team Source</label>
+                <div className="flex gap-1">
+                  <Button
+                    variant={teamMode === 'members' ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setTeamMode('members')}
+                  >
+                    <Users className="mr-1 h-3 w-3" />
+                    Members
+                  </Button>
+                  <Button
+                    variant={teamMode === 'project' ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setTeamMode('project')}
+                  >
+                    <Search className="mr-1 h-3 w-3" />
+                    Project
+                  </Button>
+                </div>
               </div>
+
+              {teamMode === 'members' ? (
+                <>
+                  <Input
+                    id="team-members"
+                    value={memberInput}
+                    onChange={(e) => setMemberInput(e.target.value)}
+                    onKeyDown={handleAddMember}
+                    placeholder="Type a member name and press Enter..."
+                  />
+                  {members.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {members.map((member) => (
+                        <Badge key={member} variant="outline" className="gap-1">
+                          {member}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMember(member)}
+                            className="ml-1 rounded-full hover:bg-muted"
+                            aria-label={`Remove ${member}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Input
+                  id="project-id"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  placeholder="Enter project ID..."
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Analyze button */}
+          <div className="mt-4 flex items-center gap-3">
+            <Button onClick={handleAnalyze} disabled={analyzeGap.isPending || !canAnalyze}>
+              {analyzeGap.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="mr-2 h-4 w-4" />
+              )}
+              Analyze
+            </Button>
+            {analyzeGap.error && (
+              <span className="text-sm text-red-600">
+                {analyzeGap.error instanceof Error ? analyzeGap.error.message : 'An error occurred'}
+              </span>
             )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* ── Results ── */}
+      {result ? (
+        <>
+          {/* Summary Stats */}
+          <SummaryStats result={result} />
+
+          {/* Matrix + Detail — side by side on large screens */}
+          <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+            {/* Skill Matrix */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Skill Matrix</CardTitle>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-emerald-500/20">
+                        <Check className="h-3 w-3 text-emerald-600" />
+                      </span>
+                      Exact
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-amber-400/20">
+                        <Minus className="h-3 w-3 text-amber-600" />
+                      </span>
+                      Similar
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-dashed border-red-300 bg-red-500/10">
+                        <CircleAlert className="h-3 w-3 text-red-400" />
+                      </span>
+                      Gap
+                    </span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SkillMatrix
+                  result={result}
+                  expandedSkill={expandedSkill}
+                  onSkillClick={handleSkillClick}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Skill Detail Panel (right sidebar) */}
+            <div className="space-y-4">
+              {expandedSkillDetail ? (
+                <Card className="border-primary/30">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">{expandedSkillDetail.skill}</CardTitle>
+                      <Badge variant={STATUS_BADGE_VARIANT[expandedSkillDetail.status]}>
+                        {STATUS_LABEL[expandedSkillDetail.status]}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">{expandedSkillDetail.explanation}</p>
+
+                    {/* Current Coverage */}
+                    {(expandedSkillDetail.exact_matches.length > 0 || expandedSkillDetail.similar_matches.length > 0) && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">Current Team Coverage</p>
+                        {expandedSkillDetail.exact_matches.map((name, idx) => (
+                          <div key={`exact-${idx}`} className="flex items-center gap-2 text-sm">
+                            <Badge variant="success" className="text-xs">Exact</Badge>
+                            <span>{name}</span>
+                          </div>
+                        ))}
+                        {expandedSkillDetail.similar_matches.map((match, idx) => (
+                          <div key={`similar-${idx}`} className="flex items-center gap-2 text-sm">
+                            <Badge variant="outline" className="text-xs">Similar</Badge>
+                            <span>{match.employee_name}</span>
+                            <span className="text-muted-foreground">({match.possessed_skill})</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Recommendations */}
+                    {recommendations[expandedSkillDetail.skill] ? (
+                      <CandidateRecommendations
+                        candidates={recommendations[expandedSkillDetail.skill].internal_candidates}
+                        externalSearchQuery={recommendations[expandedSkillDetail.skill].external_search_query}
+                      />
+                    ) : recommendSolution.isPending ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading recommendations...
+                      </div>
+                    ) : recommendSolution.error ? (
+                      <p className="text-sm text-red-600">Failed to load recommendations</p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="border-dashed">
+                  <CardContent className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+                    <CircleAlert className="mb-2 h-8 w-8 opacity-30" />
+                    <p className="text-sm">Click a gap or partial skill in the matrix to see details and recommendations</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Category Coverage */}
+              {result.category_summary.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Category Coverage</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {result.category_summary.map((cat) => (
+                      <div key={cat.category} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2 w-2 rounded-full ${CATEGORY_COLOR_MAP[cat.color] || 'bg-gray-500'}`} />
+                            <span>{cat.category}</span>
+                          </div>
+                          <span className="text-muted-foreground">
+                            {cat.covered_count}/{cat.total_skills} ({(cat.coverage_ratio * 100).toFixed(0)}%)
+                          </span>
+                        </div>
+                        <Progress value={cat.coverage_ratio * 100} className="h-2" />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom: Insights + Gaps + Recommendations */}
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Insights */}
+            {result.insights && result.insights.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Insights</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {result.insights.map((insight, idx) => (
+                    <InsightCard key={`${insight.type}-${idx}`} insight={insight} />
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Gaps + Recommendations */}
+            {(result.gaps.length > 0 || result.recommendations.length > 0) && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Action Items</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {result.gaps.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">
+                        Gap Skills ({result.gaps.length})
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {result.gaps.map((gap) => (
+                          <Badge key={gap} variant="destructive">{gap}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {result.recommendations.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Recommendations</p>
+                      <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                        {result.recommendations.map((rec, idx) => (
+                          <li key={idx}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </>
+      ) : !analyzeGap.isPending ? (
+        /* Empty state */
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Target className="mb-4 h-12 w-12 text-muted-foreground/30" />
+            <h3 className="text-lg font-medium text-muted-foreground">No Analysis Yet</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground/80">
+              Enter required skills and team members above, then click Analyze to generate a skill gap matrix
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
   );
 }

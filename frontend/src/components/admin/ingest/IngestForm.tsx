@@ -7,6 +7,9 @@ import { Upload, Loader2, FileUp, X, CheckCircle2, File } from 'lucide-react';
 import { useStartIngest, useUploadFile } from '@/api/hooks/admin/useIngest';
 import type { SourceType } from '@/types/admin';
 
+// 파일 크기 제한 (100MB) — 컴포넌트 밖 상수
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+
 export function IngestForm() {
   const [filePath, setFilePath] = useState('');
   const [sourceType, setSourceType] = useState<SourceType>('csv');
@@ -24,9 +27,6 @@ export function IngestForm() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const startIngest = useStartIngest();
   const uploadFile = useUploadFile();
-
-  // 파일 크기 제한 (100MB)
-  const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
   // 파일 업로드 처리
   const handleFileUpload = useCallback(async (file: File) => {

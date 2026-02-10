@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
@@ -15,10 +15,12 @@ const SEARCH_DEBOUNCE_MS = 300;
 export function ProposalFilters({ filters, onFiltersChange }: ProposalFiltersProps) {
   const [searchValue, setSearchValue] = useState(filters.term_search || '');
 
-  // Sync external filter changes to local state
-  useEffect(() => {
+  // Sync external filter changes to local state (render-time setState pattern)
+  const [prevTermSearch, setPrevTermSearch] = useState(filters.term_search);
+  if (filters.term_search !== prevTermSearch) {
+    setPrevTermSearch(filters.term_search);
     setSearchValue(filters.term_search || '');
-  }, [filters.term_search]);
+  }
 
   const debouncedSearch = useDebouncedCallback(
     useCallback(

@@ -118,7 +118,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
           }
         }
       },
-      onComplete: (fullResponse: string, _success: boolean) => {
+      onComplete: (fullResponse: string) => {
         // 완료 시 최종 업데이트
         if (currentAssistantIdRef.current) {
           updateMessage(currentAssistantIdRef.current, {
