@@ -18,12 +18,21 @@ interface DeleteNodeDialogProps {
   node: NodeResponse | null;
   onOpenChange: (open: boolean) => void;
   previewOnly?: boolean;
+  onSuccess?: () => void;
 }
 
-export function DeleteNodeDialog({ node, onOpenChange, previewOnly = false }: DeleteNodeDialogProps) {
+export function DeleteNodeDialog({ node, onOpenChange, previewOnly = false, onSuccess }: DeleteNodeDialogProps) {
   const { data: impact, isLoading: impactLoading } = useDeletionImpact(node?.id ?? null);
   const deleteNode = useDeleteNode();
   const [error, setError] = useState<string | null>(null);
+
+  // Reset error and mutation state when a different node is opened
+  const [prevNodeId, setPrevNodeId] = useState<string | null>(null);
+  if (node?.id !== prevNodeId) {
+    setPrevNodeId(node?.id ?? null);
+    if (error) setError(null);
+    if (deleteNode.isError) deleteNode.reset();
+  }
 
   const hasRelationships = (impact?.affected_relationships.length ?? 0) > 0;
 
@@ -34,6 +43,7 @@ export function DeleteNodeDialog({ node, onOpenChange, previewOnly = false }: De
       { nodeId: node.id, force },
       {
         onSuccess: () => {
+          onSuccess?.();
           onOpenChange(false);
         },
         onError: (err) => {

@@ -26,6 +26,7 @@ const GraphEditPage = lazy(() =>
   import('@/pages/admin/GraphEditPage').then((m) => ({ default: m.GraphEditPage }))
 );
 
+// eslint-disable-next-line react-refresh/only-export-components
 function PageLoader() {
   return (
     <div className="flex h-full items-center justify-center">
@@ -34,6 +35,7 @@ function PageLoader() {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
 }

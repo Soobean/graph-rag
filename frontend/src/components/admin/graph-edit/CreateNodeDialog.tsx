@@ -22,9 +22,10 @@ interface PropertyRow {
 interface CreateNodeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: (node: { id: string; labels: string[]; properties: Record<string, unknown> }) => void;
 }
 
-export function CreateNodeDialog({ open, onOpenChange }: CreateNodeDialogProps) {
+export function CreateNodeDialog({ open, onOpenChange, onSuccess }: CreateNodeDialogProps) {
   const [label, setLabel] = useState('');
   const [name, setName] = useState('');
   const [extraProperties, setExtraProperties] = useState<PropertyRow[]>([]);
@@ -47,7 +48,8 @@ export function CreateNodeDialog({ open, onOpenChange }: CreateNodeDialogProps) 
     createNode.mutate(
       { label, properties },
       {
-        onSuccess: () => {
+        onSuccess: (data) => {
+          onSuccess?.(data);
           handleClose();
         },
         onError: (err) => {

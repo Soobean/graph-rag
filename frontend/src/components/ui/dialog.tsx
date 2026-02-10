@@ -61,6 +61,13 @@ function DialogContent({ className, children, ...props }: DialogContentProps) {
   const contentRef = React.useRef<HTMLDivElement>(null);
   const previousActiveElement = React.useRef<HTMLElement | null>(null);
 
+  // Ref로 최신 onOpenChange를 참조 — useEffect deps에서 제거하여
+  // 부모 리렌더 시 불필요한 effect 재실행(+ 포커스 강탈) 방지
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  React.useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  });
+
   // ESC 키로 닫기 및 포커스 관리
   React.useEffect(() => {
     if (!open) return;
@@ -70,7 +77,7 @@ function DialogContent({ className, children, ...props }: DialogContentProps) {
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onOpenChange(false);
+        onOpenChangeRef.current(false);
       }
     };
 
@@ -111,7 +118,7 @@ function DialogContent({ className, children, ...props }: DialogContentProps) {
       // 닫힐 때 이전 포커스 복원
       previousActiveElement.current?.focus();
     };
-  }, [open, onOpenChange]);
+  }, [open]);
 
   if (!open) return null;
 

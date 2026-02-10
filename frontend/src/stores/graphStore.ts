@@ -14,6 +14,10 @@ interface GraphState {
   getSelectedNode: () => FlowNode | null;
   clearGraph: () => void;
   updateLayoutConfig: (config: Partial<LayoutConfig>) => void;
+  updateNodeData: (nodeId: string, properties: Record<string, unknown>) => void;
+  removeNode: (nodeId: string) => void;
+  addNode: (node: { id: string; labels: string[]; properties: Record<string, unknown> }) => void;
+  addEdge: (edge: { id: string; type: string; source_id: string; target_id: string }) => void;
 }
 
 /**
@@ -334,6 +338,75 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     set((state) => ({
       layoutConfig: { ...state.layoutConfig, ...config },
     }));
+  },
+
+  updateNodeData: (nodeId: string, properties: Record<string, unknown>) => {
+    set((state) => ({
+      nodes: state.nodes.map((node) => {
+        if (node.id !== nodeId) return node;
+        const name = typeof properties.name === 'string' ? properties.name : node.data.name;
+        return {
+          ...node,
+          data: { ...node.data, name, properties },
+        };
+      }),
+    }));
+  },
+
+  removeNode: (nodeId: string) => {
+    set((state) => ({
+      nodes: state.nodes.filter((n) => n.id !== nodeId),
+      edges: state.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+      selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+    }));
+  },
+
+  addNode: (node) => {
+    set((state) => {
+      // Position: rightmost existing node + offset, or (0,0) if empty
+      let x = 0;
+      let y = 0;
+      if (state.nodes.length > 0) {
+        const maxX = Math.max(...state.nodes.map((n) => n.position.x));
+        const avgY = state.nodes.reduce((sum, n) => sum + n.position.y, 0) / state.nodes.length;
+        x = maxX + 200;
+        y = avgY;
+      }
+      const name = String(node.properties.name || node.id);
+      const newFlowNode: FlowNode = {
+        id: node.id,
+        type: 'expanded',
+        position: { x, y },
+        data: {
+          label: node.labels[0] || 'Node',
+          name,
+          nodeLabel: node.labels[0] || 'Node',
+          properties: node.properties,
+          role: 'intermediate',
+          depth: 1,
+          style: { color: '#f59e0b', icon: 'circle', size: 1 },
+          isSelected: false,
+        },
+      };
+      return { nodes: [...state.nodes, newFlowNode] };
+    });
+  },
+
+  addEdge: (edge) => {
+    set((state) => {
+      const newFlowEdge: FlowEdge = {
+        id: edge.id,
+        source: edge.source_id,
+        target: edge.target_id,
+        type: 'animated',
+        animated: false,
+        data: {
+          relationLabel: edge.type,
+          properties: {},
+        },
+      };
+      return { edges: [...state.edges, newFlowEdge] };
+    });
   },
 }));
 

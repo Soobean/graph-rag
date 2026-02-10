@@ -19,9 +19,14 @@ import type { NodeResponse } from '@/types/graphEdit';
 interface CreateEdgeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: (
+    edge: { id: string; type: string; source_id: string; target_id: string },
+    sourceNode: NodeResponse,
+    targetNode: NodeResponse,
+  ) => void;
 }
 
-export function CreateEdgeDialog({ open, onOpenChange }: CreateEdgeDialogProps) {
+export function CreateEdgeDialog({ open, onOpenChange, onSuccess }: CreateEdgeDialogProps) {
   const [relationshipType, setRelationshipType] = useState('');
   const [sourceSearch, setSourceSearch] = useState('');
   const [targetSearch, setTargetSearch] = useState('');
@@ -77,7 +82,8 @@ export function CreateEdgeDialog({ open, onOpenChange }: CreateEdgeDialogProps) 
         relationship_type: relationshipType,
       },
       {
-        onSuccess: () => {
+        onSuccess: (data) => {
+          onSuccess?.(data, selectedSource!, selectedTarget!);
           handleClose();
         },
         onError: (err) => {

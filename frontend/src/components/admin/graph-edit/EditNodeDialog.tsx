@@ -26,14 +26,17 @@ const RENAME_DEBOUNCE_MS = 500;
 interface EditNodeDialogProps {
   node: NodeResponse | null;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: (properties: Record<string, unknown>) => void;
 }
 
 function EditNodeForm({
   node,
   onOpenChange,
+  onSuccess,
 }: {
   node: NodeResponse;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: (properties: Record<string, unknown>) => void;
 }) {
   const [properties, setProperties] = useState<PropertyRow[]>(() =>
     Object.entries(node.properties).map(([key, value]) => ({
@@ -124,6 +127,7 @@ function EditNodeForm({
       { nodeId: node.id, request: { properties: newProperties } },
       {
         onSuccess: () => {
+          onSuccess?.(newProperties);
           onOpenChange(false);
         },
         onError: (err) => {
@@ -225,11 +229,11 @@ function EditNodeForm({
   );
 }
 
-export function EditNodeDialog({ node, onOpenChange }: EditNodeDialogProps) {
+export function EditNodeDialog({ node, onOpenChange, onSuccess }: EditNodeDialogProps) {
   return (
     <Dialog open={!!node} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        {node && <EditNodeForm key={node.id} node={node} onOpenChange={onOpenChange} />}
+        {node && <EditNodeForm key={node.id} node={node} onOpenChange={onOpenChange} onSuccess={onSuccess} />}
       </DialogContent>
     </Dialog>
   );
