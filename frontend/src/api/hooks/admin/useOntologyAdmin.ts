@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../client';
+import { buildSearchParams } from '../../utils';
 import type {
   Proposal,
   ProposalDetail,
@@ -23,16 +24,6 @@ export interface ProposalListParams {
 }
 
 const STATS_STALE_TIME = 30000; // 30 seconds
-
-function buildSearchParams(params: Record<string, string | number | undefined>): string {
-  const searchParams = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) {
-      searchParams.set(key, String(value));
-    }
-  });
-  return searchParams.toString();
-}
 
 export function useProposalList(params: ProposalListParams = {}) {
   return useQuery({

@@ -22,6 +22,9 @@ const AnalyticsPage = lazy(() =>
 const SkillGapPage = lazy(() =>
   import('@/pages/admin/SkillGapPage').then((m) => ({ default: m.SkillGapPage }))
 );
+const GraphEditPage = lazy(() =>
+  import('@/pages/admin/GraphEditPage').then((m) => ({ default: m.GraphEditPage }))
+);
 
 function PageLoader() {
   return (
@@ -89,6 +92,14 @@ export const router = createBrowserRouter([
         element: (
           <SuspenseWrapper>
             <SkillGapPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'graph-edit',
+        element: (
+          <SuspenseWrapper>
+            <GraphEditPage />
           </SuspenseWrapper>
         ),
       },
