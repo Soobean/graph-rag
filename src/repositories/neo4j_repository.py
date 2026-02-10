@@ -2503,6 +2503,111 @@ class Neo4jRepository:
                 f"Failed to delete relationship: {e}", query=query
             ) from e
 
+    # ============================================
+    # Impact Analysis 읽기 전용 쿼리
+    # ============================================
+
+    async def get_node_relationships_detailed(
+        self,
+        node_id: str,
+    ) -> list[dict[str, Any]]:
+        """
+        노드에 연결된 관계 상세 조회 (방향, 상대 노드 정보 포함)
+
+        Args:
+            node_id: 노드 elementId
+
+        Returns:
+            관계 상세 정보 리스트
+        """
+        query = """
+        MATCH (n) WHERE elementId(n) = $node_id
+        OPTIONAL MATCH (n)-[r_out]->(target)
+        WITH n,
+             [x IN collect(DISTINCT {
+                 id: elementId(r_out),
+                 type: type(r_out),
+                 connected_node_id: elementId(target),
+                 connected_node_labels: labels(target),
+                 connected_node_name: coalesce(target.name, ''),
+                 direction: 'outgoing'
+             }) WHERE x.id IS NOT NULL] AS outgoing
+        OPTIONAL MATCH (n)<-[r_in]-(source)
+        WITH outgoing,
+             [x IN collect(DISTINCT {
+                 id: elementId(r_in),
+                 type: type(r_in),
+                 connected_node_id: elementId(source),
+                 connected_node_labels: labels(source),
+                 connected_node_name: coalesce(source.name, ''),
+                 direction: 'incoming'
+             }) WHERE x.id IS NOT NULL] AS incoming
+        RETURN outgoing + incoming AS relationships
+        """
+
+        results = await self._client.execute_query(query, {"node_id": node_id})
+        if not results:
+            return []
+
+        return results[0].get("relationships", [])
+
+    async def find_concept_bridge(
+        self,
+        skill_name: str,
+    ) -> dict[str, Any] | None:
+        """
+        Skill 이름으로 매칭되는 Concept + IS_A 계층 조회
+
+        Args:
+            skill_name: Skill 노드의 name 값
+
+        Returns:
+            Concept 브릿지 정보 또는 None
+        """
+        query = """
+        MATCH (c:Concept) WHERE toLower(c.name) = toLower($name)
+        OPTIONAL MATCH (c)-[:IS_A*0..5]->(parent:Concept)
+        WITH c, collect(DISTINCT parent.name) AS ancestors
+        ORDER BY elementId(c) ASC
+        LIMIT 1
+        RETURN c.name AS concept_name, ancestors AS hierarchy
+        """
+
+        results = await self._client.execute_query(query, {"name": skill_name})
+        if not results:
+            return None
+        return results[0]
+
+    async def check_cached_queries_exist(self) -> int:
+        """
+        CachedQuery 노드 수 조회 (캐시 존재 여부 판단)
+
+        Returns:
+            CachedQuery 노드 수
+        """
+        query = """
+        MATCH (c:CachedQuery)
+        RETURN count(c) AS count
+        """
+
+        results = await self._client.execute_query(query, {})
+        return results[0]["count"] if results else 0
+
+    async def check_similar_relationships_exist(self) -> int:
+        """
+        SIMILAR 관계 수 조회 (GDS projection 존재 여부 판단)
+
+        Returns:
+            SIMILAR 관계 수
+        """
+        query = """
+        MATCH ()-[r:SIMILAR]->()
+        RETURN count(r) AS count
+        """
+
+        results = await self._client.execute_query(query, {})
+        return results[0]["count"] if results else 0
+
     async def search_nodes(
         self,
         label: str | None = None,

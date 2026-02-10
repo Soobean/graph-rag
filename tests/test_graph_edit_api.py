@@ -246,6 +246,96 @@ class TestDeleteEdgeAPI:
 # =============================================================================
 
 
+# =============================================================================
+# Impact Analysis 엔드포인트
+# =============================================================================
+
+
+class TestDeletionImpactAPI:
+    def test_deletion_impact_200(self, client, mock_service):
+        mock_service.analyze_deletion_impact = AsyncMock(return_value={
+            "node_id": "4:abc:0",
+            "node_labels": ["Skill"],
+            "node_name": "Python",
+            "affected_relationships": [
+                {
+                    "id": "5:abc:0", "type": "HAS_SKILL", "direction": "incoming",
+                    "connected_node_id": "4:abc:1",
+                    "connected_node_labels": ["Employee"],
+                    "connected_node_name": "홍길동",
+                },
+            ],
+            "relationship_count": 1,
+            "concept_bridge": {
+                "current_concept": "Python",
+                "current_hierarchy": ["Python", "PL"],
+                "will_break": True,
+            },
+            "downstream_effects": [],
+            "summary": "test summary",
+        })
+        resp = client.get("/api/v1/graph/nodes/4:abc:0/impact")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["node_name"] == "Python"
+        assert data["relationship_count"] == 1
+        assert data["concept_bridge"]["will_break"] is True
+
+    def test_deletion_impact_404(self, client, mock_service):
+        mock_service.analyze_deletion_impact = AsyncMock(
+            side_effect=EntityNotFoundError("Node", "invalid")
+        )
+        resp = client.get("/api/v1/graph/nodes/invalid/impact")
+        assert resp.status_code == 404
+
+
+class TestRenameImpactAPI:
+    def test_rename_impact_200(self, client, mock_service):
+        mock_service.analyze_rename_impact = AsyncMock(return_value={
+            "node_id": "4:abc:0",
+            "node_labels": ["Skill"],
+            "current_name": "Python",
+            "new_name": "PythonLang",
+            "has_duplicate": False,
+            "concept_bridge": {
+                "current_concept": "Python",
+                "current_hierarchy": ["Python", "PL"],
+                "will_break": True,
+                "new_concept": None,
+                "new_hierarchy": [],
+            },
+            "downstream_effects": [],
+            "summary": "test summary",
+        })
+        resp = client.post(
+            "/api/v1/graph/nodes/4:abc:0/impact/rename",
+            json={"new_name": "PythonLang"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["current_name"] == "Python"
+        assert data["new_name"] == "PythonLang"
+        assert data["concept_bridge"]["will_break"] is True
+
+    def test_rename_impact_404(self, client, mock_service):
+        mock_service.analyze_rename_impact = AsyncMock(
+            side_effect=EntityNotFoundError("Node", "invalid")
+        )
+        resp = client.post(
+            "/api/v1/graph/nodes/invalid/impact/rename",
+            json={"new_name": "test"},
+        )
+        assert resp.status_code == 404
+
+    def test_rename_impact_422_empty_name(self, client):
+        """Pydantic min_length=1 검증 → 422"""
+        resp = client.post(
+            "/api/v1/graph/nodes/4:abc:0/impact/rename",
+            json={"new_name": ""},
+        )
+        assert resp.status_code == 422
+
+
 class TestSchemaLabelsAPI:
     def test_get_schema_200(self, client):
         resp = client.get("/api/v1/graph/schema/labels")

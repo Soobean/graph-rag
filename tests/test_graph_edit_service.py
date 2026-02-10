@@ -316,3 +316,200 @@ class TestSchemaInfo:
         # Concept 전용 관계는 제외됨
         assert "SAME_AS" not in result["valid_relationships"]
         assert "IS_A" not in result["valid_relationships"]
+
+
+# =============================================================================
+# 삭제 영향 분석
+# =============================================================================
+
+
+class TestDeletionImpact:
+    async def test_skill_with_concept_bridge(self, service, mock_repo):
+        """Skill 삭제 시 Concept 브릿지 끊어짐 감지"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+        )
+        mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[
+            {
+                "id": "5:abc:0", "type": "HAS_SKILL", "direction": "incoming",
+                "connected_node_id": "4:abc:1", "connected_node_labels": ["Employee"],
+                "connected_node_name": "홍길동",
+            },
+        ])
+        mock_repo.find_concept_bridge = AsyncMock(return_value={
+            "concept_name": "Python", "hierarchy": ["Python", "Programming Language"],
+        })
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_deletion_impact("4:abc:0")
+
+        assert result["node_name"] == "Python"
+        assert result["relationship_count"] == 1
+        assert result["concept_bridge"]["will_break"] is True
+        assert result["concept_bridge"]["current_concept"] == "Python"
+        assert "브릿지가 끊어집니다" in result["summary"]
+
+    async def test_employee_no_concept_bridge(self, service, mock_repo):
+        """Employee 노드는 concept_bridge가 None"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Employee"], properties={"name": "홍길동"},
+        )
+        mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[])
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_deletion_impact("4:abc:0")
+
+        assert result["concept_bridge"] is None
+        assert result["relationship_count"] == 0
+
+    async def test_node_not_found(self, service, mock_repo):
+        """존재하지 않는 노드 → EntityNotFoundError"""
+        mock_repo.find_entity_by_id.side_effect = EntityNotFoundError("Node", "invalid")
+
+        with pytest.raises(EntityNotFoundError):
+            await service.analyze_deletion_impact("invalid")
+
+    async def test_no_relationships(self, service, mock_repo):
+        """관계 없는 노드는 안전한 삭제"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Skill"], properties={"name": "Rust"},
+        )
+        mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[])
+        mock_repo.find_concept_bridge = AsyncMock(return_value=None)
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_deletion_impact("4:abc:0")
+
+        assert result["relationship_count"] == 0
+        assert "안전하게 삭제" in result["summary"]
+        assert result["concept_bridge"]["will_break"] is False
+
+    async def test_skill_no_concept_match(self, service, mock_repo):
+        """Concept 매칭 없는 Skill → 브릿지 끊어지지 않음"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Skill"], properties={"name": "CustomTool"},
+        )
+        mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[])
+        mock_repo.find_concept_bridge = AsyncMock(return_value=None)
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_deletion_impact("4:abc:0")
+
+        assert result["concept_bridge"]["will_break"] is False
+        assert result["concept_bridge"]["current_concept"] is None
+
+    async def test_downstream_cache_and_gds(self, service, mock_repo):
+        """캐시/GDS 경고 생성 확인"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+        )
+        mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[])
+        mock_repo.find_concept_bridge = AsyncMock(return_value=None)
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=5)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=10)
+
+        result = await service.analyze_deletion_impact("4:abc:0")
+
+        systems = [e["system"] for e in result["downstream_effects"]]
+        assert "cache" in systems
+        assert "gds" in systems
+
+
+# =============================================================================
+# 이름 변경 영향 분석
+# =============================================================================
+
+
+class TestRenameImpact:
+    async def test_skill_bridge_breaks(self, service, mock_repo):
+        """Skill 이름 변경 → 브릿지 끊어짐"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+        )
+        mock_repo.check_duplicate_node = AsyncMock(return_value=False)
+        mock_repo.find_concept_bridge = AsyncMock(side_effect=[
+            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+            None,
+        ])
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_rename_impact("4:abc:0", "PythonLang")
+
+        assert result["concept_bridge"]["will_break"] is True
+        assert result["concept_bridge"]["current_concept"] == "Python"
+        assert result["concept_bridge"]["new_concept"] is None
+        assert "브릿지가 끊어집니다" in result["summary"]
+
+    async def test_skill_bridge_preserved(self, service, mock_repo):
+        """이름 변경 후에도 Concept 매칭 유지"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+        )
+        mock_repo.check_duplicate_node = AsyncMock(return_value=False)
+        mock_repo.find_concept_bridge = AsyncMock(side_effect=[
+            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+        ])
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_rename_impact("4:abc:0", "python")
+
+        assert result["concept_bridge"]["will_break"] is False
+        assert "유지됩니다" in result["summary"]
+
+    async def test_duplicate_detected(self, service, mock_repo):
+        """중복 이름 감지"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+        )
+        mock_repo.check_duplicate_node = AsyncMock(return_value=True)
+        mock_repo.find_concept_bridge = AsyncMock(return_value=None)
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_rename_impact("4:abc:0", "Java")
+
+        assert result["has_duplicate"] is True
+        assert "중복" in result["summary"]
+
+    async def test_empty_name(self, service):
+        """빈 이름 → ValidationError"""
+        with pytest.raises(ValidationError, match="empty"):
+            await service.analyze_rename_impact("4:abc:0", "  ")
+
+    async def test_same_name_case_only(self, service, mock_repo):
+        """대소문자만 다르면 중복 확인 스킵"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+        )
+        mock_repo.find_concept_bridge = AsyncMock(side_effect=[
+            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+        ])
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_rename_impact("4:abc:0", "python")
+
+        assert result["has_duplicate"] is False
+        # check_duplicate_node은 호출되지 않아야 함
+        mock_repo.check_duplicate_node.assert_not_awaited()
+
+    async def test_non_skill_node(self, service, mock_repo):
+        """비-Skill 노드는 concept_bridge가 None"""
+        mock_repo.find_entity_by_id.return_value = NodeResult(
+            id="4:abc:0", labels=["Employee"], properties={"name": "홍길동"},
+        )
+        mock_repo.check_duplicate_node = AsyncMock(return_value=False)
+        mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
+        mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
+
+        result = await service.analyze_rename_impact("4:abc:0", "김철수")
+
+        assert result["concept_bridge"] is None

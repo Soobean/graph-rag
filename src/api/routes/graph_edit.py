@@ -23,8 +23,11 @@ from src.api.schemas.graph_edit import (
     CreateEdgeRequest,
     CreateNodeRequest,
     EdgeResponse,
+    NodeDeletionImpactResponse,
     NodeListResponse,
     NodeResponse,
+    RenameImpactRequest,
+    RenameImpactResponse,
     SchemaInfoResponse,
     UpdateNodeRequest,
 )
@@ -119,6 +122,46 @@ async def delete_node(
         raise HTTPException(status_code=404, detail=e.message) from e
     except GraphEditConflictError as e:
         raise HTTPException(status_code=409, detail=e.message) from e
+
+
+# ============================================
+# Impact Analysis (읽기 전용)
+# ============================================
+
+
+@router.get(
+    "/nodes/{node_id}/impact",
+    response_model=NodeDeletionImpactResponse,
+)
+async def get_deletion_impact(
+    node_id: str,
+    service: Annotated[GraphEditService, Depends(get_graph_edit_service)],
+) -> NodeDeletionImpactResponse:
+    """노드 삭제 영향 미리보기 (dry-run, 읽기 전용)"""
+    try:
+        result = await service.analyze_deletion_impact(node_id)
+        return NodeDeletionImpactResponse(**result)
+    except EntityNotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+
+
+@router.post(
+    "/nodes/{node_id}/impact/rename",
+    response_model=RenameImpactResponse,
+)
+async def get_rename_impact(
+    node_id: str,
+    body: RenameImpactRequest,
+    service: Annotated[GraphEditService, Depends(get_graph_edit_service)],
+) -> RenameImpactResponse:
+    """이름 변경 영향 미리보기 (dry-run, 읽기 전용)"""
+    try:
+        result = await service.analyze_rename_impact(node_id, body.new_name)
+        return RenameImpactResponse(**result)
+    except EntityNotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
 
 
 # ============================================
