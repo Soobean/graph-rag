@@ -338,3 +338,235 @@ class GraphEditService:
                 for rel_type, combos in VALID_RELATIONSHIP_COMBINATIONS.items()
             },
         }
+
+    # ============================================
+    # Impact Analysis (읽기 전용)
+    # ============================================
+
+    async def analyze_deletion_impact(self, node_id: str) -> dict[str, Any]:
+        """
+        노드 삭제 영향 분석 (dry-run)
+
+        1. 노드 존재 확인
+        2. 연결된 관계 상세 조회
+        3. Skill이면 Concept 브릿지 확인
+        4. 캐시/GDS downstream 경고
+        5. 사람이 읽을 수 있는 요약 생성
+        """
+        node = await self._neo4j.find_entity_by_id(node_id)
+        node_name = node.properties.get("name") or ""
+        node_labels = node.labels
+
+        relationships = await self._neo4j.get_node_relationships_detailed(node_id)
+
+        # Skill 노드이면 Concept 브릿지 확인
+        concept_bridge = None
+        is_skill = "Skill" in node_labels
+        if is_skill and node_name:
+            bridge = await self._neo4j.find_concept_bridge(node_name)
+            if bridge:
+                concept_bridge = {
+                    "current_concept": bridge["concept_name"],
+                    "current_hierarchy": bridge.get("hierarchy", []),
+                    "will_break": True,
+                }
+            else:
+                concept_bridge = {
+                    "current_concept": None,
+                    "current_hierarchy": [],
+                    "will_break": False,
+                }
+
+        downstream = await self._assess_downstream_effects(node_labels, is_deletion=True)
+
+        summary = self._build_deletion_summary(
+            node_name=node_name,
+            node_labels=node_labels,
+            rel_count=len(relationships),
+            concept_bridge=concept_bridge,
+        )
+
+        return {
+            "node_id": node_id,
+            "node_labels": node_labels,
+            "node_name": node_name,
+            "affected_relationships": relationships,
+            "relationship_count": len(relationships),
+            "concept_bridge": concept_bridge,
+            "downstream_effects": downstream,
+            "summary": summary,
+        }
+
+    async def analyze_rename_impact(
+        self,
+        node_id: str,
+        new_name: str,
+    ) -> dict[str, Any]:
+        """
+        이름 변경 영향 분석 (dry-run)
+
+        1. 노드 존재 확인
+        2. 빈 이름 검증
+        3. 중복 확인
+        4. Skill이면 Concept 브릿지 변화 확인
+        5. 요약 생성
+        """
+        new_name = new_name.strip()
+        if not new_name:
+            raise ValidationError("new_name cannot be empty", field="new_name")
+
+        node = await self._neo4j.find_entity_by_id(node_id)
+        current_name = node.properties.get("name") or ""
+        node_labels = node.labels
+
+        # 중복 확인 (대소문자만 다르면 중복 아님)
+        has_duplicate = False
+        if new_name.lower() != current_name.lower():
+            label = node_labels[0] if node_labels else ""
+            if label:
+                has_duplicate = await self._neo4j.check_duplicate_node(label, new_name)
+
+        # Skill 노드이면 Concept 브릿지 변화 확인
+        concept_bridge = None
+        is_skill = "Skill" in node_labels
+        if is_skill:
+            current_bridge = await self._neo4j.find_concept_bridge(current_name)
+            new_bridge = await self._neo4j.find_concept_bridge(new_name)
+
+            will_break = current_bridge is not None and (
+                new_bridge is None
+                or new_bridge["concept_name"].lower() != current_bridge["concept_name"].lower()
+            )
+
+            concept_bridge = {
+                "current_concept": (
+                    current_bridge["concept_name"] if current_bridge else None
+                ),
+                "current_hierarchy": (
+                    current_bridge.get("hierarchy", []) if current_bridge else []
+                ),
+                "will_break": will_break,
+                "new_concept": (
+                    new_bridge["concept_name"] if new_bridge else None
+                ),
+                "new_hierarchy": (
+                    new_bridge.get("hierarchy", []) if new_bridge else []
+                ),
+            }
+
+        downstream = await self._assess_downstream_effects(node_labels, is_deletion=False)
+
+        summary = self._build_rename_summary(
+            current_name=current_name,
+            new_name=new_name,
+            has_duplicate=has_duplicate,
+            concept_bridge=concept_bridge,
+        )
+
+        return {
+            "node_id": node_id,
+            "node_labels": node_labels,
+            "current_name": current_name,
+            "new_name": new_name,
+            "has_duplicate": has_duplicate,
+            "concept_bridge": concept_bridge,
+            "downstream_effects": downstream,
+            "summary": summary,
+        }
+
+    async def _assess_downstream_effects(
+        self,
+        node_labels: list[str],
+        is_deletion: bool,
+    ) -> list[dict[str, str]]:
+        """캐시/GDS downstream 경고 생성"""
+        effects: list[dict[str, str]] = []
+
+        cache_count = await self._neo4j.check_cached_queries_exist()
+        if cache_count > 0:
+            action = "삭제" if is_deletion else "이름 변경"
+            effects.append({
+                "system": "cache",
+                "description": (
+                    f"CachedQuery {cache_count}개가 존재합니다. "
+                    f"노드 {action} 후 캐시된 응답이 stale 상태가 될 수 있습니다."
+                ),
+            })
+
+        is_skill_or_employee = bool({"Skill", "Employee"} & set(node_labels))
+        if is_skill_or_employee:
+            similar_count = await self._neo4j.check_similar_relationships_exist()
+            if similar_count > 0:
+                effects.append({
+                    "system": "gds",
+                    "description": (
+                        f"SIMILAR 관계 {similar_count}개가 존재합니다. "
+                        f"GDS projection이 stale 상태가 될 수 있습니다."
+                    ),
+                })
+
+        return effects
+
+    @staticmethod
+    def _build_deletion_summary(
+        node_name: str,
+        node_labels: list[str],
+        rel_count: int,
+        concept_bridge: dict[str, Any] | None,
+    ) -> str:
+        """삭제 영향 요약 생성"""
+        label_str = ", ".join(node_labels)
+        parts = [f"'{node_name}' ({label_str}) 삭제 시:"]
+
+        if rel_count > 0:
+            parts.append(f"  - {rel_count}개 관계가 함께 삭제됩니다.")
+        else:
+            parts.append("  - 연결된 관계가 없어 안전하게 삭제 가능합니다.")
+
+        if concept_bridge and concept_bridge.get("will_break"):
+            concept = concept_bridge.get("current_concept", "")
+            parts.append(
+                f"  - ⚠ Concept '{concept}'와의 이름 브릿지가 끊어집니다."
+            )
+
+        return "\n".join(parts)
+
+    @staticmethod
+    def _build_rename_summary(
+        current_name: str,
+        new_name: str,
+        has_duplicate: bool,
+        concept_bridge: dict[str, Any] | None,
+    ) -> str:
+        """이름 변경 영향 요약 생성"""
+        parts = [f"'{current_name}' → '{new_name}' 이름 변경 시:"]
+
+        if has_duplicate:
+            parts.append("  - ⛔ 동일 레이블 내 중복 이름이 존재합니다.")
+
+        if concept_bridge:
+            if concept_bridge.get("will_break"):
+                old_concept = concept_bridge.get("current_concept", "")
+                parts.append(
+                    f"  - ⚠ Concept '{old_concept}'와의 이름 브릿지가 끊어집니다."
+                )
+                if concept_bridge.get("new_concept"):
+                    new_concept = concept_bridge["new_concept"]
+                    parts.append(
+                        f"  - ✅ 새 이름은 Concept '{new_concept}'와 매칭됩니다."
+                    )
+                else:
+                    parts.append(
+                        "  - ⚠ 새 이름에 매칭되는 Concept가 없습니다."
+                    )
+            elif concept_bridge.get("current_concept"):
+                parts.append("  - ✅ Concept 브릿지가 유지됩니다.")
+            else:
+                parts.append("  - 기존 Concept 매칭이 없습니다.")
+
+        if not has_duplicate and (
+            not concept_bridge or not concept_bridge.get("will_break")
+        ):
+            parts.append("  - 안전하게 변경 가능합니다.")
+
+        return "\n".join(parts)

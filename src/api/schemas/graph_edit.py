@@ -111,3 +111,89 @@ class SchemaInfoResponse(BaseModel):
     allowed_labels: list[str]
     required_properties: dict[str, list[str]]
     valid_relationships: dict[str, list[RelationshipCombo]]
+
+
+# ============================================
+# Impact Analysis Models
+# ============================================
+
+
+class AffectedRelationship(BaseModel):
+    """영향받는 관계 상세"""
+
+    id: str = Field(..., description="관계 elementId")
+    type: str = Field(..., description="관계 타입 (예: HAS_SKILL)")
+    direction: str = Field(..., description="방향 (outgoing / incoming)")
+    connected_node_id: str = Field(..., description="연결된 노드 elementId")
+    connected_node_labels: list[str] = Field(..., description="연결된 노드 레이블")
+    connected_node_name: str = Field(..., description="연결된 노드 이름")
+
+
+class ConceptBridgeImpact(BaseModel):
+    """Skill↔Concept 브릿지 영향"""
+
+    current_concept: str | None = Field(
+        None, description="현재 매칭되는 Concept 이름"
+    )
+    current_hierarchy: list[str] = Field(
+        default_factory=list, description="현재 IS_A 계층 (조상 목록)"
+    )
+    will_break: bool = Field(
+        ..., description="이 작업으로 브릿지가 끊어지는지 여부"
+    )
+    new_concept: str | None = Field(
+        None, description="(rename only) 새 이름에 매칭되는 Concept"
+    )
+    new_hierarchy: list[str] = Field(
+        default_factory=list, description="(rename only) 새 이름의 IS_A 계층"
+    )
+
+
+class DownstreamEffect(BaseModel):
+    """캐시/GDS 등 downstream 영향"""
+
+    system: str = Field(..., description="영향받는 시스템 (cache / gds)")
+    description: str = Field(..., description="영향 설명")
+
+
+class NodeDeletionImpactResponse(BaseModel):
+    """노드 삭제 영향 미리보기 응답"""
+
+    node_id: str
+    node_labels: list[str]
+    node_name: str
+    affected_relationships: list[AffectedRelationship]
+    relationship_count: int
+    concept_bridge: ConceptBridgeImpact | None = Field(
+        None, description="Skill 노드일 때만 존재"
+    )
+    downstream_effects: list[DownstreamEffect]
+    summary: str = Field(..., description="사람이 읽을 수 있는 영향 요약")
+
+
+class RenameImpactRequest(BaseModel):
+    """이름 변경 영향 미리보기 요청 body"""
+
+    new_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="변경할 새 이름",
+    )
+
+
+class RenameImpactResponse(BaseModel):
+    """이름 변경 영향 미리보기 응답"""
+
+    node_id: str
+    node_labels: list[str]
+    current_name: str
+    new_name: str
+    has_duplicate: bool = Field(
+        ..., description="새 이름으로 동일 레이블 내 중복 존재 여부"
+    )
+    concept_bridge: ConceptBridgeImpact | None = Field(
+        None, description="Skill 노드일 때만 존재"
+    )
+    downstream_effects: list[DownstreamEffect]
+    summary: str = Field(..., description="사람이 읽을 수 있는 영향 요약")
