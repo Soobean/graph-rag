@@ -6,7 +6,7 @@ import { GraphViewer } from '@/components/graph';
 import { ThinkingPanel } from '@/components/thinking';
 import { useChatStore, useUiStore } from '@/stores';
 import { useHealth } from '@/api/hooks';
-import { Activity, AlertCircle, Settings } from 'lucide-react';
+import { Activity, AlertCircle, Settings, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function ChatPage() {
@@ -35,6 +35,12 @@ export function ChatPage() {
               <span className="text-sm">Connected</span>
             </div>
           ) : null}
+          <Link to="/skill-gap">
+            <Button variant="outline" size="sm">
+              <Target className="mr-1 h-4 w-4" />
+              Skill Gap
+            </Button>
+          </Link>
           <Link to="/admin">
             <Button variant="outline" size="sm">
               <Settings className="mr-1 h-4 w-4" />
