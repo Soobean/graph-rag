@@ -8,7 +8,7 @@ GraphEditService - 그래프 편집 비즈니스 로직
 import logging
 from typing import Any
 
-from src.domain.exceptions import EntityNotFoundError, ValidationError
+from src.domain.exceptions import EntityNotFoundError, GraphRAGError, ValidationError
 from src.repositories.neo4j_repository import Neo4jRepository
 
 logger = logging.getLogger(__name__)
@@ -54,12 +54,11 @@ DEFAULT_SEARCH_LIMIT = 50
 ANONYMOUS_ADMIN = "anonymous_admin"
 
 
-class GraphEditConflictError(Exception):
+class GraphEditConflictError(GraphRAGError):
     """그래프 편집 충돌 (중복 노드, 관계 존재 등)"""
 
     def __init__(self, message: str):
-        self.message = message
-        super().__init__(message)
+        super().__init__(message, code="GRAPH_EDIT_CONFLICT")
 
 
 class GraphEditService:
@@ -320,7 +319,6 @@ class GraphEditService:
 
     async def delete_edge(self, edge_id: str) -> None:
         """엣지 삭제"""
-        await self._neo4j.find_relationship_by_id(edge_id)
         deleted = await self._neo4j.delete_relationship_generic(edge_id)
         if not deleted:
             raise EntityNotFoundError("Edge", edge_id)

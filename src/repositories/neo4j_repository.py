@@ -10,6 +10,7 @@ Neo4j Repository - 그래프 데이터 접근 계층
 
 import asyncio
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -2549,8 +2550,9 @@ class Neo4jRepository:
             self._validate_identifier(label, "label")
             label_where = "WHERE $label IN labels(n)"
 
-        # Fulltext 쿼리 문법: 와일드카드 추가로 부분 일치 지원
-        fulltext_search = f"{search}*"
+        # Lucene 특수문자 이스케이프 후 와일드카드 추가로 부분 일치 지원
+        escaped = re.sub(r'([+\-&|!(){}\[\]^"~*?:\\/])', r'\\\1', search)
+        fulltext_search = f"{escaped}*"
 
         query = f"""
         CALL db.index.fulltext.queryNodes('graph_edit_name_fulltext', $search)
