@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { Button } from '@/components/ui/button';
-import { useChatStore, useGraphStore } from '@/stores';
+import { useChatStore, useGraphStore, useUiStore } from '@/stores';
 import { useStreamingQuery } from '@/api/hooks';
 import type { StreamingMetadata, StepType } from '@/types/api';
 import { cn } from '@/lib/utils';
@@ -56,6 +56,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
   } = useChatStore();
 
   const { setGraphData, clearGraph } = useGraphStore();
+  const { demoRole } = useUiStore();
 
   const messages = getCurrentMessages();
   const currentAssistantIdRef = useRef<string | null>(null);
@@ -83,21 +84,21 @@ export function ChatPanel({ className }: ChatPanelProps) {
         if (currentAssistantIdRef.current) {
           // execution_path로 기본 thoughtProcess 생성
           const thoughtProcess = {
-            steps: metadata.execution_path.map((nodeName, idx) => ({
+            steps: (metadata.execution_path ?? []).map((nodeName, idx) => ({
               step_number: idx + 1,
               node_name: nodeName,
               step_type: getStepType(nodeName),
               description: getStepDescription(nodeName, metadata),
               details: {},
             })),
-            concept_expansions: Object.entries(metadata.entities).map(([entityType, concepts]) => ({
+            concept_expansions: Object.entries(metadata.entities ?? {}).map(([entityType, concepts]) => ({
               original_concept: concepts[0] || '',
               entity_type: entityType,
               expansion_strategy: 'normal' as const,
               expanded_concepts: concepts,
               expansion_path: [],
             })),
-            execution_path: metadata.execution_path,
+            execution_path: metadata.execution_path ?? [],
           };
 
           updateMessage(currentAssistantIdRef.current, {
@@ -160,16 +161,22 @@ export function ChatPanel({ className }: ChatPanelProps) {
         isLoading: true,
       });
 
-      // 현재 어시스턴트 메시지 ID 저장
-      currentAssistantIdRef.current = assistantId;
+      // 이전 스트리밍이 완료되지 않았으면 로딩 상태 해제 후 ref 초기화
+      if (currentAssistantIdRef.current) {
+        updateMessage(currentAssistantIdRef.current, { isLoading: false });
+        currentAssistantIdRef.current = null;
+      }
 
-      // 스트리밍 API 호출
-      startStreaming({
-        question: content,
-        session_id: currentSessionId || undefined,
-      });
+      // 스트리밍 먼저 시작 (내부 abort()가 이전 스트림을 동기적으로 종료)
+      startStreaming(
+        { question: content, session_id: currentSessionId || undefined },
+        { demoRole }
+      );
+
+      // abort 완료 후 새 어시스턴트 ID 설정 (이전 onComplete 발동 불가)
+      currentAssistantIdRef.current = assistantId;
     },
-    [addMessage, startStreaming, currentSessionId]
+    [addMessage, updateMessage, startStreaming, currentSessionId, demoRole]
   );
 
   const handleClearHistory = useCallback(() => {

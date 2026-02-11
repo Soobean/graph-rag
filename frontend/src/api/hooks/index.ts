@@ -1,5 +1,6 @@
 export { useQueryApi } from './useQueryApi';
 export { useStreamingQuery } from './useStreamingQuery';
+export type { StreamingQueryOptions } from './useStreamingQuery';
 export { useHealth } from './useHealth';
 
 // Admin hooks

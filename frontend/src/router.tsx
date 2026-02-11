@@ -25,6 +25,9 @@ const SkillGapPage = lazy(() =>
 const GraphEditPage = lazy(() =>
   import('@/pages/admin/GraphEditPage').then((m) => ({ default: m.GraphEditPage }))
 );
+const ComparePage = lazy(() =>
+  import('@/pages/ComparePage').then((m) => ({ default: m.ComparePage }))
+);
 
 // eslint-disable-next-line react-refresh/only-export-components
 function PageLoader() {
@@ -44,6 +47,14 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <ChatPage />,
+  },
+  {
+    path: '/compare',
+    element: (
+      <SuspenseWrapper>
+        <ComparePage />
+      </SuspenseWrapper>
+    ),
   },
   {
     path: '/skill-gap',

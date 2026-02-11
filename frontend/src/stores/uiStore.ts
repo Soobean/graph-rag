@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export type DemoRole = 'admin' | 'manager' | 'editor' | 'viewer';
+
 interface UiState {
   // 패널 크기 (퍼센트)
   leftPanelWidth: number;
@@ -13,12 +15,16 @@ interface UiState {
   // 현재 활성 탭
   activeRightTab: 'graph' | 'thinking';
 
+  // 데모 역할
+  demoRole: DemoRole;
+
   // Actions
   setLeftPanelWidth: (width: number) => void;
   setRightPanelWidth: (width: number) => void;
   toggleThinkingPanel: () => void;
   toggleNodeDetail: () => void;
   setActiveRightTab: (tab: 'graph' | 'thinking') => void;
+  setDemoRole: (role: DemoRole) => void;
   resetLayout: () => void;
 }
 
@@ -33,6 +39,7 @@ export const useUiStore = create<UiState>()(
       isThinkingPanelOpen: false,
       isNodeDetailOpen: false,
       activeRightTab: 'graph',
+      demoRole: 'admin',
 
       setLeftPanelWidth: (width: number) => {
         const clampedWidth = Math.min(Math.max(width, 20), 60);
@@ -66,6 +73,10 @@ export const useUiStore = create<UiState>()(
         set({ activeRightTab: tab });
       },
 
+      setDemoRole: (role: DemoRole) => {
+        set({ demoRole: role });
+      },
+
       resetLayout: () => {
         set({
           leftPanelWidth: DEFAULT_LEFT_WIDTH,
@@ -78,6 +89,7 @@ export const useUiStore = create<UiState>()(
       partialize: (state) => ({
         leftPanelWidth: state.leftPanelWidth,
         rightPanelWidth: state.rightPanelWidth,
+        demoRole: state.demoRole,
       }),
     }
   )

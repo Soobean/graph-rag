@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type {
   QueryRequest,
   StreamingMetadata,
@@ -21,9 +21,13 @@ export interface StreamingQueryCallbacks {
   onError?: (error: string) => void;
 }
 
+export interface StreamingQueryOptions {
+  demoRole?: string;
+}
+
 export interface UseStreamingQueryReturn {
   state: StreamingQueryState;
-  startStreaming: (request: QueryRequest) => Promise<void>;
+  startStreaming: (request: QueryRequest, options?: StreamingQueryOptions) => Promise<void>;
   abort: () => void;
 }
 
@@ -40,6 +44,14 @@ export function useStreamingQuery(
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Cleanup on unmount: abort active SSE stream
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+    };
+  }, []);
+
   const abort = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -52,7 +64,7 @@ export function useStreamingQuery(
   }, []);
 
   const startStreaming = useCallback(
-    async (request: QueryRequest) => {
+    async (request: QueryRequest, options?: StreamingQueryOptions) => {
       // Abort any existing stream
       abort();
 
@@ -71,12 +83,17 @@ export function useStreamingQuery(
       let accumulatedContent = '';
 
       try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        };
+        if (options?.demoRole) {
+          headers['X-Demo-Role'] = options.demoRole;
+        }
+
         const response = await fetch(`${API_BASE_URL}/query/stream`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
-          },
+          headers,
           body: JSON.stringify({
             question: request.question,
             session_id: request.session_id,
@@ -193,6 +210,14 @@ export function useStreamingQuery(
             }
           }
         }
+
+        // R3-2: 서버가 done 이벤트 없이 연결을 닫은 경우 fallback 처리
+        setState((prev) => {
+          if (prev.isStreaming) {
+            return { ...prev, isStreaming: false, isComplete: true };
+          }
+          return prev;
+        });
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           // Intentional abort, not an error

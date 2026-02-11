@@ -214,7 +214,7 @@ app.add_middleware(
         "DELETE",
         "OPTIONS",
     ],  # DELETE 추가 (Graph Edit API)
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Demo-Role"],
 )
 
 
