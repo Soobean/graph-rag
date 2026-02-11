@@ -1,9 +1,10 @@
 """
-3차원 접근 제어 정책 (Node-Level Access Control)
+4차원 접근 제어 정책 (Node & Relationship Level Access Control)
 
 Dimension 1: 라벨 접근 — 역할별 조회 가능한 Neo4j 노드 라벨
 Dimension 2: 속성 가시성 — 같은 라벨이라도 역할별 보이는 속성이 다름
 Dimension 3: 부서 범위 — manager는 자기 부서 데이터만 조회 가능
+Dimension 4: 관계 필터링 — 역할별 조회 가능한 관계 타입
 """
 
 from __future__ import annotations
@@ -24,9 +25,10 @@ class NodeAccessRule:
 
 @dataclass(frozen=True)
 class AccessPolicy:
-    """역할의 3차원 접근 정책"""
+    """역할의 4차원 접근 정책"""
 
     node_rules: dict[str, NodeAccessRule]  # label → rule
+    allowed_relationships: frozenset[str] = frozenset()  # D4: 허용된 관계 타입
 
     def get_allowed_labels(self) -> set[str]:
         """접근 가능한 노드 라벨 목록"""
@@ -52,6 +54,10 @@ class AccessPolicy:
         """부서 제한이 있는 라벨이 하나라도 있는지"""
         return any(rule.scope == "department" for rule in self.node_rules.values())
 
+    def is_relationship_allowed(self, rel_type: str) -> bool:
+        """관계 타입 접근 허용 여부"""
+        return rel_type in self.allowed_relationships
+
 
 def get_access_policy(roles: list[str]) -> AccessPolicy:
     """
@@ -60,13 +66,19 @@ def get_access_policy(roles: list[str]) -> AccessPolicy:
     - 라벨: 합집합
     - 속성: 합집합 (어느 한 역할이 "*"이면 "*")
     - Scope: "all" 우선 (더 넓은 범위가 우선)
+    - 관계: 합집합
     """
     merged_rules: dict[str, NodeAccessRule] = {}
+    merged_rels: set[str] = set()
 
     for role in roles:
         policy = ROLE_POLICIES.get(role)
         if policy is None:
             continue
+
+        # D4: 관계 합집합
+        merged_rels |= policy.allowed_relationships
+
         for label, rule in policy.node_rules.items():
             if label not in merged_rules:
                 merged_rules[label] = rule
@@ -80,8 +92,7 @@ def get_access_policy(roles: list[str]) -> AccessPolicy:
                     merged_props: tuple[str, ...] | Literal["*"] = ALL_PROPS
                 else:
                     merged_props = tuple(
-                        set(existing.allowed_properties)
-                        | set(rule.allowed_properties)
+                        set(existing.allowed_properties) | set(rule.allowed_properties)
                     )
                 # Scope 병합: "all" 우선
                 merged_scope: Literal["all", "department"] = (
@@ -94,11 +105,42 @@ def get_access_policy(roles: list[str]) -> AccessPolicy:
                     scope=merged_scope,
                 )
 
-    return AccessPolicy(node_rules=merged_rules)
+    return AccessPolicy(
+        node_rules=merged_rules,
+        allowed_relationships=frozenset(merged_rels),
+    )
 
 
 # =============================================================================
-# 역할별 정책 정의
+# 역할별 관계 접근 정책
+# =============================================================================
+
+# 공통 관계: 모든 역할이 접근 가능
+_COMMON_RELS = frozenset(
+    {
+        "HAS_SKILL",
+        "WORKS_ON",
+        "BELONGS_TO",
+        "HAS_POSITION",
+        "REQUIRES",
+        "HAS_CERTIFICATE",
+        "LOCATED_AT",
+        "OWNED_BY",
+    }
+)
+
+# admin: 전체 관계 접근
+_ADMIN_RELS = _COMMON_RELS | frozenset({"MENTORS", "IS_A", "SAME_AS"})
+
+# manager: 멘토링 포함, 온톨로지 제외
+_MANAGER_RELS = _COMMON_RELS | frozenset({"MENTORS"})
+
+# editor/viewer: 공통 관계만
+_EDITOR_RELS = _COMMON_RELS
+_VIEWER_RELS = _COMMON_RELS
+
+# =============================================================================
+# 역할별 노드 정책 정의
 # =============================================================================
 
 _ADMIN_RULES: dict[str, NodeAccessRule] = {
@@ -125,9 +167,7 @@ _MANAGER_RULES: dict[str, NodeAccessRule] = {
 }
 
 _EDITOR_RULES: dict[str, NodeAccessRule] = {
-    "Employee": NodeAccessRule(
-        ("name", "job_type", "experience", "hire_date"), "all"
-    ),
+    "Employee": NodeAccessRule(("name", "job_type", "experience", "hire_date"), "all"),
     "Skill": NodeAccessRule(ALL_PROPS, "all"),
     "Project": NodeAccessRule(("name", "type", "status", "start_date"), "all"),
     "Department": NodeAccessRule(("name", "head_count"), "all"),
@@ -146,11 +186,23 @@ _VIEWER_RULES: dict[str, NodeAccessRule] = {
     "Certificate": NodeAccessRule(ALL_PROPS, "all"),
 }
 
-ADMIN_POLICY = AccessPolicy(node_rules=_ADMIN_RULES)
+ADMIN_POLICY = AccessPolicy(
+    node_rules=_ADMIN_RULES,
+    allowed_relationships=_ADMIN_RELS,
+)
 
 ROLE_POLICIES: dict[str, AccessPolicy] = {
     "admin": ADMIN_POLICY,
-    "manager": AccessPolicy(node_rules=_MANAGER_RULES),
-    "editor": AccessPolicy(node_rules=_EDITOR_RULES),
-    "viewer": AccessPolicy(node_rules=_VIEWER_RULES),
+    "manager": AccessPolicy(
+        node_rules=_MANAGER_RULES,
+        allowed_relationships=_MANAGER_RELS,
+    ),
+    "editor": AccessPolicy(
+        node_rules=_EDITOR_RULES,
+        allowed_relationships=_EDITOR_RELS,
+    ),
+    "viewer": AccessPolicy(
+        node_rules=_VIEWER_RULES,
+        allowed_relationships=_VIEWER_RELS,
+    ),
 }
