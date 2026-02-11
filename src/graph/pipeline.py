@@ -23,6 +23,7 @@ from langgraph.graph.state import CompiledStateGraph
 if TYPE_CHECKING:
     from src.domain.ontology.registry import OntologyRegistry
 
+from src.auth.models import UserContext
 from src.config import Settings
 from src.domain.ontology.hybrid_loader import HybridOntologyLoader
 from src.domain.ontology.loader import OntologyLoader
@@ -378,6 +379,7 @@ class GraphRAGPipeline:
         question: str,
         session_id: str | None = None,
         return_full_state: bool = False,
+        user_context: UserContext | None = None,
     ) -> PipelineResult:
         """
         파이프라인 실행
@@ -386,6 +388,7 @@ class GraphRAGPipeline:
             question: 사용자 질문
             session_id: 세션 ID (대화 기록 유지를 위해 필요)
             return_full_state: True면 graph_results, original_entities 등 추가 데이터 포함
+            user_context: 접근 제어용 사용자 컨텍스트
 
         Returns:
             파이프라인 실행 결과
@@ -405,6 +408,8 @@ class GraphRAGPipeline:
         }
         if self._graph_schema:
             initial_state["schema"] = self._graph_schema
+        if user_context is not None:
+            initial_state["user_context"] = user_context
 
         try:
             # 파이프라인 실행
@@ -497,6 +502,7 @@ class GraphRAGPipeline:
         self,
         question: str,
         session_id: str | None = None,
+        user_context: UserContext | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         스트리밍 모드로 파이프라인 실행
@@ -506,6 +512,7 @@ class GraphRAGPipeline:
         Args:
             question: 사용자 질문
             session_id: 세션 ID
+            user_context: 접근 제어용 사용자 컨텍스트
 
         Yields:
             각 노드의 실행 결과
@@ -525,6 +532,8 @@ class GraphRAGPipeline:
         }
         if self._graph_schema:
             initial_state["schema"] = self._graph_schema
+        if user_context is not None:
+            initial_state["user_context"] = user_context
 
         try:
             # 파이프라인 스트리밍 실행
@@ -548,6 +557,7 @@ class GraphRAGPipeline:
         self,
         question: str,
         session_id: str | None = None,
+        user_context: UserContext | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         스트리밍 응답 파이프라인
@@ -562,6 +572,7 @@ class GraphRAGPipeline:
         Args:
             question: 사용자 질문
             session_id: 세션 ID
+            user_context: 접근 제어용 사용자 컨텍스트
 
         Yields:
             dict: SSE 이벤트 데이터
@@ -584,6 +595,8 @@ class GraphRAGPipeline:
         }
         if self._graph_schema:
             initial_state["schema"] = self._graph_schema
+        if user_context is not None:
+            initial_state["user_context"] = user_context
 
         try:
             # 파이프라인 실행 (response_generator 직전까지 모든 노드 실행)

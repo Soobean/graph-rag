@@ -207,3 +207,22 @@ class ProposalNotFoundError(EntityNotFoundError):
 
     def __init__(self, proposal_id: str):
         super().__init__("OntologyProposal", proposal_id)
+
+
+# ============================================
+# 인증/인가 관련 예외
+# ============================================
+
+
+class AuthenticationError(GraphRAGError):
+    """인증 실패 (로그인 필요)"""
+
+    def __init__(self, message: str = "Authentication required"):
+        super().__init__(message, code="AUTH_REQUIRED")
+
+
+class AuthorizationError(GraphRAGError):
+    """인가 실패 (권한 부족)"""
+
+    def __init__(self, message: str = "Permission denied"):
+        super().__init__(message, code="FORBIDDEN")

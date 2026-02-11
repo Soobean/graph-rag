@@ -29,6 +29,10 @@ dependencies = [
 
     # Streaming
     "sse-starlette>=1.6.5",
+
+    # Authentication
+    "PyJWT>=2.8.0",
+    "bcrypt>=4.1.0",
 ]
 
 [project.optional-dependencies]

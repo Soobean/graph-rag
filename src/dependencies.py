@@ -14,6 +14,9 @@ from typing import TYPE_CHECKING
 
 from fastapi import Request
 
+from src.auth.models import UserContext
+from src.config import get_settings
+from src.domain.exceptions import AuthenticationError
 from src.domain.ontology.registry import OntologyRegistry
 from src.graph.pipeline import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
@@ -25,6 +28,7 @@ from src.services.ontology_service import OntologyService
 
 if TYPE_CHECKING:
     from src.api.services.explainability import ExplainabilityService
+    from src.services.auth_service import AuthService
     from src.services.skill_gap_service import SkillGapService
 
 logger = logging.getLogger(__name__)
@@ -150,16 +154,53 @@ def get_explainability_service(request: Request) -> "ExplainabilityService":
 
 
 # ============================================
+# Auth Service 의존성
+# ============================================
+
+def get_auth_service(request: Request) -> "AuthService":
+    """AuthService 의존성 주입 (app.state에서 가져옴)"""
+    return request.app.state.auth_service
+
+
+# ============================================
 # 인증 관련 의존성
 # ============================================
+
+async def get_current_user(request: Request) -> UserContext:
+    """
+    현재 요청의 인증된 사용자 컨텍스트를 반환
+
+    AUTH_ENABLED=false (기본값):
+        anonymous_admin() → 전체 권한 (기존 동작 100% 보존)
+
+    AUTH_ENABLED=true:
+        Bearer 토큰 → AuthService.get_current_user() → UserContext
+
+    Raises:
+        AuthenticationError: 토큰 없음, 만료, 유효하지 않음
+    """
+    settings = get_settings()
+
+    if not settings.auth_enabled:
+        return UserContext.anonymous_admin()
+
+    # Authorization 헤더에서 Bearer 토큰 추출
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise AuthenticationError("Missing or invalid Authorization header")
+
+    token = auth_header[len("Bearer "):]
+    if not token:
+        raise AuthenticationError("Empty token")
+
+    auth_service: AuthService = request.app.state.auth_service
+    return await auth_service.get_current_user(token)
+
 
 def get_current_reviewer_id(request: Request) -> str:
     """
     현재 요청자(reviewer)의 ID를 반환
 
-    TODO(Phase 4): JWT/API Key 인증 구현 필요
-
-    Returns:
-        str: 현재 요청자 식별자 (현재는 하드코딩)
+    하위 호환성을 위해 유지. 새 코드는 get_current_user()를 사용하세요.
     """
     return "anonymous_admin"

@@ -24,8 +24,12 @@ from src.api import (
     visualization_router,
 )
 from src.api.services.explainability import ExplainabilityService
+from src.auth.jwt_handler import JWTHandler
+from src.auth.password import PasswordHandler
 from src.config import get_settings
 from src.domain.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
     ConflictError,
     EntityNotFoundError,
     GraphRAGError,
@@ -35,6 +39,8 @@ from src.domain.ontology.registry import OntologyRegistry
 from src.graph import GraphRAGPipeline
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
+from src.repositories.user_repository import UserRepository
+from src.services.auth_service import AuthService
 from src.services.gds_service import GDSService
 from src.services.graph_edit_service import GraphEditService
 from src.services.ontology_service import OntologyService
@@ -145,6 +151,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     skill_gap_service = SkillGapService(neo4j_repo)
     logger.info("SkillGapService initialized")
 
+    # AuthService 초기화 (AUTH_ENABLED 여부와 무관하게 항상 생성)
+    user_repository = UserRepository(neo4j_client)
+    jwt_handler = JWTHandler(settings)
+    password_handler = PasswordHandler()
+    auth_service = AuthService(
+        user_repository=user_repository,
+        jwt_handler=jwt_handler,
+        password_handler=password_handler,
+        settings=settings,
+    )
+    logger.info(f"AuthService initialized (auth_enabled={settings.auth_enabled})")
+
     # app.state에 저장 (멀티 워커 환경에서 각 워커가 자체 인스턴스 보유)
     app.state.neo4j_client = neo4j_client
     app.state.neo4j_repo = neo4j_repo
@@ -156,6 +174,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.explainability_service = explainability_service
     app.state.graph_edit_service = graph_edit_service
     app.state.skill_gap_service = skill_gap_service
+    app.state.auth_service = auth_service
 
     yield
 
@@ -202,6 +221,29 @@ app.add_middleware(
 # ============================================
 # 글로벌 예외 핸들러
 # ============================================
+
+
+@app.exception_handler(AuthenticationError)
+async def authentication_error_handler(
+    request: Request, exc: AuthenticationError
+) -> JSONResponse:
+    """인증 실패 시 401 응답"""
+    return JSONResponse(
+        status_code=401,
+        content={"detail": {"message": exc.message, "code": exc.code}},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+@app.exception_handler(AuthorizationError)
+async def authorization_error_handler(
+    request: Request, exc: AuthorizationError
+) -> JSONResponse:
+    """인가 실패 시 403 응답"""
+    return JSONResponse(
+        status_code=403,
+        content={"detail": {"message": exc.message, "code": exc.code}},
+    )
 
 
 @app.exception_handler(EntityNotFoundError)
