@@ -88,6 +88,18 @@ class UserContext(BaseModel):
         return get_access_policy(self.roles)
 
     @classmethod
+    def from_demo_role(cls, role: str) -> UserContext:
+        """X-Demo-Role 헤더로 전달된 역할에 대한 데모 UserContext 생성"""
+        return cls(
+            user_id=f"demo_{role}",
+            username=f"demo_{role}",
+            roles=[role],
+            permissions=permissions_for_roles([role]),
+            is_admin=(role == "admin"),
+            department="백엔드개발팀" if role == "manager" else None,
+        )
+
+    @classmethod
     def anonymous_admin(cls) -> UserContext:
         """
         AUTH_ENABLED=false일 때 사용되는 익명 관리자 컨텍스트

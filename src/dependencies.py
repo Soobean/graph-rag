@@ -166,22 +166,30 @@ def get_auth_service(request: Request) -> "AuthService":
 # 인증 관련 의존성
 # ============================================
 
+ALLOWED_DEMO_ROLES = {"admin", "manager", "editor", "viewer"}
+
+
 async def get_current_user(request: Request) -> UserContext:
     """
     현재 요청의 인증된 사용자 컨텍스트를 반환
 
-    AUTH_ENABLED=false (기본값):
-        anonymous_admin() → 전체 권한 (기존 동작 100% 보존)
+    AUTH_ENABLED=false (데모/개발 모드):
+        X-Demo-Role 헤더 → 데모 UserContext (허용된 역할만)
+        헤더 없음 → anonymous_admin (기존 동작 100% 보존)
 
-    AUTH_ENABLED=true:
-        Bearer 토큰 → AuthService.get_current_user() → UserContext
+    AUTH_ENABLED=true (프로덕션):
+        X-Demo-Role 무시, Bearer 토큰 필수 → AuthService.get_current_user()
 
     Raises:
         AuthenticationError: 토큰 없음, 만료, 유효하지 않음
     """
     settings = get_settings()
 
+    # Demo mode: AUTH_ENABLED=false일 때만 X-Demo-Role 허용
     if not settings.auth_enabled:
+        demo_role = request.headers.get("X-Demo-Role")
+        if demo_role and demo_role in ALLOWED_DEMO_ROLES:
+            return UserContext.from_demo_role(demo_role)
         return UserContext.anonymous_admin()
 
     # Authorization 헤더에서 Bearer 토큰 추출
