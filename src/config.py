@@ -279,6 +279,34 @@ class Settings(BaseSettings):
     )
 
     # ============================================
+    # Authentication & Authorization 설정
+    # ============================================
+    auth_enabled: bool = Field(
+        default=False,
+        description="인증/인가 활성화 여부 (False면 AnonymousAdmin으로 전체 권한 부여)",
+    )
+    jwt_secret_key: str = Field(
+        default="dev-insecure-secret-key-change-in-production",
+        description="JWT 서명 키 (프로덕션에서는 반드시 변경)",
+    )
+    jwt_access_token_expire_minutes: int = Field(
+        default=60,
+        ge=1,
+        le=1440,
+        description="JWT 액세스 토큰 만료 시간 (분)",
+    )
+    jwt_refresh_token_expire_days: int = Field(
+        default=7,
+        ge=1,
+        le=30,
+        description="JWT 리프레시 토큰 만료 시간 (일)",
+    )
+    graph_edit_require_auth: bool = Field(
+        default=True,
+        description="그래프 편집 시 인증 필수 여부",
+    )
+
+    # ============================================
     # Adaptive Ontology 설정
     # ============================================
     adaptive_ontology: AdaptiveOntologySettings = Field(
@@ -378,6 +406,13 @@ class Settings(BaseSettings):
                 logger.warning(
                     "azure_openai_api_key is not set. "
                     "Ensure Managed Identity is configured for Azure OpenAI access."
+                )
+
+            # JWT 시크릿 키 기본값 경고
+            if self.auth_enabled and self.jwt_secret_key.startswith("dev-insecure"):
+                logger.warning(
+                    "jwt_secret_key is using default insecure value in production! "
+                    "Set a strong secret key via JWT_SECRET_KEY environment variable."
                 )
 
             if missing_fields:
