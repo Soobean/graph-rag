@@ -172,16 +172,16 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
         for value in record.values():
             # --- 노드 검사 ---
             if _is_node(value):
-                label = _get_node_label(value)
-                if label is None:
-                    continue
+                labels = value.get("labels", [])
+                if not labels:
+                    return False  # 라벨 없는 노드는 거부
 
-                # D1: 라벨 접근 제어
-                if label not in allowed_labels:
+                # D1: 모든 라벨이 허용 목록에 있어야 함
+                if any(label not in allowed_labels for label in labels):
                     return False
 
-                # D3: 부서 범위 제어
-                scope = policy.get_scope(label)
+                # D3: 부서 범위 제어 (첫 번째 라벨 = primary)
+                scope = policy.get_scope(labels[0])
                 if (
                     scope == "department"
                     and user_department

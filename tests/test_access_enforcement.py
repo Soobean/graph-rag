@@ -9,13 +9,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.auth.access_policy import AccessPolicy, NodeAccessRule, get_access_policy
+from src.auth.access_policy import get_access_policy
 from src.auth.models import UserContext
 from src.domain.types import GraphSchema
 from src.graph.nodes.cypher_generator import CypherGeneratorNode
 from src.graph.nodes.graph_executor import GraphExecutorNode
 from src.graph.state import GraphRAGState
-
 
 # =============================================================================
 # 테스트 헬퍼: Neo4j 결과 레코드 팩토리
@@ -109,6 +108,47 @@ class TestAccessEnforcementD1:
 
         state = GraphRAGState(
             cypher_query="MATCH (c:Concept) RETURN c",
+            cypher_parameters={},
+            user_context=_user(roles=["viewer"]),
+        )
+
+        result = await executor(state)
+        assert result["result_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_multi_label_node_blocked_if_any_forbidden(self, node):
+        """다중 라벨 노드: 하나라도 금지 라벨이면 제거"""
+        executor, mock_neo4j = node
+        # Employee는 viewer 허용, Company는 viewer 금지 → 전체 거부
+        multi_label_node = {
+            "labels": ["Employee", "Company"],
+            "properties": {"name": "테스트"},
+            "elementId": "4:fake:multi",
+        }
+        mock_neo4j.execute_cypher.return_value = [{"n": multi_label_node}]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (n) RETURN n",
+            cypher_parameters={},
+            user_context=_user(roles=["viewer"]),
+        )
+
+        result = await executor(state)
+        assert result["result_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_labels_node_blocked(self, node):
+        """빈 라벨 노드는 거부"""
+        executor, mock_neo4j = node
+        empty_label_node = {
+            "labels": [],
+            "properties": {"name": "unknown"},
+            "elementId": "4:fake:empty",
+        }
+        mock_neo4j.execute_cypher.return_value = [{"n": empty_label_node}]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (n) RETURN n",
             cypher_parameters={},
             user_context=_user(roles=["viewer"]),
         )
