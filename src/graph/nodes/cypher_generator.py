@@ -13,6 +13,7 @@ import re
 from enum import Enum
 from typing import Any
 
+from src.auth.access_policy import AccessPolicy
 from src.config import Settings
 from src.domain.types import CypherGeneratorUpdate, GraphSchema
 from src.graph.nodes.base import BaseNode
@@ -294,6 +295,13 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
             else:
                 schema = await self._get_schema()
 
+            # 접근 제어: 허용되지 않은 라벨/관계를 스키마에서 제거
+            # (최적화 — LLM이 금지된 라벨로 쿼리를 생성하지 않도록 유도)
+            user_context = state.get("user_context")
+            if user_context and not user_context.is_admin:
+                policy = user_context.get_access_policy()
+                schema = self._filter_schema_for_policy(schema, policy)
+
             # 복잡도 분석 및 모델 선택
             use_light_model = False
             if self._settings and self._settings.cypher_light_model_enabled:
@@ -385,3 +393,45 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
         except Exception as e:
             # 캐시 저장 실패는 무시 (graceful degradation)
             self._logger.warning(f"Failed to save query to cache: {e}")
+
+    def _filter_schema_for_policy(
+        self,
+        schema: GraphSchema,
+        policy: AccessPolicy,
+    ) -> GraphSchema:
+        """
+        접근 정책에 따라 스키마에서 허용되지 않은 라벨/관계를 제거
+
+        이것은 최적화이지 보안 경계가 아님 — 보안은 GraphExecutor 필터링이 보장.
+        LLM이 금지된 라벨로 쿼리를 생성하지 않도록 유도하는 역할.
+        """
+        allowed_labels = policy.get_allowed_labels()
+        allowed_rels = policy.allowed_relationships
+
+        filtered = GraphSchema(
+            node_labels=[
+                label for label in schema.get("node_labels", [])
+                if label in allowed_labels
+            ],
+            relationship_types=[
+                rel for rel in schema.get("relationship_types", [])
+                if rel in allowed_rels
+            ],
+            nodes=[
+                node for node in schema.get("nodes", [])
+                if node.get("label") in allowed_labels
+            ],
+            relationships=[
+                rel for rel in schema.get("relationships", [])
+                if rel.get("type") in allowed_rels
+            ],
+            indexes=schema.get("indexes", []),
+            constraints=schema.get("constraints", []),
+        )
+
+        self._logger.debug(
+            f"Schema filtered: labels {len(schema.get('node_labels', []))}→{len(filtered['node_labels'])}, "
+            f"rels {len(schema.get('relationship_types', []))}→{len(filtered['relationship_types'])}"
+        )
+
+        return filtered
