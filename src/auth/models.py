@@ -1,6 +1,13 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel
 
 from src.auth.permissions import check_permission
+
+if TYPE_CHECKING:
+    from src.auth.access_policy import AccessPolicy
 
 # 기본 역할별 권한 매핑
 DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
@@ -72,8 +79,16 @@ class UserContext(BaseModel):
         required = f"{resource}/{action}"
         return any(check_permission(perm, required) for perm in self.permissions)
 
+    def get_access_policy(self) -> AccessPolicy:
+        """역할 기반 접근 정책 반환. admin이면 전체 허용 정책."""
+        from src.auth.access_policy import ADMIN_POLICY, get_access_policy
+
+        if self.is_admin:
+            return ADMIN_POLICY
+        return get_access_policy(self.roles)
+
     @classmethod
-    def anonymous_admin(cls) -> "UserContext":
+    def anonymous_admin(cls) -> UserContext:
         """
         AUTH_ENABLED=false일 때 사용되는 익명 관리자 컨텍스트
 

@@ -1,0 +1,156 @@
+"""
+3차원 접근 제어 정책 (Node-Level Access Control)
+
+Dimension 1: 라벨 접근 — 역할별 조회 가능한 Neo4j 노드 라벨
+Dimension 2: 속성 가시성 — 같은 라벨이라도 역할별 보이는 속성이 다름
+Dimension 3: 부서 범위 — manager는 자기 부서 데이터만 조회 가능
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+ALL_PROPS: Literal["*"] = "*"
+
+
+@dataclass(frozen=True)
+class NodeAccessRule:
+    """단일 노드 라벨의 접근 규칙"""
+
+    allowed_properties: tuple[str, ...] | Literal["*"]  # "*" = 전체 속성 접근
+    scope: Literal["all", "department"]  # "department" = 자기 부서만
+
+
+@dataclass(frozen=True)
+class AccessPolicy:
+    """역할의 3차원 접근 정책"""
+
+    node_rules: dict[str, NodeAccessRule]  # label → rule
+
+    def get_allowed_labels(self) -> set[str]:
+        """접근 가능한 노드 라벨 목록"""
+        return set(self.node_rules.keys())
+
+    def get_allowed_properties(
+        self, label: str
+    ) -> tuple[str, ...] | Literal["*"] | None:
+        """특정 라벨의 접근 가능 속성. None이면 라벨 자체 접근 불가"""
+        rule = self.node_rules.get(label)
+        if rule is None:
+            return None
+        return rule.allowed_properties
+
+    def get_scope(self, label: str) -> Literal["all", "department"] | None:
+        """특정 라벨의 부서 범위. None이면 접근 불가"""
+        rule = self.node_rules.get(label)
+        if rule is None:
+            return None
+        return rule.scope
+
+    def has_department_scope(self) -> bool:
+        """부서 제한이 있는 라벨이 하나라도 있는지"""
+        return any(rule.scope == "department" for rule in self.node_rules.values())
+
+
+def get_access_policy(roles: list[str]) -> AccessPolicy:
+    """
+    여러 역할의 정책을 병합 (most permissive wins)
+
+    - 라벨: 합집합
+    - 속성: 합집합 (어느 한 역할이 "*"이면 "*")
+    - Scope: "all" 우선 (더 넓은 범위가 우선)
+    """
+    merged_rules: dict[str, NodeAccessRule] = {}
+
+    for role in roles:
+        policy = ROLE_POLICIES.get(role)
+        if policy is None:
+            continue
+        for label, rule in policy.node_rules.items():
+            if label not in merged_rules:
+                merged_rules[label] = rule
+            else:
+                existing = merged_rules[label]
+                # 속성 병합: "*" 우선, 아니면 합집합
+                if (
+                    existing.allowed_properties == ALL_PROPS
+                    or rule.allowed_properties == ALL_PROPS
+                ):
+                    merged_props: tuple[str, ...] | Literal["*"] = ALL_PROPS
+                else:
+                    merged_props = tuple(
+                        set(existing.allowed_properties)
+                        | set(rule.allowed_properties)
+                    )
+                # Scope 병합: "all" 우선
+                merged_scope: Literal["all", "department"] = (
+                    "all"
+                    if existing.scope == "all" or rule.scope == "all"
+                    else "department"
+                )
+                merged_rules[label] = NodeAccessRule(
+                    allowed_properties=merged_props,
+                    scope=merged_scope,
+                )
+
+    return AccessPolicy(node_rules=merged_rules)
+
+
+# =============================================================================
+# 역할별 정책 정의
+# =============================================================================
+
+_ADMIN_RULES: dict[str, NodeAccessRule] = {
+    "Employee": NodeAccessRule(ALL_PROPS, "all"),
+    "Skill": NodeAccessRule(ALL_PROPS, "all"),
+    "Project": NodeAccessRule(ALL_PROPS, "all"),
+    "Department": NodeAccessRule(ALL_PROPS, "all"),
+    "Position": NodeAccessRule(ALL_PROPS, "all"),
+    "Certificate": NodeAccessRule(ALL_PROPS, "all"),
+    "Company": NodeAccessRule(ALL_PROPS, "all"),
+    "Office": NodeAccessRule(ALL_PROPS, "all"),
+    "Concept": NodeAccessRule(ALL_PROPS, "all"),
+}
+
+_MANAGER_RULES: dict[str, NodeAccessRule] = {
+    "Employee": NodeAccessRule(ALL_PROPS, "department"),
+    "Skill": NodeAccessRule(ALL_PROPS, "all"),
+    "Project": NodeAccessRule(ALL_PROPS, "department"),
+    "Department": NodeAccessRule(ALL_PROPS, "all"),
+    "Position": NodeAccessRule(ALL_PROPS, "all"),
+    "Certificate": NodeAccessRule(ALL_PROPS, "all"),
+    "Company": NodeAccessRule(ALL_PROPS, "all"),
+    "Office": NodeAccessRule(ALL_PROPS, "all"),
+}
+
+_EDITOR_RULES: dict[str, NodeAccessRule] = {
+    "Employee": NodeAccessRule(
+        ("name", "job_type", "experience", "hire_date"), "all"
+    ),
+    "Skill": NodeAccessRule(ALL_PROPS, "all"),
+    "Project": NodeAccessRule(("name", "type", "status", "start_date"), "all"),
+    "Department": NodeAccessRule(("name", "head_count"), "all"),
+    "Position": NodeAccessRule(ALL_PROPS, "all"),
+    "Certificate": NodeAccessRule(ALL_PROPS, "all"),
+    "Company": NodeAccessRule(ALL_PROPS, "all"),
+    "Office": NodeAccessRule(ALL_PROPS, "all"),
+}
+
+_VIEWER_RULES: dict[str, NodeAccessRule] = {
+    "Employee": NodeAccessRule(("name", "job_type"), "all"),
+    "Skill": NodeAccessRule(ALL_PROPS, "all"),
+    "Project": NodeAccessRule(("name", "type", "status"), "all"),
+    "Department": NodeAccessRule(("name",), "all"),
+    "Position": NodeAccessRule(("name", "level"), "all"),
+    "Certificate": NodeAccessRule(ALL_PROPS, "all"),
+}
+
+ADMIN_POLICY = AccessPolicy(node_rules=_ADMIN_RULES)
+
+ROLE_POLICIES: dict[str, AccessPolicy] = {
+    "admin": ADMIN_POLICY,
+    "manager": AccessPolicy(node_rules=_MANAGER_RULES),
+    "editor": AccessPolicy(node_rules=_EDITOR_RULES),
+    "viewer": AccessPolicy(node_rules=_VIEWER_RULES),
+}
