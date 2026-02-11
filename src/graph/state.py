@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
+from src.auth.models import UserContext
 from src.domain.types import GraphSchema, QueryPlan, ResolvedEntity, UnresolvedEntity
 
 # ARCHITECTURE.md에 정의된 7가지 Intent Type + ontology_update + unknown
@@ -97,3 +98,6 @@ class GraphRAGState(TypedDict, total=False):
     cache_hit: bool  # 캐시 히트 여부
     cache_score: float  # 캐시 유사도 점수
     skip_generation: bool  # Cypher 생성 스킵 여부 (캐시 히트 시)
+
+    # 7. 접근 제어 (Access Control)
+    user_context: UserContext | None

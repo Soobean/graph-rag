@@ -22,8 +22,10 @@ from src.api.schemas import (
 )
 from src.api.schemas.explainability import ExplainableResponse
 from src.api.services.explainability import ExplainabilityService
+from src.auth.models import UserContext
 from src.config import Settings, get_settings
 from src.dependencies import (
+    get_current_user,
     get_explainability_service,
     get_graph_pipeline,
     get_neo4j_client,
@@ -34,6 +36,8 @@ from src.domain.exceptions import (
     LLMConnectionError,
     LLMRateLimitError,
     LLMResponseError,
+)
+from src.domain.exceptions import (
     ValidationError as DomainValidationError,
 )
 from src.graph import GraphRAGPipeline
@@ -56,6 +60,7 @@ async def query(
     explainability_service: Annotated[
         ExplainabilityService, Depends(get_explainability_service)
     ],
+    user: Annotated[UserContext, Depends(get_current_user)],
 ) -> QueryResponse:
     """
     그래프 RAG 질의
@@ -85,6 +90,7 @@ async def query(
             question=request.question,
             session_id=request.session_id,
             return_full_state=return_full_state,
+            user_context=user,
         )
 
         # 기본 메타데이터 구축
@@ -188,6 +194,7 @@ async def query(
 async def query_stream(
     request: QueryRequest,
     pipeline: Annotated[GraphRAGPipeline, Depends(get_graph_pipeline)],
+    user: Annotated[UserContext, Depends(get_current_user)],
 ) -> EventSourceResponse:
     """
     스트리밍 그래프 RAG 질의 (SSE)
@@ -220,6 +227,7 @@ async def query_stream(
             async for event in pipeline.run_with_streaming_response(
                 question=request.question,
                 session_id=request.session_id,
+                user_context=user,
             ):
                 event_type = event.get("type", "unknown")
 
