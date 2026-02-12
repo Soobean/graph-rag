@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Check, X, ShieldCheck, Users, PenLine, Eye, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Check, X, ShieldCheck, Users, PenLine, Eye, ChevronDown, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useStreamingQuery } from '@/api/hooks';
+import { CompareDataTable } from '@/components/compare/CompareDataTable';
 import type { StreamingMetadata } from '@/types/api';
 import type { DemoRole } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
@@ -150,6 +151,7 @@ function RoleColumn({ role, content, metadata, isStreaming, error, visibleBadges
 export function ComparePage() {
   const [input, setInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [showTextGrid, setShowTextGrid] = useState(false);
 
   const adminQuery = useStreamingQuery();
   const managerQuery = useStreamingQuery();
@@ -216,6 +218,15 @@ export function ComparePage() {
     return getVisibleBadges(analyses);
   }, [adminMeta, managerMeta, editorMeta, viewerMeta]);
 
+  const isAllComplete = queries.every(
+    (q) => q.state.isComplete || q.state.error != null
+  );
+
+  const metadataByRole = useMemo(
+    () => [adminMeta, managerMeta, editorMeta, viewerMeta],
+    [adminMeta, managerMeta, editorMeta, viewerMeta]
+  );
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Header */}
@@ -255,18 +266,56 @@ export function ComparePage() {
       {/* Compare Grid / Empty State */}
       <main className="flex-1 overflow-y-auto p-4">
         {submitted ? (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 min-h-[500px]">
-            {ROLES.map((roleConfig, idx) => (
-              <RoleColumn
-                key={roleConfig.role}
-                role={roleConfig}
-                content={queries[idx].state.content}
-                metadata={queries[idx].state.metadata}
-                isStreaming={queries[idx].state.isStreaming}
-                error={queries[idx].state.error}
-                visibleBadges={visibleBadges}
+          <div className="space-y-4">
+            {/* Data Comparison Table — appears after all streams complete */}
+            {(isAllComplete || isAnyStreaming) && (
+              <CompareDataTable
+                metadataByRole={metadataByRole}
+                isComplete={isAllComplete}
               />
-            ))}
+            )}
+
+            {/* Text Grid — collapsible after data table appears */}
+            {isAllComplete ? (
+              <div>
+                <button
+                  onClick={() => setShowTextGrid((v) => !v)}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
+                >
+                  <ChevronDown className={cn('h-4 w-4 transition-transform', showTextGrid && 'rotate-180')} />
+                  텍스트 응답 {showTextGrid ? '접기' : '보기'}
+                </button>
+                {showTextGrid && (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 min-h-[400px]">
+                    {ROLES.map((roleConfig, idx) => (
+                      <RoleColumn
+                        key={roleConfig.role}
+                        role={roleConfig}
+                        content={queries[idx].state.content}
+                        metadata={queries[idx].state.metadata}
+                        isStreaming={queries[idx].state.isStreaming}
+                        error={queries[idx].state.error}
+                        visibleBadges={visibleBadges}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 min-h-[500px]">
+                {ROLES.map((roleConfig, idx) => (
+                  <RoleColumn
+                    key={roleConfig.role}
+                    role={roleConfig}
+                    content={queries[idx].state.content}
+                    metadata={queries[idx].state.metadata}
+                    isStreaming={queries[idx].state.isStreaming}
+                    error={queries[idx].state.error}
+                    visibleBadges={visibleBadges}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
