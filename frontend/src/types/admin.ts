@@ -206,81 +206,116 @@ export interface TeamRecommendParams {
   diversity_weight?: number;
 }
 
-// Skill Gap Analysis Types
+// Project Staffing Types
 
-export type CoverageStatus = 'covered' | 'partial' | 'gap';
-export type MatchType = 'same_category' | 'parent' | 'related' | 'none';
-export type InsightType = 'rare_skill' | 'synergy' | 'bridge' | 'alternative';
-export type InsightSeverity = 'warning' | 'info' | 'success';
-
-export interface SkillGapAnalyzeRequest {
-  required_skills: string[];
-  team_members?: string[];
-  project_id?: string;
-}
-
-export interface SkillRecommendRequest {
-  skill: string;
-  exclude_members: string[];
-  limit?: number;
-}
-
-export interface SkillMatch {
-  employee_name: string;
-  possessed_skill: string;
-  match_type: MatchType;
-  explanation: string;
-}
-
-export interface SkillCoverage {
-  skill: string;
-  category: string | null;
-  category_color: string | null;
-  status: CoverageStatus;
-  exact_matches: string[];
-  similar_matches: SkillMatch[];
-  explanation: string;
-}
-
-export interface CategoryCoverage {
-  category: string;
-  color: string;
-  total_skills: number;
-  covered_count: number;
-  coverage_ratio: number;
-}
-
-export interface RecommendedEmployee {
+export interface ProjectListItem {
   name: string;
+  status: string | null;
+  budget_million: number | null;
+  required_headcount: number | null;
+}
+
+export interface ProjectListResponse {
+  projects: ProjectListItem[];
+}
+
+export interface FindCandidatesRequest {
+  project_name: string;
+  skill_name?: string;
+  min_proficiency?: number;
+}
+
+export interface CandidateInfo {
+  employee_name: string;
   department: string | null;
-  current_skills: string[];
-  match_type: MatchType;
-  matched_skill: string;
-  reason: string;
+  proficiency: number;
+  effective_rate: number;
+  availability: string | null;
   current_projects: number;
+  max_projects: number;
 }
 
-export interface Insight {
-  type: InsightType;
-  title: string;
-  description: string;
-  related_people: string[];
-  severity: InsightSeverity;
+export interface SkillCandidates {
+  skill_name: string;
+  required_proficiency: number | null;
+  max_hourly_rate: number | null;
+  required_headcount: number | null;
+  importance: string | null;
+  candidates: CandidateInfo[];
 }
 
-export interface SkillGapAnalyzeResponse {
-  team_members: string[];
-  overall_status: CoverageStatus;
-  category_summary: CategoryCoverage[];
-  skill_details: SkillCoverage[];
-  gaps: string[];
-  recommendations: string[];
-  insights: Insight[];
+export interface FindCandidatesResponse {
+  project_name: string;
+  project_budget: number | null;
+  estimated_hours: number | null;
+  required_headcount: number | null;
+  skill_candidates: SkillCandidates[];
+  total_skills: number;
+  total_candidates: number;
 }
 
-export interface SkillRecommendResponse {
-  target_skill: string;
-  category: string;
-  internal_candidates: RecommendedEmployee[];
-  external_search_query: string;
+export interface StaffingPlanRequest {
+  project_name: string;
+  top_n_per_skill?: number;
+}
+
+export interface RecommendedCandidate {
+  employee_name: string;
+  department: string | null;
+  proficiency: number;
+  effective_rate: number;
+  availability: string | null;
+}
+
+export interface SkillStaffingPlan {
+  skill_name: string;
+  importance: string | null;
+  required_headcount: number | null;
+  recommended_candidates: RecommendedCandidate[];
+  estimated_cost_per_hour: number;
+}
+
+export interface StaffingPlanResponse {
+  project_name: string;
+  project_budget: number | null;
+  estimated_hours: number | null;
+  skill_plans: SkillStaffingPlan[];
+  total_estimated_labor_cost: number;
+  budget_utilization_percent: number | null;
+}
+
+export interface BudgetAnalysisRequest {
+  project_name: string;
+}
+
+export interface TeamMemberCost {
+  employee_name: string;
+  role: string | null;
+  agreed_rate: number;
+  allocated_hours: number;
+  actual_hours: number;
+  planned_cost: number;
+  actual_cost: number;
+}
+
+export interface BudgetAnalysisResponse {
+  project_name: string;
+  project_budget: number | null;
+  budget_allocated: number | null;
+  budget_spent: number | null;
+  team_breakdown: TeamMemberCost[];
+  total_planned_cost: number;
+  total_actual_cost: number;
+  variance: number;
+  variance_percent: number | null;
+}
+
+export interface SkillCategory {
+  name: string;
+  color: string;
+  skills: string[];
+}
+
+export interface SkillCategoryListResponse {
+  categories: SkillCategory[];
 }

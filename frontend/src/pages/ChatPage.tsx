@@ -60,10 +60,10 @@ export function ChatPage() {
               Compare
             </Button>
           </Link>
-          <Link to="/skill-gap">
+          <Link to="/admin/staffing">
             <Button variant="outline" size="sm">
               <Target className="mr-1 h-4 w-4" />
-              Skill Gap
+              Staffing
             </Button>
           </Link>
           <Link to="/admin">
