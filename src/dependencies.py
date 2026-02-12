@@ -29,7 +29,7 @@ from src.services.ontology_service import OntologyService
 if TYPE_CHECKING:
     from src.api.services.explainability import ExplainabilityService
     from src.services.auth_service import AuthService
-    from src.services.skill_gap_service import SkillGapService
+    from src.services.project_staffing_service import ProjectStaffingService
 
 logger = logging.getLogger(__name__)
 
@@ -128,17 +128,17 @@ def get_graph_edit_service(request: Request) -> GraphEditService:
 
 
 # ============================================
-# Skill Gap Service 의존성
+# Project Staffing Service 의존성
 # ============================================
 
 
-def get_skill_gap_service(request: Request) -> "SkillGapService":
+def get_staffing_service(request: Request) -> "ProjectStaffingService":
     """
-    SkillGapService 의존성 주입
+    ProjectStaffingService 의존성 주입
 
     main.py lifespan에서 초기화된 인스턴스를 반환합니다.
     """
-    return request.app.state.skill_gap_service
+    return request.app.state.staffing_service
 
 
 # ============================================

@@ -36,19 +36,16 @@ from src.api.schemas.query import (
     QueryResponse,
     SchemaResponse,
 )
-from src.api.schemas.skill_gap import (
-    CategoryCoverage,
-    CoverageStatus,
-    MatchType,
-    RecommendedEmployee,
+from src.api.schemas.staffing import (
+    BudgetAnalysisRequest,
+    BudgetAnalysisResponse,
+    FindCandidatesRequest,
+    FindCandidatesResponse,
     SkillCategory,
     SkillCategoryListResponse,
-    SkillCoverage,
-    SkillGapAnalyzeRequest,
-    SkillGapAnalyzeResponse,
-    SkillMatch,
-    SkillRecommendRequest,
-    SkillRecommendResponse,
+    StaffingPlanRequest,
+    StaffingPlanResponse,
+    TeamMemberCost,
 )
 
 __all__ = [
@@ -82,17 +79,14 @@ __all__ = [
     "TeamMember",
     "TeamRecommendRequest",
     "TeamRecommendResponse",
-    # Skill Gap Analysis
-    "CoverageStatus",
-    "MatchType",
-    "SkillGapAnalyzeRequest",
-    "SkillGapAnalyzeResponse",
-    "SkillRecommendRequest",
-    "SkillRecommendResponse",
-    "SkillCoverage",
-    "SkillMatch",
-    "CategoryCoverage",
-    "RecommendedEmployee",
+    # Project Staffing
+    "FindCandidatesRequest",
+    "FindCandidatesResponse",
+    "StaffingPlanRequest",
+    "StaffingPlanResponse",
+    "BudgetAnalysisRequest",
+    "BudgetAnalysisResponse",
+    "TeamMemberCost",
     "SkillCategory",
     "SkillCategoryListResponse",
 ]
