@@ -19,7 +19,9 @@ const IngestPage = lazy(() =>
 const AnalyticsPage = lazy(() =>
   import('@/pages/admin/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage }))
 );
-// SkillGapPage removed — replaced by ProjectStaffing (coming soon)
+const ProjectStaffingPage = lazy(() =>
+  import('@/pages/admin/ProjectStaffingPage').then((m) => ({ default: m.ProjectStaffingPage }))
+);
 const GraphEditPage = lazy(() =>
   import('@/pages/admin/GraphEditPage').then((m) => ({ default: m.GraphEditPage }))
 );
@@ -95,6 +97,14 @@ export const router = createBrowserRouter([
         element: (
           <SuspenseWrapper>
             <AnalyticsPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'staffing',
+        element: (
+          <SuspenseWrapper>
+            <ProjectStaffingPage />
           </SuspenseWrapper>
         ),
       },

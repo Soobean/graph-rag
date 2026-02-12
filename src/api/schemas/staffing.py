@@ -14,6 +14,27 @@ from pydantic import BaseModel, Field
 # =============================================================================
 
 
+class ProjectListItem(BaseModel):
+    """프로젝트 목록 아이템 (드롭다운용)"""
+
+    name: str = Field(..., description="프로젝트 이름")
+    status: str | None = Field(default=None, description="프로젝트 상태")
+    budget_million: float | None = Field(
+        default=None, description="예산 (백만원)"
+    )
+    required_headcount: int | None = Field(
+        default=None, description="필요 인원"
+    )
+
+
+class ProjectListResponse(BaseModel):
+    """프로젝트 목록 응답"""
+
+    projects: list[ProjectListItem] = Field(
+        default_factory=list, description="프로젝트 목록"
+    )
+
+
 class SkillCategory(BaseModel):
     """스킬 카테고리 정보"""
 

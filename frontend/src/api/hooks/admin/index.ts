@@ -18,10 +18,12 @@ export {
   useRecommendTeam,
 } from './useAnalytics';
 export {
-  useSkillCategories,
-  useAnalyzeSkillGap,
-  useRecommendGapSolution,
-} from './useSkillGap';
+  useStaffingProjects,
+  useStaffingCategories,
+  useFindCandidates,
+  useGenerateStaffingPlan,
+  useAnalyzeBudget,
+} from './useProjectStaffing';
 export {
   useSchemaInfo,
   useNodeSearch,

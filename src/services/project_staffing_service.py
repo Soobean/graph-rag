@@ -14,6 +14,7 @@ from src.api.schemas.staffing import (
     BudgetAnalysisResponse,
     CandidateInfo,
     FindCandidatesResponse,
+    ProjectListItem,
     RecommendedCandidate,
     SkillCandidates,
     SkillCategory,
@@ -53,6 +54,38 @@ class ProjectStaffingService:
 
     def __init__(self, neo4j_repository: Neo4jRepository):
         self._neo4j = neo4j_repository
+
+    # =========================================================================
+    # 프로젝트 목록 조회
+    # =========================================================================
+
+    async def list_projects(self) -> list[ProjectListItem]:
+        """
+        프로젝트 목록 조회 (프론트엔드 드롭다운용)
+
+        Returns:
+            프로젝트 이름, 상태, 예산, 필요 인원 목록
+        """
+        query = """
+        MATCH (p:Project)
+        WITH p.name AS name,
+             max(p.status) AS status,
+             max(p.budget_million) AS budget_million,
+             max(p.required_headcount) AS required_headcount
+        RETURN name, status, budget_million, required_headcount
+        ORDER BY name
+        """
+
+        results = await self._neo4j.execute_cypher(query)
+        return [
+            ProjectListItem(
+                name=row["name"],
+                status=row.get("status"),
+                budget_million=row.get("budget_million"),
+                required_headcount=row.get("required_headcount"),
+            )
+            for row in results
+        ]
 
     # =========================================================================
     # Scenario 1: 프로젝트 후보자 탐색
