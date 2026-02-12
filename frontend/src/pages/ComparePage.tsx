@@ -23,30 +23,30 @@ const EXAMPLE_QUERIES = [
 
 interface FilterAnalysis {
   resultCount: number;
-  hasSalary: boolean;
-  hasCompany: boolean;
   hasMentors: boolean;
   hasRate: boolean;
   hasBudget: boolean;
   hasEffectiveRate: boolean;
 }
 
+/** 배지 정의: label + 분석 결과에서 값 추출하는 키 */
+const BADGE_KEYS: { label: string; key: keyof Omit<FilterAnalysis, 'resultCount'> }[] = [
+  { label: 'hourly_rate', key: 'hasRate' },
+  { label: 'effective_rate', key: 'hasEffectiveRate' },
+  { label: 'budget_allocated', key: 'hasBudget' },
+  { label: 'MENTORS', key: 'hasMentors' },
+];
+
 function analyzeFiltering(metadata: StreamingMetadata | null): FilterAnalysis | null {
   if (!metadata) return null;
 
   const graphData = metadata.graph_data;
-  let hasSalary = false;
-  let hasCompany = false;
   let hasMentors = false;
   let hasRate = false;
   let hasBudget = false;
   let hasEffectiveRate = false;
 
   if (graphData) {
-    hasCompany = graphData.nodes.some((n) => n.label === 'Company');
-    hasSalary = graphData.nodes.some(
-      (n) => n.label === 'Employee' && 'salary' in n.properties
-    );
     hasRate = graphData.nodes.some(
       (n) => n.label === 'Employee' && 'hourly_rate' in n.properties
     );
@@ -61,13 +61,18 @@ function analyzeFiltering(metadata: StreamingMetadata | null): FilterAnalysis | 
 
   return {
     resultCount: metadata.result_count,
-    hasSalary,
-    hasCompany,
     hasMentors,
     hasRate,
     hasBudget,
     hasEffectiveRate,
   };
+}
+
+/** 4개 역할 분석 결과를 비교해서 '역할 간 차이가 있는' 배지 키만 반환 */
+function getVisibleBadges(analyses: (FilterAnalysis | null)[]): (typeof BADGE_KEYS)[number][] {
+  return BADGE_KEYS.filter(({ key }) =>
+    analyses.some((a) => a?.[key] === true)
+  );
 }
 
 function FilterBadge({ label, value }: { label: string; value: boolean }) {
@@ -89,9 +94,10 @@ interface RoleColumnProps {
   metadata: StreamingMetadata | null;
   isStreaming: boolean;
   error: string | null;
+  visibleBadges: (typeof BADGE_KEYS)[number][];
 }
 
-function RoleColumn({ role, content, metadata, isStreaming, error }: RoleColumnProps) {
+function RoleColumn({ role, content, metadata, isStreaming, error, visibleBadges }: RoleColumnProps) {
   const analysis = useMemo(() => analyzeFiltering(metadata), [metadata]);
 
   return (
@@ -119,11 +125,9 @@ function RoleColumn({ role, content, metadata, isStreaming, error }: RoleColumnP
               {analysis.resultCount}
             </span>
           </div>
-          <FilterBadge label="hourly_rate" value={analysis.hasRate} />
-          <FilterBadge label="effective_rate" value={analysis.hasEffectiveRate} />
-          <FilterBadge label="budget_allocated" value={analysis.hasBudget} />
-          <FilterBadge label="Company" value={analysis.hasCompany} />
-          <FilterBadge label="MENTORS" value={analysis.hasMentors} />
+          {visibleBadges.map(({ label, key }) => (
+            <FilterBadge key={key} label={label} value={analysis[key]} />
+          ))}
         </div>
       )}
 
@@ -202,6 +206,16 @@ export function ComparePage() {
 
   const queries = [adminQuery, managerQuery, editorQuery, viewerQuery];
 
+  // 4역할의 분석 결과를 비교 → 최소 1개 역할에서 ✓인 배지만 표시
+  const adminMeta = adminQuery.state.metadata;
+  const managerMeta = managerQuery.state.metadata;
+  const editorMeta = editorQuery.state.metadata;
+  const viewerMeta = viewerQuery.state.metadata;
+  const visibleBadges = useMemo(() => {
+    const analyses = [adminMeta, managerMeta, editorMeta, viewerMeta].map(analyzeFiltering);
+    return getVisibleBadges(analyses);
+  }, [adminMeta, managerMeta, editorMeta, viewerMeta]);
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Header */}
@@ -250,6 +264,7 @@ export function ComparePage() {
                 metadata={queries[idx].state.metadata}
                 isStreaming={queries[idx].state.isStreaming}
                 error={queries[idx].state.error}
+                visibleBadges={visibleBadges}
               />
             ))}
           </div>
