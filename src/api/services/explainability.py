@@ -23,9 +23,9 @@ from src.domain.types import FullState, PipelineMetadata
 # 역할(role) → depth 기본 매핑
 # 프론트엔드에서 depth 기반 레이아웃 계산 시 사용
 ROLE_TO_DEFAULT_DEPTH: dict[str, int] = {
-    "start": 0,        # 쿼리 엔티티 (검색 시작점)
+    "start": 0,  # 쿼리 엔티티 (검색 시작점)
     "intermediate": 1,  # 확장된 개념 (온톨로지 기반)
-    "end": 2,          # 결과 엔티티 (검색 결과)
+    "end": 2,  # 결과 엔티티 (검색 결과)
 }
 
 # 노드 이름 → 단계 유형 매핑
@@ -115,7 +115,9 @@ class ExplainabilityService:
             elif clean_name == "concept_expander" and full_state:
                 original = full_state.get("original_entities", {})
                 expanded = full_state.get("expanded_entities", {})
-                expanded_by_original = full_state.get("expanded_entities_by_original", {})
+                expanded_by_original = full_state.get(
+                    "expanded_entities_by_original", {}
+                )
                 strategy = full_state.get("expansion_strategy", "normal")
                 count = full_state.get("expansion_count", 0)
                 step.output_summary = f"확장 전략: {strategy}, +{count}개 개념 추가"
@@ -151,7 +153,11 @@ class ExplainabilityService:
                         expanded_only = [v for v in exp_values if v != orig]
                         if expanded_only:
                             expansion_path = [
-                                {"from": orig, "to": v, "relation": "synonym/subconcept"}
+                                {
+                                    "from": orig,
+                                    "to": v,
+                                    "relation": "synonym/subconcept",
+                                }
                                 for v in expanded_only
                             ]
                             concept_expansions.append(
@@ -171,7 +177,11 @@ class ExplainabilityService:
                         expanded_only = [v for v in exp_values if v != orig]
                         if expanded_only:
                             expansion_path = [
-                                {"from": orig, "to": v, "relation": "synonym/subconcept"}
+                                {
+                                    "from": orig,
+                                    "to": v,
+                                    "relation": "synonym/subconcept",
+                                }
                                 for v in expanded_only
                             ]
                             concept_expansions.append(
@@ -190,9 +200,7 @@ class ExplainabilityService:
             execution_path=execution_path,
         )
 
-    def _assign_depth_values(
-        self, nodes_map: dict[str, GraphNode]
-    ) -> None:
+    def _assign_depth_values(self, nodes_map: dict[str, GraphNode]) -> None:
         """
         노드들에 depth 값 할당 (in-place 수정)
 
@@ -295,13 +303,6 @@ class ExplainabilityService:
                 properties=sanitize_props(props) if props else {},
             )
 
-        # Resolved entities에서 노드 추가
-        for entity in resolved_entities:
-            node_id = str(entity.get("id", ""))
-            labels = entity.get("labels", [])
-            name = entity.get("name", entity.get("original_value", ""))
-            add_node(node_id, labels, name, entity.get("properties", {}))
-
         # graph_results에서 노드/엣지 추출
         for row in graph_results[:limit]:
             for _key, value in row.items():
@@ -346,6 +347,12 @@ class ExplainabilityService:
                             props = item.get("properties", {})
                             add_edge(edge_id, rel_type, source, target, props)
 
+        for entity in resolved_entities:
+            node_id = str(entity.get("id", ""))
+            labels = entity.get("labels", [])
+            name = entity.get("name", entity.get("original_value", ""))
+            add_node(node_id, labels, name, entity.get("properties", {}))
+
         has_more = len(graph_results) > limit
 
         # depth 값 할당 (x, y 좌표는 프론트엔드에서 계산)
@@ -353,7 +360,8 @@ class ExplainabilityService:
 
         # 유효한 엣지만 필터링 (source와 target이 모두 nodes_map에 존재하는 경우)
         valid_edges = [
-            edge for edge in edges_map.values()
+            edge
+            for edge in edges_map.values()
             if edge.source in nodes_map and edge.target in nodes_map
         ]
 
