@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
 import {
   Table,
@@ -221,11 +221,13 @@ function SkeletonTable() {
 // ─── Subcomponents ───
 
 function EntityTable({ rows, label }: { rows: ComparisonRow[]; label: string }) {
+  const [page, setPage] = useState(0);
+
   if (rows.length === 0) return null;
 
-  const MAX_ROWS = 10;
-  const displayRows = rows.slice(0, MAX_ROWS);
-  const remaining = rows.length - MAX_ROWS;
+  const PAGE_SIZE = 10;
+  const totalPages = Math.ceil(rows.length / PAGE_SIZE);
+  const displayRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // Collect all unique common/sensitive prop keys across ALL rows (union)
   const commonKeys = Array.from(
@@ -288,9 +290,23 @@ function EntityTable({ rows, label }: { rows: ComparisonRow[]; label: string }) 
           ))}
         </TableBody>
       </Table>
-      {remaining > 0 && (
-        <div className="px-3 py-1.5 text-xs text-muted-foreground border-t">
-          외 {remaining}건
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 px-3 py-1.5 text-xs text-muted-foreground border-t">
+          <button
+            onClick={() => setPage((p) => p - 1)}
+            disabled={page === 0}
+            className="hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            &lt; 이전
+          </button>
+          <span>{page + 1} / {totalPages}</span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page >= totalPages - 1}
+            className="hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            다음 &gt;
+          </button>
         </div>
       )}
     </div>
