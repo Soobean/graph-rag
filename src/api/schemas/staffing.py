@@ -231,10 +231,10 @@ class BudgetAnalysisResponse(BaseModel):
         default=None, description="프로젝트 예산 (백만원)"
     )
     budget_allocated: float | None = Field(
-        default=None, description="배정 예산 (백만원)"
+        default=None, description="배정 예산 (원)"
     )
     budget_spent: float | None = Field(
-        default=None, description="집행 예산 (백만원)"
+        default=None, description="집행 예산 (원)"
     )
     team_breakdown: list[TeamMemberCost] = Field(
         default_factory=list, description="팀원별 비용 내역"

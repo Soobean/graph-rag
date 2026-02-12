@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Network, Upload, BarChart3, Briefcase, PenSquare, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Network, Upload, BarChart3, PenSquare, type LucideIcon } from 'lucide-react';
 
 interface NavItem {
   to: string;
@@ -28,11 +28,6 @@ const navItems: NavItem[] = [
     to: '/admin/analytics',
     label: 'Analytics',
     icon: BarChart3,
-  },
-  {
-    to: '/admin/staffing',
-    label: 'Staffing',
-    icon: Briefcase,
   },
   {
     to: '/admin/graph-edit',

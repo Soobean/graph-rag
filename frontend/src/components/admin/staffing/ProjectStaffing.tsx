@@ -27,24 +27,7 @@ import type {
   BudgetAnalysisResponse,
   SkillCandidates,
 } from '@/types/admin';
-
-// ============================================
-// Helpers
-// ============================================
-
-function formatKRW(amount: number): string {
-  if (Math.abs(amount) >= 1_0000_0000) {
-    return `${(amount / 1_0000_0000).toFixed(1)}억원`;
-  }
-  if (Math.abs(amount) >= 1_0000) {
-    return `${Math.round(amount / 1_0000).toLocaleString('ko-KR')}만원`;
-  }
-  return `${amount.toLocaleString('ko-KR')}원`;
-}
-
-function formatRate(rate: number): string {
-  return `₩${rate.toLocaleString('ko-KR')}`;
-}
+import { formatKRW, formatRate } from '@/lib/formatters';
 
 type ImportanceBadgeVariant = 'destructive' | 'warning' | 'secondary';
 
@@ -327,35 +310,42 @@ function StaffingPlanTab({ projectName }: { projectName: string }) {
               <CardTitle className="text-base">비용 요약</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div>
-                  <p className="text-sm text-muted-foreground">총 예상 인건비</p>
-                  <p className="text-2xl font-bold">
-                    {formatKRW(data.total_estimated_labor_cost)}
-                  </p>
-                </div>
-                {data.project_budget != null && (
+              {data.skill_plans.length > 0 ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div>
-                    <p className="text-sm text-muted-foreground">프로젝트 예산</p>
+                    <p className="text-sm text-muted-foreground">총 예상 인건비</p>
                     <p className="text-2xl font-bold">
-                      {formatKRW(data.project_budget * 1_000_000)}
+                      {formatKRW(data.total_estimated_labor_cost)}
                     </p>
                   </div>
-                )}
-                {data.budget_utilization_percent != null && (
-                  <div>
-                    <p className="mb-1 text-sm text-muted-foreground">
-                      예산 활용률
-                    </p>
-                    <p className="mb-1 text-2xl font-bold">
-                      {data.budget_utilization_percent}%
-                    </p>
-                    <Progress
-                      value={Math.min(data.budget_utilization_percent, 100)}
-                    />
-                  </div>
-                )}
-              </div>
+                  {data.project_budget != null && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">프로젝트 예산</p>
+                      <p className="text-2xl font-bold">
+                        {formatKRW(data.project_budget * 1_000_000)}
+                      </p>
+                    </div>
+                  )}
+                  {data.budget_utilization_percent != null && (
+                    <div>
+                      <p className="mb-1 text-sm text-muted-foreground">
+                        예산 활용률
+                      </p>
+                      <p className="mb-1 text-2xl font-bold">
+                        {data.budget_utilization_percent}%
+                      </p>
+                      <Progress
+                        value={Math.min(data.budget_utilization_percent, 100)}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  이 프로젝트에 REQUIRES 스킬이 설정되지 않아 비용을 추정할 수 없습니다.
+                  후보자 탐색 탭에서 REQUIRES 관계를 확인하세요.
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -376,7 +366,7 @@ function StaffingPlanTab({ projectName }: { projectName: string }) {
                       <div className="mb-2 flex items-center gap-2">
                         <Badge variant={badge.variant}>{badge.label}</Badge>
                         <span className="font-medium">{sp.skill_name}</span>
-                        {sp.required_headcount && (
+                        {sp.required_headcount != null && (
                           <span className="text-xs text-muted-foreground">
                             필요 {sp.required_headcount}명
                           </span>
@@ -469,7 +459,7 @@ function BudgetAnalysisTab({ projectName }: { projectName: string }) {
       {data && (
         <>
           {/* Summary Cards */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardContent className="pt-4">
                 <p className="text-sm text-muted-foreground">계획 인건비</p>
@@ -508,6 +498,20 @@ function BudgetAnalysisTab({ projectName }: { projectName: string }) {
                 </p>
               </CardContent>
             </Card>
+            {data.project_budget != null && data.project_budget > 0 && (() => {
+              const burnRate = (data.total_actual_cost / (data.project_budget * 1_000_000)) * 100;
+              return (
+                <Card>
+                  <CardContent className="pt-4">
+                    <p className="mb-1 text-sm text-muted-foreground">예산 소진율</p>
+                    <p className="mb-1 text-2xl font-bold">
+                      {burnRate.toFixed(1)}%
+                    </p>
+                    <Progress value={Math.min(burnRate, 100)} />
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </div>
 
           {/* Budget info */}
@@ -524,13 +528,13 @@ function BudgetAnalysisTab({ projectName }: { projectName: string }) {
                   {data.budget_allocated != null && (
                     <div>
                       <span className="text-muted-foreground">배정 예산: </span>
-                      <span className="font-medium">{formatKRW(data.budget_allocated * 1_000_000)}</span>
+                      <span className="font-medium">{formatKRW(data.budget_allocated)}</span>
                     </div>
                   )}
                   {data.budget_spent != null && (
                     <div>
                       <span className="text-muted-foreground">집행 예산: </span>
-                      <span className="font-medium">{formatKRW(data.budget_spent * 1_000_000)}</span>
+                      <span className="font-medium">{formatKRW(data.budget_spent)}</span>
                     </div>
                   )}
                 </div>

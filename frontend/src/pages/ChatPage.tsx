@@ -60,7 +60,7 @@ export function ChatPage() {
               Compare
             </Button>
           </Link>
-          <Link to="/admin/staffing">
+          <Link to="/staffing">
             <Button variant="outline" size="sm">
               <Target className="mr-1 h-4 w-4" />
               Staffing

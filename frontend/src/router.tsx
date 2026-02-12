@@ -57,6 +57,14 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: '/staffing',
+    element: (
+      <SuspenseWrapper>
+        <ProjectStaffingPage />
+      </SuspenseWrapper>
+    ),
+  },
+  {
     path: '/admin',
     element: (
       <SuspenseWrapper>
@@ -97,14 +105,6 @@ export const router = createBrowserRouter([
         element: (
           <SuspenseWrapper>
             <AnalyticsPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'staffing',
-        element: (
-          <SuspenseWrapper>
-            <ProjectStaffingPage />
           </SuspenseWrapper>
         ),
       },
