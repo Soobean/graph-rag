@@ -30,6 +30,7 @@ from src.api.schemas.staffing import (
     BudgetAnalysisResponse,
     FindCandidatesRequest,
     FindCandidatesResponse,
+    ProjectListResponse,
     SkillCategoryListResponse,
     StaffingPlanRequest,
     StaffingPlanResponse,
@@ -355,6 +356,27 @@ async def recommend_team(
 # ============================================
 # Project Staffing (비용 기반 인력 배치)
 # ============================================
+
+
+@router.get("/staffing/projects", response_model=ProjectListResponse)
+async def list_projects(
+    service: Annotated["ProjectStaffingService", Depends(get_staffing_service)],
+) -> ProjectListResponse:
+    """
+    프로젝트 목록 조회
+
+    프론트엔드 드롭다운에 사용할 프로젝트 이름, 상태, 예산 정보를 반환합니다.
+    """
+    try:
+        projects = await service.list_projects()
+        return ProjectListResponse(projects=projects)
+
+    except Exception as e:
+        logger.error(f"List projects failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"프로젝트 목록 조회 실패: {e}",
+        ) from e
 
 
 @router.post("/staffing/find-candidates", response_model=FindCandidatesResponse)
