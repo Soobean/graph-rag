@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
 import {
   Table,
@@ -223,15 +223,20 @@ function SkeletonTable() {
 function EntityTable({ rows, label }: { rows: ComparisonRow[]; label: string }) {
   const [page, setPage] = useState(0);
 
+  // Fix #1: rows 변경 시 page 초기화 (stale state 방지)
+  useEffect(() => {
+    setPage(0);
+  }, [rows]);
+
   if (rows.length === 0) return null;
 
   const PAGE_SIZE = 10;
   const totalPages = Math.ceil(rows.length / PAGE_SIZE);
   const displayRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  // Collect all unique common/sensitive prop keys across ALL rows (union)
+  // Fix #2: 전체 rows에서 키 추출 (페이지별 헤더 불일치 방지)
   const commonKeys = Array.from(
-    new Set(displayRows.flatMap((r) => Object.keys(r.commonProps)))
+    new Set(rows.flatMap((r) => Object.keys(r.commonProps)))
   );
   const sensitiveKeys = Array.from(
     new Set(rows.flatMap((r) => r.sensitiveProps.map((p) => p.key)))
@@ -291,23 +296,28 @@ function EntityTable({ rows, label }: { rows: ComparisonRow[]; label: string }) 
         </TableBody>
       </Table>
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 px-3 py-1.5 text-xs text-muted-foreground border-t">
+        <nav
+          aria-label={`${label} 데이터 페이지네이션`}
+          className="flex items-center justify-center gap-3 px-3 py-1.5 text-xs text-muted-foreground border-t"
+        >
           <button
             onClick={() => setPage((p) => p - 1)}
             disabled={page === 0}
+            aria-label="이전 페이지"
             className="hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
           >
             &lt; 이전
           </button>
-          <span>{page + 1} / {totalPages}</span>
+          <span aria-current="page">{page + 1} / {totalPages}</span>
           <button
             onClick={() => setPage((p) => p + 1)}
             disabled={page >= totalPages - 1}
+            aria-label="다음 페이지"
             className="hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
           >
             다음 &gt;
           </button>
-        </div>
+        </nav>
       )}
     </div>
   );
