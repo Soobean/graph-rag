@@ -21,23 +21,24 @@ interface DeleteNodeDialogProps {
   onSuccess?: () => void;
 }
 
-export function DeleteNodeDialog({ node, onOpenChange, previewOnly = false, onSuccess }: DeleteNodeDialogProps) {
-  const { data: impact, isLoading: impactLoading } = useDeletionImpact(node?.id ?? null);
+function DeleteNodeContent({
+  node,
+  onOpenChange,
+  previewOnly = false,
+  onSuccess,
+}: {
+  node: NodeResponse;
+  onOpenChange: (open: boolean) => void;
+  previewOnly?: boolean;
+  onSuccess?: () => void;
+}) {
+  const { data: impact, isLoading: impactLoading } = useDeletionImpact(node.id);
   const deleteNode = useDeleteNode();
   const [error, setError] = useState<string | null>(null);
-
-  // Reset error and mutation state when a different node is opened
-  const [prevNodeId, setPrevNodeId] = useState<string | null>(null);
-  if (node?.id !== prevNodeId) {
-    setPrevNodeId(node?.id ?? null);
-    if (error) setError(null);
-    if (deleteNode.isError) deleteNode.reset();
-  }
 
   const hasRelationships = (impact?.affected_relationships.length ?? 0) > 0;
 
   const handleDelete = (force: boolean) => {
-    if (!node) return;
     setError(null);
     deleteNode.mutate(
       { nodeId: node.id, force },
@@ -53,77 +54,93 @@ export function DeleteNodeDialog({ node, onOpenChange, previewOnly = false, onSu
     );
   };
 
-  const nodeName = node ? String(node.properties.name || node.id) : '';
+  const nodeName = String(node.properties.name || node.id);
 
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>
+          {previewOnly ? 'Deletion Impact Preview' : 'Delete Node'}
+        </DialogTitle>
+        <DialogDescription>
+          {previewOnly
+            ? `Impact preview for deleting "${nodeName}"`
+            : `Are you sure you want to delete "${nodeName}"? This action cannot be undone.`}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="py-2">
+        {impactLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">Analyzing impact...</span>
+          </div>
+        ) : impact ? (
+          <DeletionImpactPreview impact={impact} />
+        ) : null}
+
+        {error && (
+          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {error}
+          </div>
+        )}
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
+          {previewOnly ? 'Close' : 'Cancel'}
+        </Button>
+        {!previewOnly && (
+          hasRelationships ? (
+            <Button
+              variant="destructive"
+              onClick={() => handleDelete(true)}
+              disabled={impactLoading || deleteNode.isPending}
+            >
+              {deleteNode.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Force Delete (with relationships)'
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="destructive"
+              onClick={() => handleDelete(false)}
+              disabled={impactLoading || deleteNode.isPending}
+            >
+              {deleteNode.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Node'
+              )}
+            </Button>
+          )
+        )}
+      </DialogFooter>
+    </>
+  );
+}
+
+export function DeleteNodeDialog({ node, onOpenChange, previewOnly = false, onSuccess }: DeleteNodeDialogProps) {
   return (
     <Dialog open={!!node} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {previewOnly ? 'Deletion Impact Preview' : 'Delete Node'}
-          </DialogTitle>
-          <DialogDescription>
-            {previewOnly
-              ? `Impact preview for deleting "${nodeName}"`
-              : `Are you sure you want to delete "${nodeName}"? This action cannot be undone.`}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="py-2">
-          {impactLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">Analyzing impact...</span>
-            </div>
-          ) : impact ? (
-            <DeletionImpactPreview impact={impact} />
-          ) : null}
-
-          {error && (
-            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-              {error}
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {previewOnly ? 'Close' : 'Cancel'}
-          </Button>
-          {!previewOnly && (
-            hasRelationships ? (
-              <Button
-                variant="destructive"
-                onClick={() => handleDelete(true)}
-                disabled={impactLoading || deleteNode.isPending}
-              >
-                {deleteNode.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  'Force Delete (with relationships)'
-                )}
-              </Button>
-            ) : (
-              <Button
-                variant="destructive"
-                onClick={() => handleDelete(false)}
-                disabled={impactLoading || deleteNode.isPending}
-              >
-                {deleteNode.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  'Delete Node'
-                )}
-              </Button>
-            )
-          )}
-        </DialogFooter>
+        {node && (
+          <DeleteNodeContent
+            key={node.id}
+            node={node}
+            onOpenChange={onOpenChange}
+            previewOnly={previewOnly}
+            onSuccess={onSuccess}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
