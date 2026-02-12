@@ -350,6 +350,12 @@ class OntologyLoader:
     # 동의어 조회
     # =========================================================================
 
+    def get_korean_suffixes(self) -> tuple[str, ...]:
+        """한국어 엔티티 이름 접미사 목록 반환 (entity_normalization.korean_suffixes)"""
+        synonyms_data = self.load_synonyms()
+        normalization = synonyms_data.get("entity_normalization", {})
+        return tuple(normalization.get("korean_suffixes", []))
+
     def get_canonical(self, term: str, category: str = "skills") -> str:
         """
         정규화된 이름 반환

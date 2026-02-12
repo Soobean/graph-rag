@@ -21,6 +21,7 @@ from src.domain.exceptions import (
     QueryExecutionError,
     ValidationError,
 )
+from src.domain.ontology.loader import get_ontology_loader
 from src.domain.types import SubGraphResult
 from src.domain.validators import CYPHER_IDENTIFIER_PATTERN
 from src.infrastructure.neo4j_client import Neo4jClient
@@ -134,6 +135,15 @@ class Neo4jRepository:
             )
         return direction
 
+    def _strip_korean_suffix(self, name: str) -> str:
+        """한국어 접미사 제거 (예: '챗봇 리뉴얼 프로젝트' → '챗봇 리뉴얼')"""
+        stripped = name.strip()
+        for suffix in get_ontology_loader().get_korean_suffixes():
+            if stripped.endswith(suffix) and len(stripped) > len(suffix) + 1:
+                stripped = stripped[: -len(suffix)].strip()
+                break
+        return stripped
+
     def _build_label_filter(self, labels: list[str] | None) -> str:
         """안전한 레이블 필터 문자열 생성"""
         if not labels:
@@ -191,6 +201,20 @@ class Neo4jRepository:
                 results = await self._client.execute_query(
                     query_no_space, {"name": name, "limit": limit}
                 )
+
+            # 3단계: 한국어 접미사 제거 후 재시도
+            # (예: "챗봇 리뉴얼 프로젝트" → "챗봇 리뉴얼", "백엔드개발팀" → "백엔드개발")
+            if not results:
+                stripped = self._strip_korean_suffix(name)
+                if stripped != name:
+                    results = await self._client.execute_query(
+                        query, {"name": stripped, "limit": limit}
+                    )
+                    # 공백 제거도 함께 시도
+                    if not results:
+                        results = await self._client.execute_query(
+                            query_no_space, {"name": stripped, "limit": limit}
+                        )
 
             return [
                 NodeResult(
