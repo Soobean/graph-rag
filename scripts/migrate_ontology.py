@@ -165,10 +165,9 @@ class OntologyMigrator:
                 "is_canonical": True,
             })
 
-            # Alias concepts + SAME_AS relations (가중치 지원)
+            # Alias concepts + SAME_AS relations
             for alias_entry in aliases:
-                # 하위호환: 문자열 또는 {name, weight} 형식 지원
-                alias_name, alias_weight = OntologyLoader._parse_alias(alias_entry)
+                alias_name = OntologyLoader._parse_alias(alias_entry)
 
                 concepts_to_create.append({
                     "name": alias_name,
@@ -179,7 +178,7 @@ class OntologyMigrator:
                 same_as_relations.append({
                     "from_name": alias_name,
                     "to_name": canonical,
-                    "weight": alias_weight,
+                    "weight": 1.0,
                 })
 
         # Concept 노드 일괄 생성

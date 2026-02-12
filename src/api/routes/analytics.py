@@ -5,7 +5,7 @@ GDS 기반 분석 API 엔드포인트
 - 커뮤니티 탐지
 - 유사 직원 탐색
 - 팀 추천
-- 스킬 갭 분석
+- 프로젝트 스태핑
 """
 
 import logging
@@ -25,18 +25,20 @@ from src.api.schemas.analytics import (
     TeamRecommendRequest,
     TeamRecommendResponse,
 )
-from src.api.schemas.skill_gap import (
+from src.api.schemas.staffing import (
+    BudgetAnalysisRequest,
+    BudgetAnalysisResponse,
+    FindCandidatesRequest,
+    FindCandidatesResponse,
     SkillCategoryListResponse,
-    SkillGapAnalyzeRequest,
-    SkillGapAnalyzeResponse,
-    SkillRecommendRequest,
-    SkillRecommendResponse,
+    StaffingPlanRequest,
+    StaffingPlanResponse,
 )
-from src.dependencies import get_gds_service, get_skill_gap_service
+from src.dependencies import get_gds_service, get_staffing_service
 from src.services.gds_service import GDSService
 
 if TYPE_CHECKING:
-    from src.services.skill_gap_service import SkillGapService
+    from src.services.project_staffing_service import ProjectStaffingService
 
 logger = logging.getLogger(__name__)
 
@@ -351,94 +353,122 @@ async def recommend_team(
 
 
 # ============================================
-# Skill Gap Analysis (온톨로지 기반)
+# Project Staffing (비용 기반 인력 배치)
 # ============================================
 
 
-@router.post("/skill-gap/analyze", response_model=SkillGapAnalyzeResponse)
-async def analyze_skill_gap(
-    request: SkillGapAnalyzeRequest,
-    service: Annotated["SkillGapService", Depends(get_skill_gap_service)],
-) -> SkillGapAnalyzeResponse:
+@router.post("/staffing/find-candidates", response_model=FindCandidatesResponse)
+async def find_candidates(
+    request: FindCandidatesRequest,
+    service: Annotated["ProjectStaffingService", Depends(get_staffing_service)],
+) -> FindCandidatesResponse:
     """
-    스킬 갭 분석
+    프로젝트 후보자 탐색
 
-    온톨로지 기반으로 팀의 스킬 커버리지를 분석합니다.
-    - 필요 스킬 vs 팀원 보유 스킬 비교
-    - 유사 스킬 보유자 탐색 (IS_A 관계 기반)
-    - 카테고리별 커버리지 시각화
-
-    팀원 지정 방법:
-    - team_members: 팀원 이름 직접 지정
-    - project_id: 프로젝트에서 팀원 자동 조회
-    - 둘 중 하나는 필수 (Pydantic 검증)
+    프로젝트의 REQUIRES 스킬별 적격 후보자를 예산 내에서 탐색합니다.
+    - 숙련도, 단가, 가용성, 프로젝트 부하 기준 필터링
+    - 단가 오름차순 정렬
     """
     logger.info(
-        f"Skill gap analysis: skills={request.required_skills}, "
-        f"members={request.team_members}, project={request.project_id}"
+        f"Find candidates: project={request.project_name}, "
+        f"skill={request.skill_name}, min_prof={request.min_proficiency}"
     )
 
     try:
-        result = await service.analyze(
-            required_skills=request.required_skills,
-            team_members=request.team_members,
-            project_id=request.project_id,
+        return await service.find_candidates(
+            project_name=request.project_name,
+            skill_name=request.skill_name,
+            min_proficiency=request.min_proficiency,
         )
-        return result
 
     except ValueError as e:
-        # 팀원 조회 실패 등 비즈니스 로직 에러
-        logger.warning(f"Skill gap analysis validation error: {e}")
+        logger.warning(f"Find candidates validation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Skill gap analysis failed: {e}")
+        logger.error(f"Find candidates failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"스킬 갭 분석 실패: {e}",
+            detail=f"후보자 탐색 실패: {e}",
         ) from e
 
 
-@router.post("/skill-gap/recommend", response_model=SkillRecommendResponse)
-async def recommend_for_skill_gap(
-    request: SkillRecommendRequest,
-    service: Annotated["SkillGapService", Depends(get_skill_gap_service)],
-) -> SkillRecommendResponse:
+@router.post("/staffing/plan", response_model=StaffingPlanResponse)
+async def generate_staffing_plan(
+    request: StaffingPlanRequest,
+    service: Annotated["ProjectStaffingService", Depends(get_staffing_service)],
+) -> StaffingPlanResponse:
     """
-    스킬 갭 해소 추천
+    스태핑 플랜 생성
 
-    특정 스킬 갭을 해소하기 위한 인력을 추천합니다.
-    - 내부 교육 추천: 유사 스킬 보유자
-    - 외부 채용 키워드: 동의어 기반 검색어
+    프로젝트의 스킬별 추천 인력과 예상 인건비를 산출합니다.
     """
-    logger.info(f"Skill gap recommend: skill={request.skill}")
+    logger.info(
+        f"Staffing plan: project={request.project_name}, "
+        f"top_n={request.top_n_per_skill}"
+    )
 
     try:
-        result = await service.recommend_for_skill(
-            skill=request.skill,
-            exclude_members=request.exclude_members,
-            limit=request.limit,
+        return await service.generate_staffing_plan(
+            project_name=request.project_name,
+            top_n_per_skill=request.top_n_per_skill,
         )
-        return result
 
+    except ValueError as e:
+        logger.warning(f"Staffing plan validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
     except Exception as e:
-        logger.error(f"Skill gap recommend failed: {e}")
+        logger.error(f"Staffing plan failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"추천 실패: {e}",
+            detail=f"스태핑 플랜 생성 실패: {e}",
         ) from e
 
 
-@router.get("/skill-gap/categories", response_model=SkillCategoryListResponse)
+@router.post("/staffing/budget-analysis", response_model=BudgetAnalysisResponse)
+async def analyze_budget(
+    request: BudgetAnalysisRequest,
+    service: Annotated["ProjectStaffingService", Depends(get_staffing_service)],
+) -> BudgetAnalysisResponse:
+    """
+    예산 대비 인건비 분석
+
+    프로젝트 팀원별 계획 vs 실제 비용을 비교 분석합니다.
+    """
+    logger.info(f"Budget analysis: project={request.project_name}")
+
+    try:
+        return await service.analyze_budget(
+            project_name=request.project_name,
+        )
+
+    except ValueError as e:
+        logger.warning(f"Budget analysis validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error(f"Budget analysis failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"예산 분석 실패: {e}",
+        ) from e
+
+
+@router.get("/staffing/categories", response_model=SkillCategoryListResponse)
 async def get_skill_categories(
-    service: Annotated["SkillGapService", Depends(get_skill_gap_service)],
+    service: Annotated["ProjectStaffingService", Depends(get_staffing_service)],
 ) -> SkillCategoryListResponse:
     """
     스킬 카테고리 목록 조회
 
-    온톨로지에 정의된 스킬 카테고리와 소속 스킬 목록을 반환합니다.
+    Skill 노드의 category 속성 기반 카테고리와 소속 스킬 목록을 반환합니다.
     """
     try:
         categories = await service.get_categories()

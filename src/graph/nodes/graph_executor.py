@@ -50,6 +50,26 @@ def _filter_node_properties(
     return filtered
 
 
+def _filter_relationship_properties(
+    rel_data: dict[str, Any],
+    rel_type: str,
+    policy: AccessPolicy,
+) -> dict[str, Any]:
+    """관계의 properties를 허용 목록으로 필터링한 복사본 반환"""
+    allowed = policy.get_relationship_allowed_properties(rel_type)
+    if allowed is None or allowed == ALL_PROPS:
+        return rel_data  # 미정의 or 전체 허용
+    allowed_set = set(allowed)
+    filtered = dict(rel_data)
+    props = rel_data.get("properties")
+    if isinstance(props, dict):
+        filtered["properties"] = {
+            k: v for k, v in props.items()
+            if k in allowed_set
+        }
+    return filtered
+
+
 class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
     """그래프 쿼리 실행 노드"""
 
@@ -168,6 +188,11 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
                     dept_name = value.get("properties", {}).get("name")
                     if dept_name:
                         row_departments.add(dept_name.lower())
+                # D3 확장: Employee.department 비정규화 속성에서도 수집
+                elif label == "Employee":
+                    emp_dept = value.get("properties", {}).get("department")
+                    if emp_dept:
+                        row_departments.add(emp_dept.lower())
 
         for value in record.values():
             # --- 노드 검사 ---
@@ -204,7 +229,7 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
         record: dict[str, Any],
         policy: AccessPolicy,
     ) -> dict[str, Any]:
-        """D2: 노드 속성을 허용 목록으로 필터링"""
+        """D2: 노드 및 관계 속성을 허용 목록으로 필터링"""
         filtered_record: dict[str, Any] = {}
 
         for key, value in record.items():
@@ -223,8 +248,14 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
                     filtered_record[key] = _filter_node_properties(
                         value, allowed_props
                     )
+            elif _is_relationship(value):
+                # D2 확장: 관계 속성 필터링
+                rel_type = value.get("type", "")
+                filtered_record[key] = _filter_relationship_properties(
+                    value, rel_type, policy
+                )
             else:
-                # 관계, 스칼라 값은 그대로
+                # 스칼라 값은 그대로
                 filtered_record[key] = value
 
         return filtered_record

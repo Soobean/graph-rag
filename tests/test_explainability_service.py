@@ -449,6 +449,143 @@ class TestBuildGraphData:
         # 같은 ID의 노드는 한 번만 추가됨
         assert result.node_count == 1
 
+    def test_graph_results_takes_precedence_over_resolved_entities(self, service):
+        """graph_results가 resolved_entities보다 우선 (접근제어 필터링 적용)"""
+        # 시나리오: 같은 Employee 노드가 양쪽에 존재
+        # - graph_results: 접근제어 필터링된 버전 (필드 일부 제거)
+        # - resolved_entities: 미필터링 원본 (모든 필드 포함)
+        resolved_entities = [
+            {
+                "id": 100,
+                "labels": ["Employee"],
+                "name": "홍길동",
+                "properties": {
+                    "name": "홍길동",
+                    "department": "개발팀",
+                    "salary": 5000000,  # 민감 정보
+                    "phone": "010-1234-5678",  # 민감 정보
+                },
+            },
+        ]
+        full_state = {
+            "graph_results": [
+                {
+                    "e": {
+                        "id": 100,
+                        "labels": ["Employee"],
+                        "properties": {
+                            "name": "홍길동",
+                            "department": "개발팀",
+                            # salary, phone은 접근제어로 제거됨
+                        },
+                    }
+                }
+            ],
+            "original_entities": {},
+            "expanded_entities": {},
+        }
+        result = service.build_graph_data(full_state, resolved_entities, limit=50)
+
+        # 노드는 1개만 존재
+        assert result.node_count == 1
+        node = result.nodes[0]
+        assert node.id == "100"
+        assert node.name == "홍길동"
+
+        # graph_results 버전이 우선 → 민감 정보 제거됨
+        assert "department" in node.properties
+        assert "salary" not in node.properties
+        assert "phone" not in node.properties
+
+    def test_graph_results_preserves_filtered_properties(self, service):
+        """graph_results가 먼저 처리되어 필터링된 속성 유지"""
+        # Edge Case: resolved_entities에만 있는 속성
+        resolved_entities = [
+            {
+                "id": 200,
+                "labels": ["Project"],
+                "name": "AI 프로젝트",
+                "properties": {
+                    "name": "AI 프로젝트",
+                    "budget": 100000000,  # graph_results에는 없는 필드
+                    "status": "active",
+                },
+            },
+        ]
+        full_state = {
+            "graph_results": [
+                {
+                    "p": {
+                        "id": 200,
+                        "labels": ["Project"],
+                        "properties": {
+                            "name": "AI 프로젝트",
+                            "status": "active",
+                            # budget은 접근제어로 필터링됨
+                        },
+                    }
+                }
+            ],
+            "original_entities": {},
+            "expanded_entities": {},
+        }
+        result = service.build_graph_data(full_state, resolved_entities, limit=50)
+
+        assert result.node_count == 1
+        node = result.nodes[0]
+        assert node.id == "200"
+        # graph_results 버전 사용 → budget 없음
+        assert "status" in node.properties
+        assert "budget" not in node.properties
+
+    def test_resolved_entities_added_when_not_in_graph_results(self, service):
+        """graph_results에 없는 resolved_entities는 정상 추가됨"""
+        # Happy Path: resolved_entities의 노드가 graph_results에 없는 경우
+        resolved_entities = [
+            {
+                "id": 300,
+                "labels": ["Skill"],
+                "name": "Python",
+                "properties": {"name": "Python", "category": "Language"},
+            },
+            {
+                "id": 301,
+                "labels": ["Skill"],
+                "name": "Django",
+                "properties": {"name": "Django", "category": "Framework"},
+            },
+        ]
+        full_state = {
+            "graph_results": [
+                {
+                    "s": {
+                        "id": 300,
+                        "labels": ["Skill"],
+                        "properties": {"name": "Python"},
+                        # Python은 graph_results에 있음
+                    }
+                }
+            ],
+            "original_entities": {},
+            "expanded_entities": {},
+        }
+        result = service.build_graph_data(full_state, resolved_entities, limit=50)
+
+        # Python(300)은 graph_results 버전, Django(301)는 resolved_entities 버전
+        assert result.node_count == 2
+        node_ids = {n.id for n in result.nodes}
+        assert "300" in node_ids
+        assert "301" in node_ids
+
+        # Python은 graph_results 버전 (category 없음)
+        python_node = next(n for n in result.nodes if n.id == "300")
+        assert "category" not in python_node.properties
+
+        # Django는 resolved_entities 버전 (category 있음)
+        django_node = next(n for n in result.nodes if n.id == "301")
+        assert "category" in django_node.properties
+        assert django_node.properties["category"] == "Framework"
+
 
 class TestGetNodeStyle:
     """get_node_style 함수 테스트"""

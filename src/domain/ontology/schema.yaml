@@ -3,15 +3,18 @@
 # =============================================================================
 # 이 파일은 온톨로지의 개념 계층과 관계 타입을 정의합니다.
 # ConceptExpanderNode가 이 정의를 기반으로 개념을 확장합니다.
+#
+# CSV skills.csv의 98개 스킬 전체 커버 + 크로스 도메인 매핑.
+# 하나의 스킬이 여러 카테고리에 속할 수 있음 (예: TypeScript → Backend + Frontend).
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # 메타데이터
 # -----------------------------------------------------------------------------
 _meta:
-  version: "1.0.0"
-  description: "기업/조직 도메인 온톨로지 스키마"
-  last_updated: "2025-01-11"
+  version: "2.0.0"
+  description: "기업/조직 도메인 온톨로지 스키마 — 98개 스킬 전체 커버"
+  last_updated: "2026-02-12"
 
 # -----------------------------------------------------------------------------
 # 관계 타입 정의 (Neo4j에 저장되는 관계)
@@ -23,8 +26,11 @@ relations:
     transitive: true # A IS_A B, B IS_A C → A IS_A C
     examples:
       - ["Python", "Backend"]
+      - ["Python", "Data"]
+      - ["TypeScript", "Frontend"]
+      - ["TypeScript", "Backend"]
       - ["Backend", "Programming"]
-      - ["ML", "AI/ML"]
+      - ["RAG", "AI/ML"]
 
   SAME_AS:
     description: "동의어 관계 (양방향)"
@@ -44,9 +50,14 @@ relations:
 
 # -----------------------------------------------------------------------------
 # 개념 계층 정의
+# 규칙: skills 리스트의 이름은 CSV skills.csv의 name과 정확히 일치해야 함.
+#       크로스 도메인 스킬은 여러 카테고리에 중복 등록 가능.
 # -----------------------------------------------------------------------------
 concepts:
   SkillCategory:
+    # =========================================================================
+    # Programming (소프트웨어 개발)
+    # =========================================================================
     - name: "Programming"
       description: "프로그래밍 관련 스킬"
       style:
@@ -58,62 +69,215 @@ concepts:
           style:
             color: "#10B981" # Emerald
             icon: "server"
-          skills: ["Python", "Java", "Node.js", "Go", "Kotlin", "Spring"]
+          skills:
+            # 언어 (크로스 도메인)
+            - Python
+            - Java
+            - Go
+            - Kotlin
+            - TypeScript
+            - JavaScript
+            - PHP
+            - Ruby
+            - Rust
+            - Scala
+            - C++
+            # 런타임/프레임워크
+            - Node.js
+            - Spring Boot
+            - Django
+            - FastAPI
+            - Flask
+            - Express.js
+            - NestJS
+            # API/아키텍처
+            - GraphQL Server
+            - gRPC
+            - REST API Design
+            - API Gateway
+            - Message Queue
+            - Microservices
+            - Event-Driven Architecture
+
         - name: "Frontend"
           description: "클라이언트/프론트엔드 개발"
           style:
             color: "#F59E0B" # Amber
             icon: "layout"
-          skills: ["React", "Vue", "Angular", "TypeScript", "JavaScript"]
+          skills:
+            # 프레임워크
+            - React
+            - Vue.js
+            - Angular
+            - Svelte
+            - Next.js
+            # 언어 (크로스 도메인)
+            - TypeScript
+            - JavaScript
+            # 모바일
+            - Flutter
+            - React Native
+            - Swift
+            # 기반 기술
+            - HTML/CSS
+            - SASS/SCSS
+            - Tailwind CSS
+            # 상태관리/빌드
+            - Redux
+            - MobX
+            - Webpack
+            - Vite
+            - GraphQL Client
+
         - name: "AI/ML"
           description: "인공지능/머신러닝"
           style:
             color: "#8B5CF6" # Violet
             icon: "brain"
           skills:
-            [
-              "ML",
-              "Deep Learning",
-              "NLP",
-              "Computer Vision",
-              "TensorFlow",
-              "PyTorch",
-            ]
+            # 프레임워크
+            - TensorFlow
+            - PyTorch
+            - Scikit-learn
+            # 분야
+            - NLP
+            - Computer Vision
+            - Fine-tuning
+            - RAG
+            # 플랫폼/도구
+            - Hugging Face
+            - MLflow
+            - Kubeflow
+            - OpenAI API
+            # 언어 (크로스 도메인)
+            - Python
+            - R
+
         - name: "LLM Framework"
           description: "대규모 언어 모델 프레임워크"
           style:
             color: "#EC4899" # Pink
             icon: "message-square"
           skills:
-            [
-              "LangChain",
-              "LangGraph",
-              "LlamaIndex",
-              "AutoGen",
-              "Semantic Kernel",
-              "Haystack",
-            ]
+            - LangChain
+            - LangGraph
+            - LlamaIndex
+            - AutoGen
+            - Semantic Kernel
+            - Haystack
+
         - name: "Data"
           description: "데이터 엔지니어링/분석"
           style:
             color: "#EF4444" # Red
             icon: "database"
-          skills: ["SQL", "Spark", "Pandas", "Airflow", "ETL"]
+          skills:
+            # 처리/분석
+            - SQL
+            - Apache Spark
+            - PySpark
+            - Pandas
+            # 파이프라인/오케스트레이션
+            - Apache Airflow
+            - Apache Kafka
+            - Apache Flink
+            - dbt
+            # 웨어하우스
+            - BigQuery
+            - Snowflake
+            - Redshift
+            # 언어 (크로스 도메인)
+            - Python
+            - R
+            - Scala
 
-    - name: "Cloud"
-      description: "클라우드 플랫폼"
+    # =========================================================================
+    # Infrastructure (인프라)
+    # =========================================================================
+    - name: "Infrastructure"
+      description: "인프라 및 플랫폼"
       style:
         color: "#0EA5E9" # Sky
-        icon: "cloud"
-      skills: ["AWS", "GCP", "Azure", "Kubernetes", "Docker"]
+        icon: "server"
+      subcategories:
+        - name: "Cloud"
+          description: "클라우드 플랫폼"
+          style:
+            color: "#0EA5E9" # Sky
+            icon: "cloud"
+          skills:
+            - AWS
+            - Azure
+            - GCP
 
-    - name: "DevOps"
-      description: "개발 운영"
+        - name: "DevOps"
+          description: "개발 운영 및 모니터링"
+          style:
+            color: "#6366F1" # Indigo
+            icon: "terminal"
+          skills:
+            # 컨테이너/오케스트레이션
+            - Docker
+            - Kubernetes
+            # IaC
+            - Terraform
+            - Ansible
+            # CI/CD
+            - Jenkins
+            - GitHub Actions
+            - ArgoCD
+            # 모니터링/관측
+            - Prometheus
+            - Grafana
+            - Datadog
+            - New Relic
+            - ELK Stack
+            # 시스템 (크로스 도메인)
+            - Linux
+            - Bash/Shell
+
+        - name: "Database"
+          description: "데이터베이스"
+          style:
+            color: "#D97706" # Amber dark
+            icon: "cylinder"
+          skills:
+            # RDBMS
+            - PostgreSQL
+            - MySQL
+            # NoSQL
+            - MongoDB
+            - Redis
+            - DynamoDB
+            - ClickHouse
+            # 검색/그래프
+            - Elasticsearch
+            - Neo4j
+            # 벡터 DB
+            - ChromaDB
+            - Pinecone
+            - Weaviate
+            # 언어 (크로스 도메인)
+            - SQL
+
+    # =========================================================================
+    # Collaboration (협업/도구)
+    # =========================================================================
+    - name: "Collaboration"
+      description: "협업 도구 및 방법론"
       style:
-        color: "#6366F1" # Indigo
-        icon: "terminal"
-      skills: ["CI/CD", "Jenkins", "GitHub Actions", "Terraform", "Ansible"]
+        color: "#64748B" # Slate
+        icon: "users"
+      skills:
+        - Git
+        - Jira
+        - Confluence
+        - Figma
+        - Agile/Scrum
 
+  # ===========================================================================
+  # PositionLevel (직급 계층)
+  # ===========================================================================
   PositionLevel:
     description: "직급 계층 (상위 레벨은 하위 레벨 역량 포함)"
     hierarchy:

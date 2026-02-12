@@ -76,8 +76,10 @@ class TestFromDemoRoleAccessPolicy:
         assert "Employee" in allowed
         assert "Company" not in allowed  # D1: viewer는 Company 접근 불가
         assert "Concept" not in allowed  # D1: viewer는 Concept 접근 불가
-        # D2: viewer의 Employee 속성은 name, job_type만
-        assert policy.get_allowed_properties("Employee") == ("name", "job_type")
+        # D2: viewer의 Employee 속성은 name, job_type, max_projects
+        emp_props = policy.get_allowed_properties("Employee")
+        assert isinstance(emp_props, tuple)
+        assert set(emp_props) == {"name", "job_type", "max_projects"}
         # D4: viewer는 MENTORS 접근 불가
         assert not policy.is_relationship_allowed("MENTORS")
         assert not policy.is_relationship_allowed("IS_A")

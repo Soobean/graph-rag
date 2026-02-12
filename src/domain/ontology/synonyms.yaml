@@ -85,19 +85,20 @@ skills:
       - "React.js"
       - "ReactJS"
 
-  Vue:
-    canonical: "Vue"
+  "Vue.js":
+    canonical: "Vue.js"
     aliases:
       - "뷰"
-      - "Vue.js"
+      - "Vue"
       - "VueJS"
 
-  Spring:
-    canonical: "Spring"
+  "Spring Boot":
+    canonical: "Spring Boot"
     aliases:
       - "스프링"
-      - "Spring Boot"
+      - "Spring"
       - "SpringBoot"
+      - "스프링 부트"
 
   # 클라우드
   AWS:
@@ -191,12 +192,13 @@ skills:
       - "에스큐엘"
       - "Structured Query Language"
 
-  Spark:
-    canonical: "Spark"
+  "Apache Spark":
+    canonical: "Apache Spark"
     aliases:
-      - "Apache Spark"
+      - "Spark"
       - "스파크"
       - "PySpark"
+      - "spark"
 
   Pandas:
     canonical: "Pandas"
@@ -212,10 +214,10 @@ skills:
       - "Extract Transform Load"
       - "데이터 파이프라인"
 
-  Airflow:
-    canonical: "Airflow"
+  "Apache Airflow":
+    canonical: "Apache Airflow"
     aliases:
-      - "Apache Airflow"
+      - "Airflow"
       - "에어플로우"
       - "airflow"
 
@@ -255,6 +257,102 @@ skills:
     aliases:
       - "앤서블"
       - "ansible"
+
+  # 데이터베이스
+  PostgreSQL:
+    canonical: "PostgreSQL"
+    aliases:
+      - "Postgres"
+      - "포스트그레스"
+      - "postgresql"
+      - "PG"
+
+  MongoDB:
+    canonical: "MongoDB"
+    aliases:
+      - "몽고DB"
+      - "몽고"
+      - "Mongo"
+
+  Redis:
+    canonical: "Redis"
+    aliases:
+      - "레디스"
+      - "redis"
+
+  Elasticsearch:
+    canonical: "Elasticsearch"
+    aliases:
+      - "엘라스틱서치"
+      - "ES"
+      - "Elastic"
+
+  Neo4j:
+    canonical: "Neo4j"
+    aliases:
+      - "네오포제이"
+      - "neo4j"
+
+  # 추가 프레임워크
+  FastAPI:
+    canonical: "FastAPI"
+    aliases:
+      - "fastapi"
+      - "패스트API"
+
+  Django:
+    canonical: "Django"
+    aliases:
+      - "장고"
+      - "django"
+
+  "Next.js":
+    canonical: "Next.js"
+    aliases:
+      - "Next"
+      - "넥스트"
+      - "NextJS"
+      - "next.js"
+
+  Flutter:
+    canonical: "Flutter"
+    aliases:
+      - "플러터"
+      - "flutter"
+
+  # ML/AI 추가
+  RAG:
+    canonical: "RAG"
+    aliases:
+      - "Retrieval Augmented Generation"
+      - "검색 증강 생성"
+
+  LangChain:
+    canonical: "LangChain"
+    aliases:
+      - "랭체인"
+      - "langchain"
+
+  "Scikit-learn":
+    canonical: "Scikit-learn"
+    aliases:
+      - "sklearn"
+      - "사이킷런"
+      - "scikit-learn"
+
+  "Hugging Face":
+    canonical: "Hugging Face"
+    aliases:
+      - "허깅페이스"
+      - "HF"
+      - "huggingface"
+
+  "OpenAI API":
+    canonical: "OpenAI API"
+    aliases:
+      - "OpenAI"
+      - "GPT API"
+      - "오픈AI"
 
 # -----------------------------------------------------------------------------
 # 직급/역할 동의어

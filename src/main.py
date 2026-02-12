@@ -44,7 +44,7 @@ from src.services.auth_service import AuthService
 from src.services.gds_service import GDSService
 from src.services.graph_edit_service import GraphEditService
 from src.services.ontology_service import OntologyService
-from src.services.skill_gap_service import SkillGapService
+from src.services.project_staffing_service import ProjectStaffingService
 
 # 로깅 설정
 settings = get_settings()
@@ -147,9 +147,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     graph_edit_service = GraphEditService(neo4j_repo)
     logger.info("GraphEditService initialized")
 
-    # SkillGapService 초기화
-    skill_gap_service = SkillGapService(neo4j_repo)
-    logger.info("SkillGapService initialized")
+    # ProjectStaffingService 초기화
+    staffing_service = ProjectStaffingService(neo4j_repo)
+    logger.info("ProjectStaffingService initialized")
 
     # AuthService 초기화 (AUTH_ENABLED 여부와 무관하게 항상 생성)
     user_repository = UserRepository(neo4j_client)
@@ -173,7 +173,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.ontology_registry = ontology_registry
     app.state.explainability_service = explainability_service
     app.state.graph_edit_service = graph_edit_service
-    app.state.skill_gap_service = skill_gap_service
+    app.state.staffing_service = staffing_service
     app.state.auth_service = auth_service
 
     yield

@@ -21,11 +21,11 @@ class TestLabelAccess:
     """Dimension 1: 역할별 라벨 접근 테스트"""
 
     def test_admin_accesses_all_labels(self):
-        """admin은 모든 라벨에 접근 가능"""
+        """admin은 모든 라벨에 접근 가능 (Company 제외 — DB에 없음)"""
         admin = ROLE_POLICIES["admin"]
         expected = {
             "Employee", "Skill", "Project", "Department",
-            "Position", "Certificate", "Company", "Office", "Concept",
+            "Position", "Certificate", "Office", "Concept",
         }
         assert admin.get_allowed_labels() == expected
 
@@ -73,31 +73,35 @@ class TestPropertyVisibility:
         assert admin.get_allowed_properties("Employee") == ALL_PROPS
 
     def test_viewer_employee_limited_properties(self):
-        """viewer는 Employee의 name, job_type만"""
+        """viewer는 Employee의 name, job_type, max_projects만"""
         viewer = ROLE_POLICIES["viewer"]
         props = viewer.get_allowed_properties("Employee")
-        assert props == ("name", "job_type")
+        assert isinstance(props, tuple)
+        assert set(props) == {"name", "job_type", "max_projects"}
 
     def test_editor_employee_properties(self):
-        """editor는 Employee의 name, job_type, experience, hire_date"""
+        """editor는 Employee의 name, job_type, experience, hire_date, availability, max_projects"""
         editor = ROLE_POLICIES["editor"]
         props = editor.get_allowed_properties("Employee")
         assert isinstance(props, tuple)
-        assert set(props) == {"name", "job_type", "experience", "hire_date"}
+        assert set(props) == {"name", "job_type", "years_experience", "hire_date", "availability", "max_projects"}
 
     def test_viewer_project_limited_properties(self):
-        """viewer는 Project의 name, type, status만"""
+        """viewer는 Project의 name, type, status, required_headcount"""
         viewer = ROLE_POLICIES["viewer"]
         props = viewer.get_allowed_properties("Project")
         assert isinstance(props, tuple)
-        assert set(props) == {"name", "type", "status"}
+        assert set(props) == {"name", "type", "status", "required_headcount"}
 
     def test_editor_project_properties(self):
-        """editor는 Project의 name, type, status, start_date"""
+        """editor는 Project의 name, type, status, start_date + duration/hours/headcount"""
         editor = ROLE_POLICIES["editor"]
         props = editor.get_allowed_properties("Project")
         assert isinstance(props, tuple)
-        assert set(props) == {"name", "type", "status", "start_date"}
+        assert set(props) == {
+            "name", "type", "status", "start_date",
+            "duration_months", "estimated_hours", "required_headcount",
+        }
 
     def test_viewer_skill_all_properties(self):
         """viewer도 Skill은 전체 속성 접근 가능"""
@@ -173,17 +177,21 @@ class TestRoleMerging:
     def test_viewer_editor_merge_widens_properties(self):
         """viewer+editor → editor 수준 (속성 합집합)"""
         merged = get_access_policy(["viewer", "editor"])
-        # Employee: viewer has (name, job_type), editor has (name, job_type, experience, hire_date)
+        # Employee: viewer has (name, job_type, max_projects),
+        # editor has (name, job_type, experience, hire_date, availability, max_projects)
         props = merged.get_allowed_properties("Employee")
         assert isinstance(props, tuple)
-        assert set(props) == {"name", "job_type", "experience", "hire_date"}
+        assert set(props) == {
+            "name", "job_type", "years_experience", "hire_date",
+            "availability", "max_projects",
+        }
 
     def test_viewer_manager_merge_widens_labels(self):
-        """viewer+manager → manager의 라벨 포함 (Company, Office)"""
+        """viewer+manager → manager의 라벨 포함 (Office)"""
         merged = get_access_policy(["viewer", "manager"])
         labels = merged.get_allowed_labels()
-        assert "Company" in labels
         assert "Office" in labels
+        assert "Employee" in labels
 
     def test_viewer_manager_scope_merged(self):
         """viewer+manager → Employee scope: viewer=all 우선"""
@@ -236,7 +244,9 @@ class TestUserContextAccessPolicy:
         )
         policy = user.get_access_policy()
         assert "Company" not in policy.get_allowed_labels()
-        assert policy.get_allowed_properties("Employee") == ("name", "job_type")
+        emp_props = policy.get_allowed_properties("Employee")
+        assert isinstance(emp_props, tuple)
+        assert set(emp_props) == {"name", "job_type", "max_projects"}
 
     def test_manager_user_has_department_scope(self):
         """manager 사용자 → 부서 범위"""

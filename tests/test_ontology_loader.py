@@ -124,7 +124,7 @@ class TestOntologyLoader:
         # Backend + Frontend + AI/ML + Data 스킬들
         assert "Python" in children
         assert "React" in children
-        assert "ML" in children
+        assert "TensorFlow" in children
 
     def test_get_children_cloud(self, loader: OntologyLoader):
         """Cloud 하위 스킬 조회"""

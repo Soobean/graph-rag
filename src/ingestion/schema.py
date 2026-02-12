@@ -38,9 +38,19 @@ class RelationType(str, Enum):
 # [LLM 가이드라인] 노드별 추출해야 할 핵심 속성(Property)
 # LLM 프롬프트에 포함되어 환각을 방지하고 필요한 정보만 추출하도록 유도함
 NODE_PROPERTIES = {
-    NodeType.PERSON: ["name", "email", "job_type", "years_experience", "hire_date"],
-    NodeType.PROJECT: ["name", "type", "status", "start_date", "budget"],
-    NodeType.SKILL: ["name", "category", "difficulty"],
+    NodeType.PERSON: [
+        "name", "email", "job_type", "years_experience", "hire_date",
+        "hourly_rate", "availability", "max_projects", "department",
+    ],
+    NodeType.PROJECT: [
+        "name", "type", "status", "start_date", "budget_million",
+        "budget_allocated", "budget_spent", "duration_months",
+        "estimated_hours", "required_headcount",
+    ],
+    NodeType.SKILL: [
+        "name", "category", "difficulty",
+        "hourly_rate_min", "hourly_rate_max", "market_demand",
+    ],
     NodeType.DEPARTMENT: ["name"],
     NodeType.POSITION: ["name", "level"],
     NodeType.CERTIFICATE: ["name", "issuer"],
