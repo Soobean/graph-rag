@@ -15,11 +15,20 @@ const ROLES: { role: DemoRole; label: string; icon: LucideIcon; color: string; i
   { role: 'viewer', label: 'viewer', icon: Eye, color: 'border-gray-300 bg-gray-50', iconColor: 'text-gray-500', subtitle: '읽기 전용' },
 ];
 
+const EXAMPLE_QUERIES = [
+  { label: '개발자 단가 비교', query: 'Python 고급 이상 개발자의 단가와 가용 상태를 알려줘' },
+  { label: '프로젝트 예산', query: '챗봇 리뉴얼 프로젝트의 예산과 참여 인력의 단가를 알려줘' },
+  { label: '멘토링 + 부서', query: '백엔드개발팀 멘토링 관계와 멘토의 프로젝트를 알려줘' },
+];
+
 interface FilterAnalysis {
   resultCount: number;
   hasSalary: boolean;
   hasCompany: boolean;
   hasMentors: boolean;
+  hasRate: boolean;
+  hasBudget: boolean;
+  hasEffectiveRate: boolean;
 }
 
 function analyzeFiltering(metadata: StreamingMetadata | null): FilterAnalysis | null {
@@ -29,13 +38,25 @@ function analyzeFiltering(metadata: StreamingMetadata | null): FilterAnalysis | 
   let hasSalary = false;
   let hasCompany = false;
   let hasMentors = false;
+  let hasRate = false;
+  let hasBudget = false;
+  let hasEffectiveRate = false;
 
   if (graphData) {
     hasCompany = graphData.nodes.some((n) => n.label === 'Company');
     hasSalary = graphData.nodes.some(
       (n) => n.label === 'Employee' && 'salary' in n.properties
     );
+    hasRate = graphData.nodes.some(
+      (n) => n.label === 'Employee' && 'hourly_rate' in n.properties
+    );
+    hasBudget = graphData.nodes.some(
+      (n) => n.label === 'Project' && 'budget_allocated' in n.properties
+    );
     hasMentors = graphData.edges.some((e) => e.label === 'MENTORS');
+    hasEffectiveRate = graphData.edges.some(
+      (e) => e.label === 'HAS_SKILL' && 'effective_rate' in (e.properties ?? {})
+    );
   }
 
   return {
@@ -43,6 +64,9 @@ function analyzeFiltering(metadata: StreamingMetadata | null): FilterAnalysis | 
     hasSalary,
     hasCompany,
     hasMentors,
+    hasRate,
+    hasBudget,
+    hasEffectiveRate,
   };
 }
 
@@ -95,7 +119,9 @@ function RoleColumn({ role, content, metadata, isStreaming, error }: RoleColumnP
               {analysis.resultCount}
             </span>
           </div>
-          <FilterBadge label="salary" value={analysis.hasSalary} />
+          <FilterBadge label="hourly_rate" value={analysis.hasRate} />
+          <FilterBadge label="effective_rate" value={analysis.hasEffectiveRate} />
+          <FilterBadge label="budget_allocated" value={analysis.hasBudget} />
           <FilterBadge label="Company" value={analysis.hasCompany} />
           <FilterBadge label="MENTORS" value={analysis.hasMentors} />
         </div>
@@ -137,12 +163,12 @@ export function ComparePage() {
     editorQuery.state.isStreaming ||
     viewerQuery.state.isStreaming;
 
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      const trimmed = input.trim();
+  const submitQuery = useCallback(
+    (query: string) => {
+      const trimmed = query.trim();
       if (!trimmed || isAnyStreaming) return;
 
+      setInput(trimmed);
       setSubmitted(true);
 
       ROLES.forEach((roleConfig, idx) => {
@@ -152,7 +178,15 @@ export function ComparePage() {
         );
       });
     },
-    [input, isAnyStreaming]
+    [isAnyStreaming]
+  );
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      submitQuery(input);
+    },
+    [input, submitQuery]
   );
 
   const handleKeyDown = useCallback(
@@ -230,6 +264,17 @@ export function ComparePage() {
               ))}
             </div>
             <p className="text-sm">질문을 입력하면 4개 역할의 결과를 비교합니다</p>
+            <div className="flex flex-wrap justify-center gap-2 mt-2">
+              {EXAMPLE_QUERIES.map((eq) => (
+                <button
+                  key={eq.label}
+                  onClick={() => submitQuery(eq.query)}
+                  className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                >
+                  {eq.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </main>

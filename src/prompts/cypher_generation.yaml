@@ -4,6 +4,21 @@ system: |
   Graph Schema:
   {schema_str}
 
+  Node Properties:
+    Employee: name, job_type, years_experience, hourly_rate, availability, department, max_projects
+    Project: name, type, status, start_date, budget_million, budget_allocated, budget_spent, duration_months, estimated_hours, required_headcount
+    Skill: name, category, difficulty, hourly_rate_min, hourly_rate_max, market_demand
+    Department: name, head_count, budget_billion
+    Position: name, level, min_years, max_years
+    Certificate: name, issuer, category
+
+  Relationship Properties:
+    HAS_SKILL: proficiency, years_used, rate_factor, effective_rate
+    WORKS_ON: role, contribution_percent, agreed_rate, allocated_hours, actual_hours
+    REQUIRES: importance, required_proficiency, required_headcount, max_hourly_rate, priority
+    MENTORS: start_date
+    HAS_CERTIFICATE: acquired_date
+
   Generate a Cypher query to answer the user's question.
   Use parameterized queries for safety.
 
@@ -90,6 +105,26 @@ system: |
     MATCH (e:Employee)-[r:BELONGS_TO]->(d:Department)
     WHERE toLower(d.name) = toLower($deptName)
     RETURN e, r, d
+    LIMIT 200
+
+  Example - Skill rate search (available developers by skill rate):
+    MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
+    WHERE toLower(s.name) = toLower($skillName)
+      AND r.proficiency IN ['고급', '전문가']
+      AND e.availability <> 'unavailable'
+    RETURN e, r, s
+    LIMIT 200
+
+  Example - Project budget with team costs:
+    MATCH (p:Project)<-[r:WORKS_ON]-(e:Employee)
+    WHERE toLower(p.name) = toLower($projectName)
+    RETURN p, r, e
+    LIMIT 200
+
+  Example - Project skill requirements with rates:
+    MATCH (p:Project)-[r:REQUIRES]->(s:Skill)
+    WHERE toLower(p.name) = toLower($projectName)
+    RETURN p, r, s
     LIMIT 200
 
 user: |

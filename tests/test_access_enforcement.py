@@ -29,13 +29,13 @@ def _node(label: str, props: dict | None = None) -> dict:
     }
 
 
-def _rel(rel_type: str) -> dict:
+def _rel(rel_type: str, props: dict | None = None) -> dict:
     """Neo4j 관계 형태 dict 생성"""
     return {
         "type": rel_type,
         "startNodeId": "4:fake:start",
         "endNodeId": "4:fake:end",
-        "properties": {},
+        "properties": props or {},
     }
 
 
@@ -174,7 +174,7 @@ class TestAccessEnforcementD2:
             {"e": _node("Employee", {
                 "name": "김철수",
                 "job_type": "정규직",
-                "experience": 5,
+                "years_experience": 5,
                 "hire_date": "2020-01-01",
                 "salary": 50000000,
             })},
@@ -201,7 +201,7 @@ class TestAccessEnforcementD2:
             {"e": _node("Employee", {
                 "name": "김철수",
                 "job_type": "정규직",
-                "experience": 5,
+                "years_experience": 5,
                 "hire_date": "2020-01-01",
                 "salary": 50000000,
             })},
@@ -216,7 +216,7 @@ class TestAccessEnforcementD2:
         result = await executor(state)
         props = result["graph_results"][0]["e"]["properties"]
         assert "name" in props
-        assert "experience" in props
+        assert "years_experience" in props
         assert "hire_date" in props
         assert "salary" not in props
 
@@ -237,6 +237,277 @@ class TestAccessEnforcementD2:
         result = await executor(state)
         props = result["graph_results"][0]["s"]["properties"]
         assert props == {"name": "Python", "category": "programming"}
+
+    @pytest.mark.asyncio
+    async def test_viewer_employee_hourly_rate_hidden(self, node):
+        """viewer → Employee.hourly_rate는 숨김"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {"e": _node("Employee", {
+                "name": "김철수",
+                "job_type": "백엔드개발자",
+                "hourly_rate": 89250,
+                "availability": "available",
+                "max_projects": 4,
+            })},
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e:Employee) RETURN e",
+            cypher_parameters={},
+            user_context=_user(roles=["viewer"]),
+        )
+
+        result = await executor(state)
+        props = result["graph_results"][0]["e"]["properties"]
+        assert "hourly_rate" not in props
+        assert "max_projects" in props  # viewer에게 max_projects는 허용
+
+    @pytest.mark.asyncio
+    async def test_editor_project_budget_allocated_hidden(self, node):
+        """editor → Project.budget_allocated 숨김 (start_date, duration_months 노출)"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {"p": _node("Project", {
+                "name": "챗봇 리뉴얼",
+                "type": "AI/ML",
+                "status": "진행중",
+                "start_date": "2025-01-01",
+                "budget_allocated": 5000000000,
+                "duration_months": 12,
+                "required_headcount": 8,
+            })},
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (p:Project) RETURN p",
+            cypher_parameters={},
+            user_context=_user(roles=["editor"]),
+        )
+
+        result = await executor(state)
+        props = result["graph_results"][0]["p"]["properties"]
+        assert "budget_allocated" not in props
+        assert "duration_months" in props
+        assert "required_headcount" in props
+
+
+class TestAccessEnforcementD2Relationship:
+    """D2 확장: 관계 속성 가시성"""
+
+    @pytest.fixture
+    def node(self):
+        neo4j = MagicMock()
+        neo4j.execute_cypher = AsyncMock()
+        return GraphExecutorNode(neo4j), neo4j
+
+    @pytest.mark.asyncio
+    async def test_viewer_has_skill_only_proficiency_years(self, node):
+        """viewer → HAS_SKILL에서 proficiency, years_used만 보임"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {"name": "김철수", "job_type": "백엔드개발자"}),
+                "r": _rel("HAS_SKILL", {
+                    "proficiency": "고급",
+                    "years_used": 5,
+                    "rate_factor": 0.85,
+                    "effective_rate": 123000,
+                }),
+                "s": _node("Skill", {"name": "Python"}),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e)-[r:HAS_SKILL]->(s) RETURN e, r, s",
+            cypher_parameters={},
+            user_context=_user(roles=["viewer"]),
+        )
+
+        result = await executor(state)
+        assert result["result_count"] == 1
+        rel_props = result["graph_results"][0]["r"]["properties"]
+        assert set(rel_props.keys()) == {"proficiency", "years_used"}
+        assert "effective_rate" not in rel_props
+        assert "rate_factor" not in rel_props
+
+    @pytest.mark.asyncio
+    async def test_editor_has_skill_includes_rate_factor(self, node):
+        """editor → HAS_SKILL에서 rate_factor도 보임 (effective_rate는 숨김)"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {"name": "김철수", "job_type": "백엔드개발자"}),
+                "r": _rel("HAS_SKILL", {
+                    "proficiency": "고급",
+                    "years_used": 5,
+                    "rate_factor": 0.85,
+                    "effective_rate": 123000,
+                }),
+                "s": _node("Skill", {"name": "Python"}),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e)-[r:HAS_SKILL]->(s) RETURN e, r, s",
+            cypher_parameters={},
+            user_context=_user(roles=["editor"]),
+        )
+
+        result = await executor(state)
+        rel_props = result["graph_results"][0]["r"]["properties"]
+        assert "rate_factor" in rel_props
+        assert "proficiency" in rel_props
+        assert "effective_rate" not in rel_props
+
+    @pytest.mark.asyncio
+    async def test_admin_has_skill_all_props(self, node):
+        """admin → HAS_SKILL 전체 속성 노출"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {"name": "김철수"}),
+                "r": _rel("HAS_SKILL", {
+                    "proficiency": "고급",
+                    "years_used": 5,
+                    "rate_factor": 0.85,
+                    "effective_rate": 123000,
+                }),
+                "s": _node("Skill", {"name": "Python"}),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e)-[r:HAS_SKILL]->(s) RETURN e, r, s",
+            cypher_parameters={},
+            user_context=_user(roles=["admin"], is_admin=True),
+        )
+
+        result = await executor(state)
+        # admin은 is_admin=True이므로 필터 자체가 적용 안 됨
+        rel_props = result["graph_results"][0]["r"]["properties"]
+        assert "effective_rate" in rel_props
+        assert "rate_factor" in rel_props
+
+    @pytest.mark.asyncio
+    async def test_viewer_works_on_only_role(self, node):
+        """viewer → WORKS_ON에서 role만 보임"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {"name": "김철수", "job_type": "백엔드개발자"}),
+                "r": _rel("WORKS_ON", {
+                    "role": "개발자",
+                    "contribution_percent": 70,
+                    "agreed_rate": 89250,
+                    "allocated_hours": 625,
+                    "actual_hours": 312,
+                }),
+                "p": _node("Project", {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"}),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e)-[r:WORKS_ON]->(p) RETURN e, r, p",
+            cypher_parameters={},
+            user_context=_user(roles=["viewer"]),
+        )
+
+        result = await executor(state)
+        rel_props = result["graph_results"][0]["r"]["properties"]
+        assert set(rel_props.keys()) == {"role"}
+        assert "agreed_rate" not in rel_props
+
+    @pytest.mark.asyncio
+    async def test_editor_works_on_includes_contribution(self, node):
+        """editor → WORKS_ON에서 role, contribution_percent, allocated_hours 보임"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {"name": "김철수", "job_type": "백엔드개발자"}),
+                "r": _rel("WORKS_ON", {
+                    "role": "개발자",
+                    "contribution_percent": 70,
+                    "agreed_rate": 89250,
+                    "allocated_hours": 625,
+                }),
+                "p": _node("Project", {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"}),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e)-[r:WORKS_ON]->(p) RETURN e, r, p",
+            cypher_parameters={},
+            user_context=_user(roles=["editor"]),
+        )
+
+        result = await executor(state)
+        rel_props = result["graph_results"][0]["r"]["properties"]
+        assert "role" in rel_props
+        assert "contribution_percent" in rel_props
+        assert "allocated_hours" in rel_props
+        assert "agreed_rate" not in rel_props
+
+    @pytest.mark.asyncio
+    async def test_viewer_requires_filters_sensitive_props(self, node):
+        """viewer → REQUIRES에서 max_hourly_rate, required_headcount 숨김"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "p": _node("Project", {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"}),
+                "r": _rel("REQUIRES", {
+                    "importance": "필수",
+                    "required_proficiency": "고급",
+                    "required_headcount": 2,
+                    "max_hourly_rate": 180000,
+                    "priority": 1,
+                }),
+                "s": _node("Skill", {"name": "Python"}),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (p)-[r:REQUIRES]->(s) RETURN p, r, s",
+            cypher_parameters={},
+            user_context=_user(roles=["viewer"]),
+        )
+
+        result = await executor(state)
+        rel_props = result["graph_results"][0]["r"]["properties"]
+        assert "importance" in rel_props
+        assert "required_proficiency" in rel_props
+        assert "priority" in rel_props
+        assert "max_hourly_rate" not in rel_props
+        assert "required_headcount" not in rel_props
+
+    @pytest.mark.asyncio
+    async def test_manager_relationship_all_props(self, node):
+        """manager → 관계 속성 전체 노출 (relationship_rules 빈 dict)"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {"name": "김철수"}),
+                "r": _rel("HAS_SKILL", {
+                    "proficiency": "고급",
+                    "years_used": 5,
+                    "rate_factor": 0.85,
+                    "effective_rate": 123000,
+                }),
+                "s": _node("Skill", {"name": "Python"}),
+                "d": _node("Department", {"name": "백엔드개발팀"}),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e)-[r:HAS_SKILL]->(s) RETURN e, r, s",
+            cypher_parameters={},
+            user_context=_user(roles=["manager"], department="백엔드개발팀"),
+        )
+
+        result = await executor(state)
+        rel_props = result["graph_results"][0]["r"]["properties"]
+        assert "effective_rate" in rel_props
+        assert "rate_factor" in rel_props
 
 
 class TestAccessEnforcementD3:
@@ -320,6 +591,73 @@ class TestAccessEnforcementD3:
             cypher_query="MATCH (e)-[:BELONGS_TO]->(d) RETURN e, d",
             cypher_parameters={},
             user_context=_user(roles=["manager"], department="backend팀"),
+        )
+
+        result = await executor(state)
+        assert result["result_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_manager_employee_department_denorm_allowed(self, node):
+        """manager → Employee.department 비정규화 속성으로도 부서 필터링"""
+        executor, mock_neo4j = node
+        # Department 노드 없이 Employee.department만 있는 경우
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {
+                    "name": "김철수",
+                    "department": "백엔드개발팀",
+                }),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e:Employee) RETURN e",
+            cypher_parameters={},
+            user_context=_user(roles=["manager"], department="백엔드개발팀"),
+        )
+
+        result = await executor(state)
+        assert result["result_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_manager_employee_department_denorm_blocked(self, node):
+        """manager → Employee.department가 다른 부서면 차단"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {
+                    "name": "이영희",
+                    "department": "AI연구소",
+                }),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e:Employee) RETURN e",
+            cypher_parameters={},
+            user_context=_user(roles=["manager"], department="백엔드개발팀"),
+        )
+
+        result = await executor(state)
+        assert result["result_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_manager_employee_department_denorm_case_insensitive(self, node):
+        """Employee.department 비교도 대소문자 무시"""
+        executor, mock_neo4j = node
+        mock_neo4j.execute_cypher.return_value = [
+            {
+                "e": _node("Employee", {
+                    "name": "김철수",
+                    "department": "Backend개발팀",
+                }),
+            },
+        ]
+
+        state = GraphRAGState(
+            cypher_query="MATCH (e:Employee) RETURN e",
+            cypher_parameters={},
+            user_context=_user(roles=["manager"], department="backend개발팀"),
         )
 
         result = await executor(state)
@@ -562,7 +900,7 @@ class TestAccessEnforcementCombined:
             {"e": _node("Employee", {
                 "name": "김철수",
                 "job_type": "정규직",
-                "experience": 5,
+                "years_experience": 5,
                 "salary": 5000,
             })},
         ]
@@ -576,7 +914,7 @@ class TestAccessEnforcementCombined:
         result = await executor(state)
         props = result["graph_results"][0]["e"]["properties"]
         # editor가 experience를 볼 수 있으므로 병합 시 포함
-        assert "experience" in props
+        assert "years_experience" in props
         # salary는 editor도 접근 불가
         assert "salary" not in props
 
@@ -647,11 +985,15 @@ class TestSchemaFiltering:
         assert "Concept" not in node_labels
 
     def test_admin_schema_unchanged(self, generator, full_schema):
-        """admin → 스키마 전체 유지"""
+        """admin → Company 제외, 나머지 스키마 유지"""
         policy = get_access_policy(["admin"])
         filtered = generator._filter_schema_for_policy(full_schema, policy)
 
-        assert len(filtered["node_labels"]) == len(full_schema["node_labels"])
+        # Company는 admin 정책에서도 제거됨 (DB에 존재하지 않음)
+        assert "Employee" in filtered["node_labels"]
+        assert "Skill" in filtered["node_labels"]
+        assert "Concept" in filtered["node_labels"]
+        assert "Department" in filtered["node_labels"]
         assert len(filtered["relationship_types"]) == len(full_schema["relationship_types"])
 
     def test_manager_schema_mentors_included(self, generator, full_schema):
