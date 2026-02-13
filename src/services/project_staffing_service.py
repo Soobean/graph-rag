@@ -15,6 +15,7 @@ from src.api.schemas.staffing import (
     CandidateInfo,
     FindCandidatesResponse,
     ProjectListItem,
+    ProjectParticipation,
     RecommendedCandidate,
     SkillCandidates,
     SkillCategory,
@@ -153,6 +154,13 @@ class ProjectStaffingService:
                 max_hourly_rate=max_rate,
             )
 
+            # 매칭 점수 계산 및 점수 DESC 정렬
+            candidates = [
+                self._compute_match_context(c, req_proficiency, max_rate)
+                for c in candidates
+            ]
+            candidates.sort(key=lambda c: (-c.match_score, c.effective_rate))
+
             for c in candidates:
                 all_candidate_names.add(c.employee_name)
 
@@ -226,6 +234,8 @@ class ProjectStaffingService:
                     proficiency=c.proficiency,
                     effective_rate=c.effective_rate,
                     availability=c.availability,
+                    match_score=c.match_score,
+                    match_reasons=c.match_reasons[:2],
                 )
                 for c in top_candidates
             ]
@@ -432,6 +442,163 @@ class ProjectStaffingService:
 
         return [dict(row) for row in await self._neo4j.execute_cypher(query, params)]
 
+    @staticmethod
+    def _compute_workload(project_details: list[dict]) -> float:
+        """
+        프로젝트별 가중 워크로드를 합산합니다.
+
+        각 프로젝트 부담 = base_weight × remaining_factor
+          - base_weight: contribution_percent/100 (없으면 상태 기반 기본값)
+          - remaining_factor: 1 - progress (진행률이 높을수록 잔여 부담 낮음)
+
+        상태 기본값:
+          - '진행중' → 1.0 (풀타임)
+          - '계획'  → 0.3 (아직 본격 투입 전)
+        """
+        total = 0.0
+        for proj in project_details:
+            # Base weight: contribution_percent 우선, 없으면 상태 기반 기본값
+            contrib = proj.get("contribution_pct")
+            status = proj.get("status", "진행중")
+            if contrib and contrib > 0:
+                base = contrib / 100
+            else:
+                base = 0.3 if status == "계획" else 1.0
+
+            # Remaining factor: 진행률 기반 잔여 부담
+            alloc = proj.get("allocated") or 0
+            actual = proj.get("actual") or 0
+            if alloc > 0 and actual >= 0:
+                progress = min(actual / alloc, 0.95)  # 최대 95% (완전 0 방지)
+                remaining = 1.0 - progress
+            else:
+                remaining = 1.0  # 시간 정보 없으면 보수적으로 풀부담
+
+            total += base * remaining
+        return round(total, 2)
+
+    @staticmethod
+    def _build_participations(
+        project_details: list[dict],
+    ) -> list[ProjectParticipation]:
+        """project_details → ProjectParticipation 리스트 변환"""
+        result = []
+        for proj in project_details:
+            alloc = proj.get("allocated") or 0
+            actual = proj.get("actual") or 0
+            progress = round(actual / alloc * 100, 0) if alloc > 0 else None
+            result.append(
+                ProjectParticipation(
+                    project_name=proj.get("name", "unknown"),
+                    status=proj.get("status"),
+                    progress_pct=progress,
+                    contribution_pct=proj.get("contribution_pct"),
+                )
+            )
+        return result
+
+    @staticmethod
+    def _compute_availability_label(capacity_remaining: float) -> str:
+        """잔여 여력 기반 투입 가능 여부 라벨 계산"""
+        if capacity_remaining >= 2.0:
+            return "가능"
+        elif capacity_remaining >= 0.5:
+            return "애매"
+        return "빠듯"
+
+    def _compute_match_context(
+        self,
+        candidate: CandidateInfo,
+        req_proficiency: int | None,
+        max_rate: float | None,
+    ) -> CandidateInfo:
+        """
+        후보자의 매칭 점수·사유를 계산하여 새 CandidateInfo를 반환합니다.
+
+        점수 (100점 만점 가중합):
+          - 숙련도 (40점): 절대 스케일 prof/4 × 40, years_used 보정 ×(1+bonus)
+          - 비용 효율 (35점): 예산 내 base 15 + 절약 보너스 최대 20
+          - 가용성 (25점): remaining_capacity / max_proj × 25
+        """
+        score = 0.0
+        reasons: list[str] = []
+
+        prof = candidate.proficiency
+        rate = candidate.effective_rate
+        years_used = candidate.years_used
+        max_proj = candidate.max_projects if candidate.max_projects > 0 else 5
+        workload = candidate.effective_workload
+        remaining_capacity = max(max_proj - workload, 0)
+
+        # --- 숙련도 축 (40점) ---
+        # 절대 스케일: 전문가(4)=40, 고급(3)=30, 중급(2)=20, 초급(1)=10
+        # years_used 보정: 최대 +25% (10년 이상 사용 시)
+        req_prof = req_proficiency or 1
+        prof_gap = prof - req_prof
+
+        base_prof_score = (prof / 4) * 40
+        years_bonus = min(years_used / 10, 0.25)
+        score += min(base_prof_score * (1 + years_bonus), 40)
+
+        if prof_gap > 0:
+            reasons.append(f"숙련도 {prof_gap}단계 초과 충족")
+        elif prof_gap == 0:
+            reasons.append("요구 숙련도 정확히 충족")
+        else:
+            reasons.append(f"숙련도 {abs(prof_gap)}단계 미달")
+
+        if years_used >= 5:
+            reasons.append(f"해당 스킬 {years_used}년 경력")
+        elif years_used >= 2:
+            reasons.append(f"해당 스킬 {years_used}년 사용")
+
+        # --- 비용 효율 축 (35점) ---
+        # 예산 있음: base 15점 + 절약 보너스 최대 20점
+        # 예산 없음: 중립 17점 (예산 기준 없이 비용 비교 무의미)
+        cost_eff: float | None = None
+        if max_rate and max_rate > 0 and rate > 0:
+            cost_eff = round((max_rate / rate) * 100, 1)
+            savings_ratio = max(1 - rate / max_rate, 0)
+            cost_score = savings_ratio * 20 + 15
+            score += min(cost_score, 35)
+            if savings_ratio >= 0.4:
+                reasons.append("예산 대비 매우 저렴")
+            elif savings_ratio >= 0.1:
+                reasons.append("예산 범위 내")
+            else:
+                reasons.append("예산 상한 근접")
+        else:
+            score += 17
+
+        # --- 가용성 축 (25점) ---
+        # effective_workload 기반 (프로젝트 상태/진행률/투입비율 반영)
+        if max_proj > 0:
+            cap_ratio = remaining_capacity / max_proj
+            score += min(cap_ratio * 25, 25)
+
+        if remaining_capacity >= 2:
+            reasons.append(f"가용 여력 {remaining_capacity:.1f}건")
+        elif remaining_capacity >= 0.5:
+            reasons.append(f"가용 여력 {remaining_capacity:.1f}건")
+        else:
+            reasons.append("마지막 프로젝트 슬롯")
+
+        if candidate.availability == "available":
+            reasons.append("즉시 투입 가능")
+
+        return candidate.model_copy(
+            update={
+                "match_score": min(round(score), 100),
+                "proficiency_gap": prof_gap,
+                "cost_efficiency": cost_eff,
+                "capacity_remaining": round(remaining_capacity, 1),
+                "match_reasons": reasons,
+                "availability_label": self._compute_availability_label(
+                    remaining_capacity
+                ),
+            }
+        )
+
     async def _find_skill_candidates(
         self,
         skill_name: str,
@@ -472,6 +639,7 @@ class ProjectStaffingService:
                ELSE 0
              END) AS proficiency,
              min(hs.effective_rate) AS effective_rate,
+             max(coalesce(hs.years_used, 0)) AS years_used,
              min(e.availability) AS availability,
              max(e.department) AS department,
              max(e.max_projects) AS max_projects
@@ -481,35 +649,65 @@ class ProjectStaffingService:
         {proficiency_clause}
         {rate_clause}
 
-        // 현재 진행중 프로젝트 수 확인 (이름 기반 집계)
-        OPTIONAL MATCH (e2:Employee)-[:WORKS_ON]->(proj:Project)
+        // 진행중 프로젝트 상세 (프로젝트별 그룹핑, 중복 노드 대응)
+        OPTIONAL MATCH (e2:Employee)-[w2:WORKS_ON]->(proj:Project)
         WHERE e2.name = emp_name AND proj.status IN ['진행중', '계획']
-        WITH emp_name, proficiency, effective_rate, availability,
-             department, max_projects,
-             count(DISTINCT proj) AS current_projects
+        WITH emp_name, proficiency, effective_rate, years_used,
+             availability, department, max_projects,
+             proj.name AS proj_name,
+             max(proj.status) AS proj_status,
+             max(w2.contribution_percent) AS proj_contrib,
+             max(w2.allocated_hours) AS proj_alloc,
+             max(w2.actual_hours) AS proj_actual
 
-        // 여유 있는 인력만 (active_projects < max_projects)
-        WHERE current_projects < coalesce(max_projects, 5)
+        // 프로젝트별 정보를 리스트로 수집
+        WITH emp_name, proficiency, effective_rate, years_used,
+             availability, department, max_projects,
+             count(proj_name) AS current_projects,
+             [x IN collect(CASE WHEN proj_name IS NOT NULL THEN {{
+               name: proj_name,
+               status: proj_status,
+               contribution_pct: proj_contrib,
+               allocated: proj_alloc,
+               actual: proj_actual
+             }} END) WHERE x IS NOT NULL] AS project_details
 
         RETURN emp_name, department, proficiency, effective_rate,
-               availability, current_projects, max_projects
+               years_used, availability, current_projects, max_projects,
+               project_details
         ORDER BY effective_rate ASC, proficiency DESC
         """
 
         try:
             results = await self._neo4j.execute_cypher(query, params)
-            return [
-                CandidateInfo(
-                    employee_name=row["emp_name"],
-                    department=row.get("department"),
-                    proficiency=row.get("proficiency") or 0,
-                    effective_rate=row.get("effective_rate") or 0.0,
-                    availability=row.get("availability"),
-                    current_projects=row.get("current_projects", 0),
-                    max_projects=row.get("max_projects") or 5,
+            candidates = []
+            for row in results:
+                project_details = row.get("project_details") or []
+                workload = self._compute_workload(project_details)
+                raw_max = row.get("max_projects")
+                max_proj = raw_max if raw_max is not None and raw_max > 0 else 5
+
+                # 가중 워크로드 기반 필터 (워크로드 < 최대 프로젝트)
+                if workload >= max_proj:
+                    continue
+
+                participations = self._build_participations(project_details)
+
+                candidates.append(
+                    CandidateInfo(
+                        employee_name=row["emp_name"],
+                        department=row.get("department"),
+                        proficiency=row.get("proficiency") or 0,
+                        effective_rate=row.get("effective_rate") or 0.0,
+                        years_used=row.get("years_used") or 0,
+                        availability=row.get("availability"),
+                        current_projects=row.get("current_projects", 0),
+                        max_projects=max_proj,
+                        effective_workload=workload,
+                        project_participations=participations,
+                    )
                 )
-                for row in results
-            ]
+            return candidates
         except Exception as e:
             logger.error(
                 f"Failed to find candidates for skill '{skill_name}': {e}"

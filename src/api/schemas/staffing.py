@@ -77,6 +77,19 @@ class FindCandidatesRequest(BaseModel):
     )
 
 
+class ProjectParticipation(BaseModel):
+    """후보자의 프로젝트 참여 정보"""
+
+    project_name: str = Field(..., description="프로젝트명")
+    status: str | None = Field(default=None, description="프로젝트 상태 (진행중/계획)")
+    progress_pct: float | None = Field(
+        default=None, description="진행률 % (actual/allocated)"
+    )
+    contribution_pct: float | None = Field(
+        default=None, description="투입 비율 %"
+    )
+
+
 class CandidateInfo(BaseModel):
     """적격 후보자 정보"""
 
@@ -87,6 +100,30 @@ class CandidateInfo(BaseModel):
     availability: str | None = Field(default=None, description="가용 상태")
     current_projects: int = Field(default=0, description="현재 참여 프로젝트 수")
     max_projects: int = Field(default=5, description="최대 참여 가능 프로젝트 수")
+    effective_workload: float = Field(
+        default=0.0,
+        description="가중 워크로드 (프로젝트 상태·진행률·투입비율 반영)",
+    )
+    years_used: int = Field(default=0, description="해당 스킬 사용 연수")
+    match_score: int = Field(default=0, ge=0, le=100, description="매칭 점수 (0~100)")
+    proficiency_gap: int = Field(
+        default=0, description="숙련도 갭 (양수=초과, 0=충족, 음수=미달)"
+    )
+    cost_efficiency: float | None = Field(
+        default=None, description="비용 효율 (max_rate/effective_rate×100)"
+    )
+    capacity_remaining: float = Field(
+        default=0.0, description="잔여 가용 여력 (max_projects - workload - 1)"
+    )
+    match_reasons: list[str] = Field(
+        default_factory=list, description="추천 사유 목록"
+    )
+    project_participations: list[ProjectParticipation] = Field(
+        default_factory=list, description="현재 프로젝트 참여 내역"
+    )
+    availability_label: str = Field(
+        default="가능", description="투입 가능 여부 (가능/애매/빠듯)"
+    )
 
 
 class SkillCandidates(BaseModel):
@@ -157,6 +194,10 @@ class RecommendedCandidate(BaseModel):
     proficiency: int = Field(..., description="숙련도")
     effective_rate: float = Field(..., description="유효 단가")
     availability: str | None = Field(default=None, description="가용 상태")
+    match_score: int = Field(default=0, description="매칭 점수 (0~100)")
+    match_reasons: list[str] = Field(
+        default_factory=list, description="추천 사유 요약"
+    )
 
 
 class SkillStaffingPlan(BaseModel):
