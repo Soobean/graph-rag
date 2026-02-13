@@ -15,6 +15,7 @@ Note:
 """
 
 import pytest
+from unittest.mock import AsyncMock
 
 
 class TestPipelineRouting:
@@ -423,3 +424,55 @@ class TestOntologyUpdateRouting:
         # ontology_update_handler 또는 ontology_update_handler_low_confidence가 있어야 함
         assert any("ontology_update_handler" in node for node in path)
         assert "신뢰도" in result["response"] or "명확" in result["response"]
+
+
+class TestGlobalAnalysisRouting:
+    """Global RAG — 커뮤니티 기반 거시적 분석 라우팅 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_global_analysis_routing(self, pipeline, mock_llm, mock_neo4j):
+        """global_analysis intent → community_summarizer로 라우팅"""
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "global_analysis",
+            "confidence": 0.92,
+            "entities": [],
+        }
+        # community_summarizer가 Neo4j 쿼리 실행
+        mock_neo4j.execute_cypher = AsyncMock(return_value=[])
+
+        result = await pipeline.run("전체 기술 분포는?")
+
+        assert result["success"] is True
+        path = result["metadata"]["execution_path"]
+        assert any("community_summarizer" in node for node in path)
+        # 기존 쿼리 파이프라인은 스킵됨
+        assert "cypher_generator" not in path
+        assert "graph_executor" not in path
+
+    @pytest.mark.asyncio
+    async def test_local_query_not_routed_to_global(
+        self, pipeline, mock_llm, mock_neo4j
+    ):
+        """personnel_search intent → community_summarizer 미포함"""
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "personnel_search",
+            "confidence": 0.95,
+            "entities": [
+                {"type": "Employee", "value": "홍길동", "normalized": "홍길동"}
+            ],
+        }
+        mock_llm.generate_cypher.return_value = {
+            "cypher": "MATCH (e:Employee {name: $name}) RETURN e",
+            "parameters": {"name": "홍길동"},
+        }
+        mock_neo4j.execute_cypher.return_value = [
+            {"e": {"name": "홍길동", "department": "개발팀"}}
+        ]
+        mock_llm.generate_response.return_value = "홍길동은 개발팀 소속입니다."
+
+        result = await pipeline.run("홍길동의 스킬은?")
+
+        assert result["success"] is True
+        path = result["metadata"]["execution_path"]
+        assert "community_summarizer" not in path
+        assert "cypher_generator" in path

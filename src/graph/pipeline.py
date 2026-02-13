@@ -31,6 +31,7 @@ from src.domain.types import GraphSchema, PipelineMetadata, PipelineResult
 from src.graph.nodes import (
     CacheCheckerNode,
     ClarificationHandlerNode,
+    CommunitySummarizerNode,
     ConceptExpanderNode,
     CypherGeneratorNode,
     EntityResolverNode,
@@ -141,6 +142,12 @@ class GraphRAGPipeline:
         self._graph_executor = GraphExecutorNode(neo4j_repository)
         self._response_generator = ResponseGeneratorNode(llm_repository)
 
+        # Community Summarizer (Global RAG)
+        self._community_summarizer = CommunitySummarizerNode(
+            neo4j_repository=neo4j_repository,
+            llm_repository=llm_repository,
+        )
+
         # Cache Checker 노드 (Vector Search 활성화 시)
         self._cache_checker: CacheCheckerNode | None = None
         if settings.vector_search_enabled and self._cache_repository:
@@ -212,6 +219,7 @@ class GraphRAGPipeline:
         workflow.add_node("cypher_generator", self._cypher_generator)
         workflow.add_node("graph_executor", self._graph_executor)
         workflow.add_node("response_generator", self._response_generator)
+        workflow.add_node("community_summarizer", self._community_summarizer)
 
         # Cache Checker 노드 추가 (Vector Search 활성화 시)
         if self._cache_checker:
@@ -234,8 +242,16 @@ class GraphRAGPipeline:
 
         def route_after_intent(
             state: GraphRAGState,
-        ) -> Literal["query_decomposer", "ontology_update_handler", "response_generator"]:
+        ) -> Literal[
+            "query_decomposer",
+            "community_summarizer",
+            "ontology_update_handler",
+            "response_generator",
+        ]:
             intent = state.get("intent")
+            if intent == "global_analysis":
+                logger.info("Global analysis detected. Routing to community_summarizer.")
+                return "community_summarizer"
             if intent == "unknown":
                 logger.info("Intent is unknown. Skipping to response generator.")
                 return "response_generator"
@@ -250,18 +266,18 @@ class GraphRAGPipeline:
                     )
             return "query_decomposer"
 
-        # 조건부 엣지에 ontology_update_handler 추가 (활성화된 경우만)
+        # 조건부 엣지에 community_summarizer + ontology_update_handler 추가
         if has_ontology_handler:
             workflow.add_conditional_edges(
                 "intent_entity_extractor",
                 route_after_intent,
-                ["query_decomposer", "ontology_update_handler", "response_generator"],
+                ["query_decomposer", "community_summarizer", "ontology_update_handler", "response_generator"],
             )
         else:
             workflow.add_conditional_edges(
                 "intent_entity_extractor",
                 route_after_intent,
-                ["query_decomposer", "response_generator"],
+                ["query_decomposer", "community_summarizer", "response_generator"],
             )
 
         # 2. Query Decomposer -> Cache Checker 또는 Concept Expander
@@ -367,7 +383,10 @@ class GraphRAGPipeline:
         # 7. Response Generator -> END
         workflow.add_edge("response_generator", END)
 
-        # 8. Ontology Update Handler -> END (자체 응답 생성 후 종료)
+        # 8. Community Summarizer -> END (직접 response 반환, response_generator 불필요)
+        workflow.add_edge("community_summarizer", END)
+
+        # 9. Ontology Update Handler -> END (자체 응답 생성 후 종료)
         if self._ontology_update_handler:
             workflow.add_edge("ontology_update_handler", END)
 
@@ -615,7 +634,7 @@ class GraphRAGPipeline:
 
                     # 응답 생성 노드 도달 시 처리
                     # (response_generator, clarification_handler, ontology_update_handler)
-                    if node_name in ("response_generator", "clarification_handler", "ontology_update_handler"):
+                    if node_name in ("response_generator", "clarification_handler", "ontology_update_handler", "community_summarizer"):
                         # 이미 응답이 생성된 상태 → 비스트리밍 응답 (fallback)
                         response = final_state.get("response", "")
                         if response:

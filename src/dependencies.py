@@ -29,6 +29,7 @@ from src.services.ontology_service import OntologyService
 if TYPE_CHECKING:
     from src.api.services.explainability import ExplainabilityService
     from src.services.auth_service import AuthService
+    from src.services.community_batch_service import CommunityBatchService
     from src.services.project_staffing_service import ProjectStaffingService
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,19 @@ def get_graph_edit_service(request: Request) -> GraphEditService:
     app.state에서 초기화된 인스턴스를 가져옵니다.
     """
     return request.app.state.graph_edit_service
+
+
+# ============================================
+# Community Batch Service 의존성
+# ============================================
+
+
+def get_community_batch_service(request: Request) -> "CommunityBatchService":
+    """
+    CommunityBatchService 의존성 주입
+    app.state에서 초기화된 인스턴스를 가져옵니다.
+    """
+    return request.app.state.community_batch_service
 
 
 # ============================================
