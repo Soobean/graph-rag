@@ -225,6 +225,13 @@ export interface FindCandidatesRequest {
   min_proficiency?: number;
 }
 
+export interface ProjectParticipation {
+  project_name: string;
+  status: string | null;
+  progress_pct: number | null;
+  contribution_pct: number | null;
+}
+
 export interface CandidateInfo {
   employee_name: string;
   department: string | null;
@@ -233,6 +240,15 @@ export interface CandidateInfo {
   availability: string | null;
   current_projects: number;
   max_projects: number;
+  effective_workload: number;
+  years_used: number;
+  match_score: number;
+  proficiency_gap: number;
+  cost_efficiency: number | null;
+  capacity_remaining: number;
+  match_reasons: string[];
+  project_participations: ProjectParticipation[];
+  availability_label: string;
 }
 
 export interface SkillCandidates {
@@ -265,6 +281,8 @@ export interface RecommendedCandidate {
   proficiency: number;
   effective_rate: number;
   availability: string | null;
+  match_score: number;
+  match_reasons: string[];
 }
 
 export interface SkillStaffingPlan {

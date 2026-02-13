@@ -20,8 +20,9 @@ import {
   useGenerateStaffingPlan,
   useAnalyzeBudget,
 } from '@/api/hooks/admin';
-import { Loader2, Search, ClipboardList, TrendingDown } from 'lucide-react';
+import { Loader2, Search, ClipboardList, TrendingDown, ChevronRight, ChevronDown } from 'lucide-react';
 import type {
+  CandidateInfo,
   FindCandidatesResponse,
   StaffingPlanResponse,
   BudgetAnalysisResponse,
@@ -53,6 +54,46 @@ function proficiencyLabel(level: number): string {
     4: '전문가',
   };
   return labels[level] || `${level}`;
+}
+
+// ============================================
+// Match Score Helpers
+// ============================================
+
+type BadgeVariant = 'success' | 'warning' | 'secondary' | 'destructive';
+
+function matchScoreBadgeVariant(score: number): BadgeVariant {
+  if (score >= 80) return 'success';
+  if (score >= 60) return 'warning';
+  if (score >= 40) return 'secondary';
+  return 'destructive';
+}
+
+function proficiencyGapBadge(gap: number): { label: string; variant: BadgeVariant } {
+  if (gap > 0) return { label: `+${gap}`, variant: 'success' };
+  if (gap === 0) return { label: '충족', variant: 'warning' };
+  return { label: `${gap}`, variant: 'destructive' };
+}
+
+function availabilityBadge(label: string): { label: string; variant: BadgeVariant } {
+  if (label === '가능') return { label: '가능', variant: 'success' };
+  if (label === '애매') return { label: '애매', variant: 'warning' };
+  return { label: '빠듯', variant: 'destructive' };
+}
+
+function progressColor(pct: number | null): string {
+  if (pct === null) return 'bg-gray-200';
+  if (pct >= 90) return 'bg-green-400';
+  if (pct >= 50) return 'bg-yellow-400';
+  return 'bg-blue-400';
+}
+
+function progressLabel(pct: number | null, status: string | null): string {
+  if (status === '계획') return '미착수';
+  if (pct === null) return '정보없음';
+  if (pct >= 90) return '거의 완료';
+  if (pct >= 50) return '진행중';
+  return '초기';
 }
 
 // ============================================
@@ -171,8 +212,22 @@ function CandidatesTab({
   );
 }
 
+const CANDIDATES_INITIAL_SHOW = 5;
+
 function SkillCandidateCard({ sc }: { sc: SkillCandidates }) {
   const badge = importanceBadge(sc.importance);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  const toggleRow = (name: string) => {
+    setExpandedRow((prev) => (prev === name ? null : name));
+  };
+
+  const hasMore = sc.candidates.length > CANDIDATES_INITIAL_SHOW;
+  const visibleCandidates = showAll
+    ? sc.candidates
+    : sc.candidates.slice(0, CANDIDATES_INITIAL_SHOW);
+  const hiddenCount = sc.candidates.length - CANDIDATES_INITIAL_SHOW;
 
   return (
     <div className="rounded-lg border p-3">
@@ -181,7 +236,7 @@ function SkillCandidateCard({ sc }: { sc: SkillCandidates }) {
         <span className="font-medium">{sc.skill_name}</span>
         {sc.required_proficiency != null && (
           <span className="text-xs text-muted-foreground">
-            req≥{sc.required_proficiency}
+            req&ge;{sc.required_proficiency}
           </span>
         )}
         {sc.required_headcount != null && (
@@ -194,49 +249,158 @@ function SkillCandidateCard({ sc }: { sc: SkillCandidates }) {
             max {formatRate(sc.max_hourly_rate)}
           </span>
         )}
+        <span className="text-xs text-muted-foreground ml-auto">
+          {sc.candidates.length}명
+        </span>
       </div>
 
       {sc.candidates.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[100px]">이름</TableHead>
-              <TableHead>부서</TableHead>
-              <TableHead className="text-center">숙련도</TableHead>
-              <TableHead className="text-right">단가/시간</TableHead>
-              <TableHead className="text-center">상태</TableHead>
-              <TableHead className="text-center">프로젝트</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sc.candidates.map((c) => (
-              <TableRow key={c.employee_name}>
-                <TableCell className="font-medium">
-                  {c.employee_name}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {c.department || '-'}
-                </TableCell>
-                <TableCell className="text-center">
-                  {proficiencyLabel(c.proficiency)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {formatRate(c.effective_rate)}
-                </TableCell>
-                <TableCell className="text-center">
-                  {c.availability || '-'}
-                </TableCell>
-                <TableCell className="text-center">
-                  {c.current_projects}/{c.max_projects}
-                </TableCell>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[32px]" />
+                <TableHead className="w-[80px] text-center">투입</TableHead>
+                <TableHead className="w-[100px]">이름</TableHead>
+                <TableHead>부서</TableHead>
+                <TableHead className="text-center">숙련도</TableHead>
+                <TableHead className="text-right">단가/시간</TableHead>
+                <TableHead>참여현황</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {visibleCandidates.map((c) => (
+                <CandidateRow
+                  key={c.employee_name}
+                  c={c}
+                  isExpanded={expandedRow === c.employee_name}
+                  onToggle={() => toggleRow(c.employee_name)}
+                />
+              ))}
+            </TableBody>
+          </Table>
+          {hasMore && (
+            <button
+              type="button"
+              onClick={() => setShowAll((prev) => !prev)}
+              className="mt-2 w-full rounded-md border border-dashed py-1.5 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
+            >
+              {showAll ? '접기' : `+${hiddenCount}명 더보기`}
+            </button>
+          )}
+        </>
       ) : (
         <p className="py-2 text-sm text-muted-foreground">후보 없음</p>
       )}
     </div>
+  );
+}
+
+function CandidateRow({
+  c,
+  isExpanded,
+  onToggle,
+}: {
+  c: CandidateInfo;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const availBadge = availabilityBadge(c.availability_label ?? '가능');
+  const gapBadge = proficiencyGapBadge(c.proficiency_gap);
+  const workloadPct = c.max_projects > 0
+    ? (c.effective_workload / c.max_projects * 100).toFixed(0)
+    : '0';
+
+  return (
+    <>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/50"
+        onClick={onToggle}
+      >
+        <TableCell className="w-[32px] px-2">
+          {isExpanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
+        </TableCell>
+        <TableCell className="text-center">
+          <Badge variant={availBadge.variant} className="whitespace-nowrap">{availBadge.label}</Badge>
+        </TableCell>
+        <TableCell className="font-medium">
+          {c.employee_name}
+        </TableCell>
+        <TableCell className="text-muted-foreground">
+          {c.department || '-'}
+        </TableCell>
+        <TableCell className="text-center">
+          {proficiencyLabel(c.proficiency)}
+          {' '}
+          <Badge variant={gapBadge.variant} className="ml-1 px-1 py-0 text-[10px]">
+            {gapBadge.label}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-right">
+          <span>{formatRate(c.effective_rate)}</span>
+          {c.cost_efficiency != null && (
+            <span className="ml-1 text-xs text-muted-foreground">
+              ({c.cost_efficiency.toFixed(0)}%)
+            </span>
+          )}
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {c.current_projects}건 (부담 {workloadPct}%)
+        </TableCell>
+      </TableRow>
+      {isExpanded && (
+        <TableRow>
+          <TableCell colSpan={7} className="bg-muted/30 px-6 py-3">
+            <div className="space-y-2">
+              {/* 프로젝트 참여 목록 */}
+              <div>
+                <span className="text-xs font-medium">프로젝트 참여 현황</span>
+                {(c.project_participations ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    참여 프로젝트 없음 (즉시 투입 가능)
+                  </p>
+                ) : (
+                  <div className="mt-1 space-y-1.5">
+                    {c.project_participations.map((p) => (
+                      <div key={p.project_name} className="flex items-center gap-2 text-sm">
+                        <span className="w-32 truncate font-medium">{p.project_name}</span>
+                        <Badge variant="outline" className="text-xs">{p.status || '-'}</Badge>
+                        {/* 프로그레스 바 */}
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full max-w-[120px]">
+                          <div
+                            className={`h-full rounded-full ${progressColor(p.progress_pct)}`}
+                            style={{ width: `${Math.min(p.progress_pct ?? 0, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground w-16">
+                          {progressLabel(p.progress_pct, p.status)}
+                        </span>
+                        {p.contribution_pct != null && (
+                          <span className="text-xs text-muted-foreground">
+                            투입 {p.contribution_pct}%
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* 추천 사유 + 매칭 점수 (부가 정보) */}
+              <div className="flex gap-4 text-xs text-muted-foreground mt-2">
+                <span>매칭 {c.match_score}점</span>
+                {c.match_reasons.map((r, i) => (
+                  <span key={i}>&middot; {r}</span>
+                ))}
+              </div>
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
   );
 }
 
@@ -380,8 +544,15 @@ function StaffingPlanTab({ projectName }: { projectName: string }) {
                           {sp.recommended_candidates.map((rc) => (
                             <div
                               key={rc.employee_name}
-                              className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-sm"
+                              className="flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-sm"
+                              title={rc.match_reasons.join(' / ')}
                             >
+                              <Badge
+                                variant={matchScoreBadgeVariant(rc.match_score)}
+                                className="px-1.5 py-0 text-[10px]"
+                              >
+                                {rc.match_score}
+                              </Badge>
                               <span className="font-medium">
                                 {rc.employee_name}
                               </span>
