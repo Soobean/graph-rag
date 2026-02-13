@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api import (
     analytics_router,
+    community_admin_router,
     graph_edit_router,
     ingest_router,
     ontology_admin_router,
@@ -41,6 +42,7 @@ from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
 from src.repositories.user_repository import UserRepository
 from src.services.auth_service import AuthService
+from src.services.community_batch_service import CommunityBatchService
 from src.services.gds_service import GDSService
 from src.services.graph_edit_service import GraphEditService
 from src.services.ontology_service import OntologyService
@@ -137,6 +139,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await gds_service.connect()
     logger.info("GDS service connected")
 
+    # CommunityBatchService 초기화
+    community_batch_service = CommunityBatchService(
+        gds_service=gds_service,
+        neo4j_repository=neo4j_repo,
+    )
+    logger.info("CommunityBatchService initialized")
+
     # OntologyService는 위에서 이미 초기화됨 (Pipeline과 app.state 모두에서 사용)
 
     # ExplainabilityService 초기화 (stateless 서비스)
@@ -169,6 +178,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.llm_repo = llm_repo
     app.state.pipeline = pipeline
     app.state.gds_service = gds_service
+    app.state.community_batch_service = community_batch_service
     app.state.ontology_service = ontology_service
     app.state.ontology_registry = ontology_registry
     app.state.explainability_service = explainability_service
@@ -308,6 +318,7 @@ app.include_router(visualization_router)
 app.include_router(ontology_router)
 app.include_router(ontology_admin_router)
 app.include_router(graph_edit_router)
+app.include_router(community_admin_router)
 
 # Frontend 정적 파일 경로
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"

@@ -202,6 +202,13 @@ class InvalidStateError(GraphRAGError):
         super().__init__(message, code="INVALID_STATE")
 
 
+class ConcurrentRefreshError(GraphRAGError):
+    """커뮤니티 리프레시 동시 실행 시도"""
+
+    def __init__(self, message: str = "커뮤니티 리프레시가 이미 진행중입니다."):
+        super().__init__(message, code="CONCURRENT_REFRESH")
+
+
 class ProposalNotFoundError(EntityNotFoundError):
     """온톨로지 제안을 찾을 수 없음"""
 
