@@ -24,6 +24,7 @@ INTENT_RELATION_DESCRIPTIONS: dict[IntentType, str] = {
     "certificate_search": "자격증 정보",
     "path_analysis": "연결 경로",
     "ontology_update": "온톨로지 정보",
+    "global_analysis": "조직 전체 분석",
     "unknown": "관련 정보",
 }
 

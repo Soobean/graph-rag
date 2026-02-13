@@ -26,6 +26,7 @@ IntentType = Literal[
     "certificate_search",  # F. 자격증 기반 검색
     "path_analysis",  # G. 경로 기반 분석
     "ontology_update",  # H. 온톨로지 업데이트 요청 (사용자 주도)
+    "global_analysis",  # I. 거시적 분석 (커뮤니티 요약 기반)
     "unknown",  # 분류 불가
 ]
 
@@ -39,6 +40,7 @@ AVAILABLE_INTENTS: list[str] = [
     "certificate_search",
     "path_analysis",
     "ontology_update",
+    "global_analysis",
 ]
 
 # 기본 엔티티 타입 (Neo4j 라벨과 일치)

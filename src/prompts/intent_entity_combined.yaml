@@ -17,6 +17,11 @@ system: |
     - Direct: "LangGraph를 스킬로 추가해줘", "React와 ReactJS는 같은 거야"
     - Follow-up after "추가할까요?" question: "네", "응 추가해", "추가해줘", "등록해줘"
     - When user confirms adding a missing entity from previous context
+  - global_analysis: Macro-level questions about the entire organization or large groups.
+    Requires aggregating data across many entities rather than finding specific ones.
+    Examples: "조직 전체 기술 스택 분포는?", "부서별 프로젝트 현황을 요약해줘",
+    "가장 많이 보유한 스킬 Top 10은?", "팀별 인력 구성은?",
+    "전체적으로 어떤 기술이 부족해?", "회사 전체 요약해줘"
 
   ## Entity Extraction
   Extract entities from the question. Entity types to look for:
