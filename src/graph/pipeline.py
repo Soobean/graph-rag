@@ -13,6 +13,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal
+from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -42,7 +43,7 @@ from src.graph.nodes import (
     ResponseGeneratorNode,
 )
 from src.graph.nodes.ontology_learner import OntologyLearner
-from src.graph.state import GraphRAGState
+from src.graph.state import AGGREGATE_INTENTS, GraphRAGState
 from src.graph.utils import format_chat_history
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories.llm_repository import LLMRepository
@@ -137,10 +138,13 @@ class GraphRAGPipeline:
         self._cypher_generator = CypherGeneratorNode(
             llm_repository,
             neo4j_repository,
+            settings=settings,
+        )
+        self._graph_executor = GraphExecutorNode(
+            neo4j_repository,
             cache_repository=self._cache_repository,
             settings=settings,
         )
-        self._graph_executor = GraphExecutorNode(neo4j_repository)
         self._response_generator = ResponseGeneratorNode(llm_repository)
 
         # Cache Checker 노드 (Vector Search 활성화 시)
@@ -324,6 +328,16 @@ class GraphRAGPipeline:
                 )
                 return "cypher_generator"
 
+            # 집계/통계 intent는 특정 엔티티 없이도 Cypher 생성 가능
+            # (LLM이 속성 필터나 라벨 이름을 잘못 엔티티로 추출한 경우 방어)
+            intent = state.get("intent", "")
+            if intent in AGGREGATE_INTENTS:
+                logger.info(
+                    f"Aggregate intent '{intent}' with {len(unresolved_entities)} "
+                    "unresolved entities. Proceeding to cypher_generator anyway."
+                )
+                return "cypher_generator"
+
             # 모든 엔티티가 미해결인 경우 → 사용자에게 확인 (추가 제안)
             # (프롬프트에서 "새로운 스킬로 추가할까요?" 등 제안)
             entities = state.get("entities", {})
@@ -405,7 +419,7 @@ class GraphRAGPipeline:
         logger.info(f"Running pipeline for: {question[:50]}...")
 
         # thread_id로 세션 구분 (Checkpointer가 대화 기록 자동 관리)
-        thread_id = session_id or "default"
+        thread_id = session_id or str(uuid4())
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
         # 초기 상태 구성 (스키마 포함)
@@ -529,7 +543,7 @@ class GraphRAGPipeline:
         logger.info(f"Running pipeline (streaming) for: {question[:50]}...")
 
         # thread_id로 세션 구분 (Checkpointer가 대화 기록 자동 관리)
-        thread_id = session_id or "default"
+        thread_id = session_id or str(uuid4())
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
         # 초기 상태 구성 (스키마 포함)
@@ -592,7 +606,7 @@ class GraphRAGPipeline:
         """
         logger.info(f"Running streaming pipeline for: {question[:50]}...")
 
-        thread_id = session_id or "default"
+        thread_id = session_id or str(uuid4())
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
         # 초기 상태 구성

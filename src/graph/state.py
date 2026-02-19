@@ -43,6 +43,15 @@ AVAILABLE_INTENTS: list[str] = [
     "global_analysis",
 ]
 
+# 특정 엔티티 없이도 Cypher 생성이 가능한 집계/통계 intent
+# (route_after_resolver에서 전부 unresolved여도 clarification 대신 cypher_generator로 진행)
+AGGREGATE_INTENTS: set[str] = {
+    "global_analysis",
+    "org_analysis",
+    "mentoring_network",
+    "certificate_search",
+}
+
 # 기본 엔티티 타입 (Neo4j 라벨과 일치)
 DEFAULT_ENTITY_TYPES: list[str] = [
     "Employee",
