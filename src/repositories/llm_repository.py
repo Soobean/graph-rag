@@ -639,6 +639,7 @@ class LLMRepository:
     async def decompose_query(
         self,
         question: str,
+        schema: dict[str, Any] | None = None,
     ) -> QueryDecompositionResult:
         """
         Multi-hop 쿼리 분해
@@ -647,13 +648,15 @@ class LLMRepository:
 
         Args:
             question: 사용자 질문
+            schema: 그래프 스키마 (동적 속성 정보 포함)
 
         Returns:
             QueryDecompositionResult: 쿼리 분해 결과
         """
         prompt = self._prompt_manager.load_prompt("query_decomposition")
 
-        system_prompt = prompt["system"]
+        schema_str = self._format_schema(schema) if schema else "Schema information not available"
+        system_prompt = prompt["system"].format(schema_str=schema_str)
         user_prompt = prompt["user"].format(question=question)
 
         result = await self.generate_json(
@@ -780,16 +783,42 @@ class LLMRepository:
             raise LLMResponseError(f"Failed to generate batch embeddings: {e}") from e
 
     def _format_schema(self, schema: dict[str, Any]) -> str:
-        """스키마를 문자열로 포맷팅"""
+        """스키마를 문자열로 포맷팅 (속성 정보 포함)"""
         lines = []
 
-        labels = schema.get("node_labels", [])
-        if labels:
-            lines.append(f"Node Labels: {', '.join(labels)}")
+        # 노드 스키마 (속성 정보가 있으면 포함)
+        nodes = schema.get("nodes")
+        if nodes:
+            lines.append("Nodes:")
+            for node in nodes:
+                label = node.get("label", "Unknown")
+                props = node.get("properties", [])
+                if props:
+                    prop_names = [p.get("name", "") for p in props if p.get("name")]
+                    lines.append(f"  {label} ({', '.join(prop_names)})")
+                else:
+                    lines.append(f"  {label}")
+        else:
+            labels = schema.get("node_labels", [])
+            if labels:
+                lines.append(f"Node Labels: {', '.join(labels)}")
 
-        rel_types = schema.get("relationship_types", [])
-        if rel_types:
-            lines.append(f"Relationship Types: {', '.join(rel_types)}")
+        # 관계 스키마 (속성 정보가 있으면 포함)
+        rels = schema.get("relationships")
+        if rels:
+            lines.append("Relationships:")
+            for rel in rels:
+                rel_type = rel.get("type", "Unknown")
+                props = rel.get("properties", [])
+                if props:
+                    prop_names = [p.get("name", "") for p in props if p.get("name")]
+                    lines.append(f"  {rel_type} ({', '.join(prop_names)})")
+                else:
+                    lines.append(f"  {rel_type}")
+        else:
+            rel_types = schema.get("relationship_types", [])
+            if rel_types:
+                lines.append(f"Relationship Types: {', '.join(rel_types)}")
 
         return "\n".join(lines) if lines else "Schema information not available"
 
@@ -837,19 +866,22 @@ class LLMRepository:
         return "\n".join(lines)
 
     def _format_results(self, results: list[dict[str, Any]]) -> str:
-        """쿼리 결과를 문자열로 포맷팅 (엔티티 기준 그룹핑)"""
+        """쿼리 결과를 문자열로 포맷팅 (엔티티 기준 그룹핑 + 스칼라 결과 지원)"""
         if not results:
             return "No results found"
 
         # 엔티티(노드) 기준으로 결과 그룹핑
         entities: dict[str, dict[str, Any]] = {}
         relationships: list[str] = []
+        scalar_rows: list[dict[str, Any]] = []
 
         for row in results:
+            has_node_or_rel = False
             for _key, value in row.items():
                 if isinstance(value, dict):
                     # 노드 형식 감지 (labels 속성이 있는 경우)
                     if "labels" in value and isinstance(value.get("labels"), list):
+                        has_node_or_rel = True
                         node_id = value.get("id", value.get("elementId", ""))
                         if node_id and node_id not in entities:
                             props = value.get("properties", {})
@@ -862,33 +894,52 @@ class LLMRepository:
                             }
                     # 관계 형식 감지
                     elif "type" in value and ("startNodeId" in value or "start" in value):
+                        has_node_or_rel = True
                         rel_type = value.get("type", "RELATED")
                         relationships.append(rel_type)
 
-        # 엔티티를 라벨별로 그룹핑
-        by_label: dict[str, list[dict[str, Any]]] = {}
-        for _node_id, entity in entities.items():
-            label = entity["label"]
-            if label not in by_label:
-                by_label[label] = []
-            by_label[label].append(entity)
+            # 노드/관계가 없는 행은 스칼라(집계) 결과
+            if not has_node_or_rel:
+                scalar_rows.append(row)
 
-        # 포맷팅
-        lines = [f"총 {len(entities)}개의 고유 엔티티, {len(results)}개의 관계 결과:"]
+        lines: list[str] = []
 
-        for label, ents in by_label.items():
-            lines.append(f"\n[{label}] ({len(ents)}개):")
-            # 각 라벨별로 최대 15개까지 표시
-            for i, ent in enumerate(ents[:15], 1):
-                props = ent.get("properties", {})
-                # 주요 속성 추출
-                prop_strs = []
-                for k, v in props.items():
-                    if k not in ("embedding", "vector") and v is not None:
-                        prop_strs.append(f"{k}={v}")
-                props_display = ", ".join(prop_strs[:5])
-                lines.append(f"  {i}. {ent['name']} ({props_display})")
-            if len(ents) > 15:
-                lines.append(f"  ... 외 {len(ents) - 15}개")
+        # 노드 기반 결과 포맷팅
+        if entities:
+            by_label: dict[str, list[dict[str, Any]]] = {}
+            for _node_id, entity in entities.items():
+                label = entity["label"]
+                if label not in by_label:
+                    by_label[label] = []
+                by_label[label].append(entity)
+
+            lines.append(f"총 {len(entities)}개의 고유 엔티티, {len(results)}개의 관계 결과:")
+
+            for label, ents in by_label.items():
+                lines.append(f"\n[{label}] ({len(ents)}개):")
+                for i, ent in enumerate(ents[:15], 1):
+                    props = ent.get("properties", {})
+                    prop_strs = []
+                    for k, v in props.items():
+                        if k not in ("embedding", "vector") and v is not None:
+                            prop_strs.append(f"{k}={v}")
+                    props_display = ", ".join(prop_strs[:5])
+                    lines.append(f"  {i}. {ent['name']} ({props_display})")
+                if len(ents) > 15:
+                    lines.append(f"  ... 외 {len(ents) - 15}개")
+
+        # 스칼라(집계) 결과 포맷팅
+        if scalar_rows:
+            if lines:
+                lines.append("")
+            lines.append(f"집계 결과 ({len(scalar_rows)}행):")
+            for i, row in enumerate(scalar_rows[:20], 1):
+                parts = [f"{k}={v}" for k, v in row.items() if v is not None]
+                lines.append(f"  {i}. {', '.join(parts)}")
+            if len(scalar_rows) > 20:
+                lines.append(f"  ... 외 {len(scalar_rows) - 20}개")
+
+        if not lines:
+            return "No results found"
 
         return "\n".join(lines)

@@ -421,6 +421,32 @@ class Neo4jClient:
             logger.warning(f"Failed to get schema info: {e}")
             schema_info["error"] = str(e)
 
+        # 속성 정보 인트로스펙션 (additive — 실패해도 기존 결과 유지)
+        try:
+            node_schemas = []
+            for label in schema_info.get("node_labels", []):
+                prop_result = await self.execute_query(
+                    f"MATCH (n:`{label}`) UNWIND keys(n) AS key "
+                    "RETURN DISTINCT key LIMIT 50"
+                )
+                props = [{"name": r["key"]} for r in prop_result if r.get("key")]
+                node_schemas.append({"label": label, "properties": props})
+            if node_schemas:
+                schema_info["nodes"] = node_schemas
+
+            rel_schemas = []
+            for rel_type in schema_info.get("relationship_types", []):
+                prop_result = await self.execute_query(
+                    f"MATCH ()-[r:`{rel_type}`]->() UNWIND keys(r) AS key "
+                    "RETURN DISTINCT key LIMIT 50"
+                )
+                props = [{"name": r["key"]} for r in prop_result if r.get("key")]
+                rel_schemas.append({"type": rel_type, "properties": props})
+            if rel_schemas:
+                schema_info["relationships"] = rel_schemas
+        except Exception as e:
+            logger.warning(f"Failed to introspect properties: {e}")
+
         return schema_info
 
     # ============================================

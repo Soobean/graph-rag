@@ -5,6 +5,8 @@ Neo4j 클라이언트 테스트
     pytest tests/test_neo4j_client.py -v
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from src.config import Settings, get_settings
@@ -38,6 +40,100 @@ class TestNeo4jClientUnit:
         )
         with pytest.raises(DatabaseConnectionError):
             _ = client.driver
+
+
+class TestGetSchemaInfoUnit:
+    """get_schema_info 속성 인트로스펙션 단위 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_schema_info_includes_property_introspection(self):
+        """get_schema_info가 노드/관계 속성 정보를 포함하는지 테스트"""
+        client = Neo4jClient(
+            uri="bolt://localhost:7687",
+            user="neo4j",
+            password="test",
+        )
+
+        # execute_query를 모킹하여 각 쿼리에 대한 응답을 시뮬레이션
+        call_count = 0
+        async def mock_execute_query(query, parameters=None):
+            nonlocal call_count
+            call_count += 1
+            if "db.labels" in query:
+                return [{"label": "Employee"}, {"label": "Project"}]
+            elif "db.relationshipTypes" in query:
+                return [{"relationshipType": "WORKS_ON"}]
+            elif "SHOW INDEXES" in query:
+                return []
+            elif "SHOW CONSTRAINTS" in query:
+                return []
+            elif "Employee" in query and "keys" in query:
+                return [{"key": "name"}, {"key": "department"}]
+            elif "Project" in query and "keys" in query:
+                return [{"key": "name"}, {"key": "status"}, {"key": "budget_million"}]
+            elif "WORKS_ON" in query and "keys" in query:
+                return [{"key": "role"}, {"key": "allocated_hours"}, {"key": "actual_hours"}]
+            return []
+
+        client.execute_query = mock_execute_query
+
+        schema = await client.get_schema_info()
+
+        # 기존 필드 확인
+        assert schema["node_labels"] == ["Employee", "Project"]
+        assert schema["relationship_types"] == ["WORKS_ON"]
+
+        # 속성 인트로스펙션 결과 확인
+        assert "nodes" in schema
+        assert len(schema["nodes"]) == 2
+        emp_node = next(n for n in schema["nodes"] if n["label"] == "Employee")
+        assert {"name": "name"} in emp_node["properties"]
+        assert {"name": "department"} in emp_node["properties"]
+
+        proj_node = next(n for n in schema["nodes"] if n["label"] == "Project")
+        assert {"name": "budget_million"} in proj_node["properties"]
+
+        assert "relationships" in schema
+        assert len(schema["relationships"]) == 1
+        works_on = schema["relationships"][0]
+        assert works_on["type"] == "WORKS_ON"
+        assert {"name": "allocated_hours"} in works_on["properties"]
+        assert {"name": "actual_hours"} in works_on["properties"]
+
+    @pytest.mark.asyncio
+    async def test_schema_info_property_introspection_failure_is_safe(self):
+        """속성 인트로스펙션 실패 시 기존 결과는 보존"""
+        client = Neo4jClient(
+            uri="bolt://localhost:7687",
+            user="neo4j",
+            password="test",
+        )
+
+        call_count = 0
+        async def mock_execute_query(query, parameters=None):
+            nonlocal call_count
+            call_count += 1
+            if "db.labels" in query:
+                return [{"label": "Employee"}]
+            elif "db.relationshipTypes" in query:
+                return [{"relationshipType": "WORKS_ON"}]
+            elif "SHOW INDEXES" in query:
+                return []
+            elif "SHOW CONSTRAINTS" in query:
+                return []
+            elif "keys" in query:
+                raise RuntimeError("Property introspection failed")
+            return []
+
+        client.execute_query = mock_execute_query
+
+        schema = await client.get_schema_info()
+
+        # 기존 데이터는 정상
+        assert schema["node_labels"] == ["Employee"]
+        assert schema["relationship_types"] == ["WORKS_ON"]
+        # 인트로스펙션 실패 시 nodes/relationships 없음
+        assert "nodes" not in schema
 
 
 class TestNeo4jClientIntegration:

@@ -92,6 +92,57 @@ class TestFormatHelpers:
         assert "Node Labels: Employee" in result
         assert "Relationship Types" not in result
 
+    def test_format_schema_with_properties(self, repo):
+        """속성 정보 포함 스키마 포맷팅"""
+        schema = {
+            "node_labels": ["Employee", "Project"],
+            "relationship_types": ["WORKS_ON"],
+            "nodes": [
+                {
+                    "label": "Employee",
+                    "properties": [{"name": "name"}, {"name": "department"}, {"name": "years_experience"}],
+                },
+                {
+                    "label": "Project",
+                    "properties": [{"name": "name"}, {"name": "status"}, {"name": "budget_million"}],
+                },
+            ],
+            "relationships": [
+                {
+                    "type": "WORKS_ON",
+                    "properties": [{"name": "role"}, {"name": "allocated_hours"}, {"name": "actual_hours"}],
+                },
+            ],
+        }
+        result = repo._format_schema(schema)
+
+        # nodes 필드가 있으면 속성 포함 형식 사용
+        assert "Employee (name, department, years_experience)" in result
+        assert "Project (name, status, budget_million)" in result
+        assert "WORKS_ON (role, allocated_hours, actual_hours)" in result
+        # 기존 Node Labels 형식은 사용하지 않아야 함
+        assert "Node Labels:" not in result
+
+    def test_format_schema_with_properties_fallback(self, repo):
+        """nodes 필드 없으면 기존 label 형식으로 fallback"""
+        schema = {
+            "node_labels": ["Employee", "Project"],
+            "relationship_types": ["WORKS_ON"],
+        }
+        result = repo._format_schema(schema)
+
+        assert "Node Labels: Employee, Project" in result
+        assert "Relationship Types: WORKS_ON" in result
+
+    def test_format_schema_with_empty_properties(self, repo):
+        """속성이 빈 노드 스키마"""
+        schema = {
+            "nodes": [{"label": "Employee", "properties": []}],
+            "relationships": [],
+        }
+        result = repo._format_schema(schema)
+        assert "Employee" in result
+
     def test_format_entities_with_data(self, repo):
         """엔티티 포맷팅"""
         entities = [
@@ -147,6 +198,59 @@ class TestFormatHelpers:
         assert "20개의 고유 엔티티" in result
         assert "[Node]" in result
         assert "외 5개" in result  # 15개 초과분 표시
+
+    def test_format_results_scalar(self, repo):
+        """스칼라(집계) 결과 포맷팅"""
+        results = [
+            {"employee": "김철수", "project": "챗봇 리뉴얼", "allocated": 100, "actual": 160, "gap": 60},
+            {"employee": "이영희", "project": "데이터레이크", "allocated": 80, "actual": 120, "gap": 40},
+            {"employee": "박지우", "project": "API 플랫폼", "allocated": 120, "actual": 130, "gap": 10},
+        ]
+        result = repo._format_results(results)
+
+        assert "집계 결과 (3행)" in result
+        assert "employee=김철수" in result
+        assert "gap=60" in result
+        assert "employee=이영희" in result
+        assert "employee=박지우" in result
+
+    def test_format_results_scalar_truncation(self, repo):
+        """스칼라 결과 20개 초과 시 자르기"""
+        results = [
+            {"name": f"Person{i}", "count": i}
+            for i in range(25)
+        ]
+        result = repo._format_results(results)
+
+        assert "집계 결과 (25행)" in result
+        assert "외 5개" in result
+
+    def test_format_results_mixed(self, repo):
+        """노드 + 스칼라 혼합 결과"""
+        results = [
+            # 노드 결과
+            {"n": {"id": 1, "labels": ["Employee"], "properties": {"name": "김철수"}}},
+            # 스칼라 결과
+            {"total_count": 5, "avg_hours": 120.5},
+        ]
+        result = repo._format_results(results)
+
+        assert "김철수" in result
+        assert "[Employee]" in result
+        assert "집계 결과 (1행)" in result
+        assert "total_count=5" in result
+        assert "avg_hours=120.5" in result
+
+    def test_format_results_scalar_null_values(self, repo):
+        """스칼라 결과에서 None 값 필터링"""
+        results = [
+            {"name": "김철수", "value": 10, "extra": None},
+        ]
+        result = repo._format_results(results)
+
+        assert "name=김철수" in result
+        assert "value=10" in result
+        assert "extra" not in result
 
 
 class TestLLMGenerate:
