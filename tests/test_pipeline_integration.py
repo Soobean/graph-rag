@@ -427,27 +427,34 @@ class TestOntologyUpdateRouting:
 
 
 class TestGlobalAnalysisRouting:
-    """Global RAG — 커뮤니티 기반 거시적 분석 라우팅 테스트"""
+    """Global analysis — Cypher 파이프라인을 통한 집계 쿼리 라우팅 테스트"""
 
     @pytest.mark.asyncio
     async def test_global_analysis_routing(self, pipeline, mock_llm, mock_neo4j):
-        """global_analysis intent → community_summarizer로 라우팅"""
+        """global_analysis intent → 일반 Cypher 파이프라인으로 라우팅"""
         mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "global_analysis",
             "confidence": 0.92,
             "entities": [],
         }
-        # community_summarizer가 Neo4j 쿼리 실행
-        mock_neo4j.execute_cypher = AsyncMock(return_value=[])
+        mock_llm.generate_cypher.return_value = {
+            "cypher": "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill) RETURN s.name, count(e) AS cnt ORDER BY cnt DESC",
+            "parameters": {},
+        }
+        mock_neo4j.execute_cypher = AsyncMock(return_value=[
+            {"s.name": "Python", "cnt": 10},
+            {"s.name": "Java", "cnt": 8},
+        ])
+        mock_llm.generate_response.return_value = "전체 기술 분포입니다."
 
         result = await pipeline.run("전체 기술 분포는?")
 
         assert result["success"] is True
         path = result["metadata"]["execution_path"]
-        assert any("community_summarizer" in node for node in path)
-        # 기존 쿼리 파이프라인은 스킵됨
-        assert "cypher_generator" not in path
-        assert "graph_executor" not in path
+        # Cypher 파이프라인을 통과
+        assert "cypher_generator" in path
+        # community_summarizer는 사용하지 않음
+        assert "community_summarizer" not in path
 
     @pytest.mark.asyncio
     async def test_local_query_not_routed_to_global(
