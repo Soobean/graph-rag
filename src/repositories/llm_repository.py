@@ -783,7 +783,7 @@ class LLMRepository:
             raise LLMResponseError(f"Failed to generate batch embeddings: {e}") from e
 
     def _format_schema(self, schema: dict[str, Any]) -> str:
-        """스키마를 문자열로 포맷팅 (속성 정보 포함)"""
+        """스키마를 문자열로 포맷팅 (속성 정보 + enum 값 포함)"""
         lines = []
 
         # 노드 스키마 (속성 정보가 있으면 포함)
@@ -794,8 +794,17 @@ class LLMRepository:
                 label = node.get("label", "Unknown")
                 props = node.get("properties", [])
                 if props:
-                    prop_names = [p.get("name", "") for p in props if p.get("name")]
-                    lines.append(f"  {label} ({', '.join(prop_names)})")
+                    prop_parts = []
+                    for p in props:
+                        name = p.get("name", "")
+                        if not name:
+                            continue
+                        sample = p.get("sample_values")
+                        if sample:
+                            prop_parts.append(f"{name}[{', '.join(sample)}]")
+                        else:
+                            prop_parts.append(name)
+                    lines.append(f"  {label} ({', '.join(prop_parts)})")
                 else:
                     lines.append(f"  {label}")
         else:
@@ -811,8 +820,17 @@ class LLMRepository:
                 rel_type = rel.get("type", "Unknown")
                 props = rel.get("properties", [])
                 if props:
-                    prop_names = [p.get("name", "") for p in props if p.get("name")]
-                    lines.append(f"  {rel_type} ({', '.join(prop_names)})")
+                    prop_parts = []
+                    for p in props:
+                        name = p.get("name", "")
+                        if not name:
+                            continue
+                        sample = p.get("sample_values")
+                        if sample:
+                            prop_parts.append(f"{name}[{', '.join(sample)}]")
+                        else:
+                            prop_parts.append(name)
+                    lines.append(f"  {rel_type} ({', '.join(prop_parts)})")
                 else:
                     lines.append(f"  {rel_type}")
         else:

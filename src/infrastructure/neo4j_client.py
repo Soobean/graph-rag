@@ -33,6 +33,12 @@ from src.domain.validators import validate_cypher_identifier
 
 logger = logging.getLogger(__name__)
 
+_SCHEMA_EXCLUDED_LABELS: set[str] = {
+    "CachedQuery",
+    "CommunitySummary",
+    "OntologyProposal",
+}
+
 
 def _serialize_value(value: Any) -> Any:
     """
@@ -165,7 +171,9 @@ class Neo4jClient:
             )
             # 연결 확인
             await self._driver.verify_connectivity()
-            logger.info(f"Successfully connected to Neo4j at {_sanitize_uri(self._uri)}")
+            logger.info(
+                f"Successfully connected to Neo4j at {_sanitize_uri(self._uri)}"
+            )
 
         except AuthError as e:
             logger.error(f"Neo4j authentication failed: {e}")
@@ -383,9 +391,13 @@ class Neo4jClient:
         }
 
         try:
-            # 노드 레이블 조회
+            # 노드 레이블 조회 (내부 레이블 제외)
             labels_result = await self.execute_query("CALL db.labels()")
-            schema_info["node_labels"] = [r.get("label") for r in labels_result]
+            schema_info["node_labels"] = [
+                r.get("label")
+                for r in labels_result
+                if r.get("label") not in _SCHEMA_EXCLUDED_LABELS
+            ]
 
             # 관계 타입 조회
             rel_result = await self.execute_query("CALL db.relationshipTypes()")
@@ -434,6 +446,29 @@ class Neo4jClient:
             if node_schemas:
                 schema_info["nodes"] = node_schemas
 
+            # enum-like 속성의 DISTINCT 값 샘플링 (카디널리티 ≤ 20인 STRING 속성만)
+            for node_schema in node_schemas:
+                label = node_schema["label"]
+                for prop in node_schema.get("properties", []):
+                    prop_name = prop.get("name", "")
+                    if not prop_name or prop_name in ("id", "name", "embedding"):
+                        continue
+                    try:
+                        distinct_result = await self.execute_query(
+                            f"MATCH (n:`{label}`) WHERE n.`{prop_name}` IS NOT NULL "
+                            f"WITH DISTINCT n.`{prop_name}` AS val "
+                            f"WITH val WHERE val IS :: STRING "
+                            f"RETURN collect(val)[..20] AS vals, count(val) AS cnt"
+                        )
+                        if distinct_result:
+                            row = distinct_result[0]
+                            cnt = row.get("cnt", 0)
+                            vals = row.get("vals", [])
+                            if 2 <= cnt <= 20 and vals:
+                                prop["sample_values"] = vals
+                    except Exception:
+                        pass
+
             rel_schemas = []
             for rel_type in schema_info.get("relationship_types", []):
                 prop_result = await self.execute_query(
@@ -442,6 +477,29 @@ class Neo4jClient:
                 )
                 props = [{"name": r["key"]} for r in prop_result if r.get("key")]
                 rel_schemas.append({"type": rel_type, "properties": props})
+            # 관계 속성의 enum-like 값 샘플링
+            for rel_schema in rel_schemas:
+                rel_type = rel_schema["type"]
+                for prop in rel_schema.get("properties", []):
+                    prop_name = prop.get("name", "")
+                    if not prop_name or prop_name in ("id", "embedding"):
+                        continue
+                    try:
+                        distinct_result = await self.execute_query(
+                            f"MATCH ()-[r:`{rel_type}`]->() WHERE r.`{prop_name}` IS NOT NULL "
+                            f"WITH DISTINCT r.`{prop_name}` AS val "
+                            f"WITH val WHERE val IS :: STRING "
+                            f"RETURN collect(val)[..20] AS vals, count(val) AS cnt"
+                        )
+                        if distinct_result:
+                            row = distinct_result[0]
+                            cnt = row.get("cnt", 0)
+                            vals = row.get("vals", [])
+                            if 2 <= cnt <= 20 and vals:
+                                prop["sample_values"] = vals
+                    except Exception:
+                        pass
+
             if rel_schemas:
                 schema_info["relationships"] = rel_schemas
         except Exception as e:

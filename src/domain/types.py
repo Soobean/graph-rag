@@ -21,6 +21,7 @@ class PropertySchema(TypedDict, total=False):
     name: str
     type: str  # e.g., "STRING", "INTEGER", "LIST"
     mandatory: bool
+    sample_values: list[str]
 
 
 class NodeSchema(TypedDict, total=False):
