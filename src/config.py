@@ -234,7 +234,7 @@ class Settings(BaseSettings):
     # Vector Search 설정
     # ============================================
     vector_similarity_threshold: float = Field(
-        default=0.85,
+        default=0.93,
         ge=0.0,
         le=1.0,
         description="Vector Search 유사도 임계값",

@@ -92,10 +92,10 @@ export function ChatPage() {
                     <TabsTrigger value="thinking">Thinking</TabsTrigger>
                   </TabsList>
                 </div>
-                <TabsContent value="graph" className="flex-1 m-0 data-[state=inactive]:hidden">
+                <TabsContent value="graph" className="flex-1 min-h-0 m-0 data-[state=inactive]:hidden">
                   <GraphViewer className="h-full" />
                 </TabsContent>
-                <TabsContent value="thinking" className="flex-1 m-0 overflow-hidden data-[state=inactive]:hidden">
+                <TabsContent value="thinking" className="flex-1 min-h-0 m-0 overflow-hidden data-[state=inactive]:hidden">
                   <ThinkingPanel thoughtProcess={thoughtProcess} className="h-full" />
                 </TabsContent>
               </Tabs>
