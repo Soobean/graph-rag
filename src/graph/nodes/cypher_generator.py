@@ -2,7 +2,7 @@
 Cypher Generator Node
 
 사용자 질문과 엔티티 정보를 바탕으로 Cypher 쿼리를 생성합니다.
-캐시 히트 시에는 생성을 스킵하고, 새로 생성 시에는 캐시에 저장합니다.
+캐시 히트 시에는 생성을 스킵합니다. (캐시 저장은 GraphExecutor에서 실행 성공 후 수행)
 
 Latency Optimization:
 - 단순 쿼리(single-hop, 기본 의도, 적은 엔티티)에는 LIGHT 모델 사용
@@ -20,7 +20,6 @@ from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
 from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
-from src.repositories.query_cache_repository import QueryCacheRepository
 
 
 class QueryComplexity(str, Enum):
@@ -52,13 +51,11 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
         self,
         llm_repository: LLMRepository,
         neo4j_repository: Neo4jRepository,
-        cache_repository: QueryCacheRepository | None = None,
         settings: Settings | None = None,
     ):
         super().__init__()
         self._llm = llm_repository
         self._neo4j = neo4j_repository
-        self._cache = cache_repository
         self._settings = settings
         self._schema_cache: GraphSchema | None = None
 
@@ -336,9 +333,6 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
             self._logger.info(f"Generated Cypher: {cypher[:100]}...")
             self._logger.debug(f"Parameters: {parameters}")
 
-            # 캐시에 저장 (비동기, 실패해도 진행)
-            await self._save_to_cache(state, cypher, parameters)
-
             return CypherGeneratorUpdate(
                 schema=schema,
                 cypher_query=cypher,
@@ -354,45 +348,6 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 error=f"Cypher generation failed: {e}",
                 execution_path=[f"{self.name}_error"],
             )
-
-    async def _save_to_cache(
-        self,
-        state: GraphRAGState,
-        cypher: str,
-        parameters: dict[str, Any],
-    ) -> None:
-        """
-        생성된 Cypher 쿼리를 캐시에 저장
-
-        Args:
-            state: 현재 파이프라인 상태
-            cypher: 생성된 Cypher 쿼리
-            parameters: Cypher 파라미터
-        """
-        if not self._cache:
-            return
-
-        if not self._settings or not self._settings.vector_search_enabled:
-            return
-
-        # 임베딩이 없으면 저장 스킵
-        embedding = state.get("question_embedding")
-        if not embedding:
-            self._logger.debug("No question embedding available, skipping cache save")
-            return
-
-        try:
-            question = state.get("question", "")
-            await self._cache.cache_query(
-                question=question,
-                embedding=embedding,
-                cypher_query=cypher,
-                cypher_parameters=parameters,
-            )
-            self._logger.debug(f"Saved query to cache: {question[:50]}...")
-        except Exception as e:
-            # 캐시 저장 실패는 무시 (graceful degradation)
-            self._logger.warning(f"Failed to save query to cache: {e}")
 
     def _filter_schema_for_policy(
         self,
