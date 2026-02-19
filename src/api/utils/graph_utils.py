@@ -8,12 +8,6 @@ from typing import Any
 
 from src.api.schemas.visualization import NodeStyle
 
-# 순환 import 방지를 위해 domain.validators에서 re-export
-from src.domain.validators import (  # noqa: F401
-    CYPHER_IDENTIFIER_PATTERN,
-    validate_cypher_identifier,
-)
-
 # ============================================
 # 노드 스타일 정의 (Palantir-style)
 # ============================================

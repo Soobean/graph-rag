@@ -7,7 +7,6 @@ LangGraph 파이프라인의 각 노드를 정의합니다.
 from src.graph.nodes.base import BaseNode
 from src.graph.nodes.cache_checker import CacheCheckerNode
 from src.graph.nodes.clarification_handler import ClarificationHandlerNode
-from src.graph.nodes.community_summarizer import CommunitySummarizerNode
 from src.graph.nodes.concept_expander import ConceptExpanderNode
 from src.graph.nodes.cypher_generator import CypherGeneratorNode
 from src.graph.nodes.entity_resolver import EntityResolverNode
@@ -29,5 +28,4 @@ __all__ = [
     "ClarificationHandlerNode",
     "CacheCheckerNode",
     "OntologyUpdateHandlerNode",
-    "CommunitySummarizerNode",
 ]
