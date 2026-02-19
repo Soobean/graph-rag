@@ -19,6 +19,7 @@ from src.domain.adaptive.models import (
     ProposalStatus,
     ProposalType,
 )
+from src.domain.constants import ALLOWED_LABELS, LABEL_DESCRIPTIONS
 from src.domain.types import OntologyUpdateHandlerUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
@@ -187,8 +188,12 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
         """LLM으로 사용자 요청 파싱"""
         try:
             prompt = self._prompt_manager.load_prompt("ontology_update_parser")
+            labels_str = "\n".join(
+                f"  - {label}: {LABEL_DESCRIPTIONS.get(label, '')}"
+                for label in sorted(ALLOWED_LABELS)
+            )
             result = await self._llm.generate_json(
-                system_prompt=prompt["system"],
+                system_prompt=prompt["system"].format(allowed_labels_str=labels_str),
                 user_prompt=prompt["user"].format(
                     question=question,
                     chat_history=chat_history or "없음",

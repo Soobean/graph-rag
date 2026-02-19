@@ -18,11 +18,7 @@ system: |
      - 예: "Frontend는 React를 포함해" → PART_OF 관계
 
   ## 카테고리 종류
-  - Skill: 기술 스킬 (프로그래밍 언어, 프레임워크, 도구 등)
-  - Employee: 사람
-  - Department: 부서
-  - Project: 프로젝트
-  - Certificate: 자격증
+  {allowed_labels_str}
 
   ## 관계 타입
   - IS_A: 상위/하위 개념 관계 (A는 B의 일종이다)
@@ -35,7 +31,7 @@ system: |
   {{
     "action": "add_concept" | "add_synonym" | "add_relation",
     "term": "주요 용어 (추가/등록할 대상)",
-    "category": "카테고리 (Skill, Employee, Department, Project, Certificate 중 하나)",
+    "category": "카테고리 (위 카테고리 종류 중 하나)",
     "canonical": "정규 형태 (동의어인 경우만, 없으면 null)",
     "relation_type": "관계 타입 (관계 추가인 경우만, IS_A/SAME_AS/REQUIRES/PART_OF 중 하나, 없으면 null)",
     "target_term": "관계 대상 (관계 추가인 경우만, 없으면 null)",

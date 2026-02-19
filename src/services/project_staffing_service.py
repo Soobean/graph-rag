@@ -23,6 +23,13 @@ from src.api.schemas.staffing import (
     StaffingPlanResponse,
     TeamMemberCost,
 )
+from src.domain.constants import (
+    PROFICIENCY_MAP,
+    PROJECT_STATUS_ACTIVE,
+    PROJECT_STATUS_ACTIVE_LIST,
+    PROJECT_STATUS_PLANNED,
+    build_proficiency_case_cypher,
+)
 from src.repositories.neo4j_repository import Neo4jRepository
 
 logger = logging.getLogger(__name__)
@@ -40,14 +47,6 @@ CATEGORY_COLORS: dict[str, str] = {
 }
 
 DEFAULT_COLOR = "#6B7280"
-
-# 숙련도 문자열 → 숫자 매핑 (DB에 한글 문자열로 저장됨)
-PROFICIENCY_MAP: dict[str, int] = {
-    "초급": 1,
-    "중급": 2,
-    "고급": 3,
-    "전문가": 4,
-}
 
 
 class ProjectStaffingService:
@@ -459,11 +458,11 @@ class ProjectStaffingService:
         for proj in project_details:
             # Base weight: contribution_percent 우선, 없으면 상태 기반 기본값
             contrib = proj.get("contribution_pct")
-            status = proj.get("status", "진행중")
+            status = proj.get("status", PROJECT_STATUS_ACTIVE)
             if contrib and contrib > 0:
                 base = contrib / 100
             else:
-                base = 0.3 if status == "계획" else 1.0
+                base = 0.3 if status == PROJECT_STATUS_PLANNED else 1.0
 
             # Remaining factor: 진행률 기반 잔여 부담
             alloc = proj.get("allocated") or 0
@@ -622,6 +621,9 @@ class ProjectStaffingService:
             rate_clause = "AND effective_rate <= $max_hourly_rate"
             params["max_hourly_rate"] = max_hourly_rate
 
+        proficiency_case = build_proficiency_case_cypher("hs.proficiency")
+        active_statuses = str(PROJECT_STATUS_ACTIVE_LIST).replace('"', "'")
+
         query = f"""
         // 스킬 보유자 조회 (Employee 중복 노드 통합)
         MATCH (e:Employee)-[hs:HAS_SKILL]->(s:Skill)
@@ -631,13 +633,7 @@ class ProjectStaffingService:
         // proficiency: 한글 문자열("초급"~"전문가") → 숫자 변환 후 max
         // availability: min()으로 최적(available) 상태 우선
         WITH e.name AS emp_name,
-             max(CASE hs.proficiency
-               WHEN '전문가' THEN 4
-               WHEN '고급' THEN 3
-               WHEN '중급' THEN 2
-               WHEN '초급' THEN 1
-               ELSE 0
-             END) AS proficiency,
+             max({proficiency_case}) AS proficiency,
              min(hs.effective_rate) AS effective_rate,
              max(coalesce(hs.years_used, 0)) AS years_used,
              min(e.availability) AS availability,
@@ -651,7 +647,7 @@ class ProjectStaffingService:
 
         // 진행중 프로젝트 상세 (프로젝트별 그룹핑, 중복 노드 대응)
         OPTIONAL MATCH (e2:Employee)-[w2:WORKS_ON]->(proj:Project)
-        WHERE e2.name = emp_name AND proj.status IN ['진행중', '계획']
+        WHERE e2.name = emp_name AND proj.status IN {active_statuses}
         WITH emp_name, proficiency, effective_rate, years_used,
              availability, department, max_projects,
              proj.name AS proj_name,

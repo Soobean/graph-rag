@@ -8,25 +8,12 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
+from src.domain.constants import INTENT_DESCRIPTIONS as INTENT_RELATION_DESCRIPTIONS
 from src.domain.types import ResolvedEntity, ResponseGeneratorUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState, IntentType
 from src.graph.utils import format_chat_history
 from src.repositories.llm_repository import LLMRepository
-
-# Intent별 관계 설명 매핑
-INTENT_RELATION_DESCRIPTIONS: dict[IntentType, str] = {
-    "personnel_search": "관련 인력 정보",
-    "project_matching": "참여한 프로젝트 정보",
-    "relationship_search": "관계 정보",
-    "org_analysis": "소속 조직 정보",
-    "mentoring_network": "멘토링 관계",
-    "certificate_search": "자격증 정보",
-    "path_analysis": "연결 경로",
-    "ontology_update": "온톨로지 정보",
-    "global_analysis": "조직 전체 분석",
-    "unknown": "관련 정보",
-}
 
 
 class ResponseGeneratorNode(BaseNode[ResponseGeneratorUpdate]):

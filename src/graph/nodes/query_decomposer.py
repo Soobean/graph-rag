@@ -66,7 +66,10 @@ class QueryDecomposerNode(BaseNode[QueryDecomposerUpdate]):
         self._logger.info(f"Decomposing query: {question[:50]}...")
 
         try:
-            result = await self._llm.decompose_query(question=question)
+            schema = state.get("schema")
+            result = await self._llm.decompose_query(
+                question=question, schema=dict(schema) if schema else None
+            )
 
             query_plan = QueryPlan(
                 is_multi_hop=result.get("is_multi_hop", False),

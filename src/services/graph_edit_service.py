@@ -8,6 +8,7 @@ GraphEditService - 그래프 편집 비즈니스 로직
 import logging
 from typing import Any
 
+from src.domain.constants import ALLOWED_LABELS, VALID_RELATIONSHIP_COMBINATIONS
 from src.domain.exceptions import EntityNotFoundError, GraphRAGError, ValidationError
 from src.repositories.neo4j_repository import Neo4jRepository
 
@@ -15,33 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================
-# 화이트리스트 정의 (NEO4J_SCHEMA.md 기준)
+# 화이트리스트 (src.domain.constants에서 import)
 # ============================================
-
-ALLOWED_LABELS = {
-    "Employee",
-    "Skill",
-    "Project",
-    "Department",
-    "Position",
-    "Certificate",
-    "Office",
-}
 
 REQUIRED_PROPERTIES: dict[str, list[str]] = {
     label: ["name"] for label in ALLOWED_LABELS
-}
-
-VALID_RELATIONSHIP_COMBINATIONS: dict[str, list[tuple[str, str]]] = {
-    "HAS_SKILL": [("Employee", "Skill")],
-    "WORKS_ON": [("Employee", "Project")],
-    "BELONGS_TO": [("Employee", "Department")],
-    "HAS_POSITION": [("Employee", "Position")],
-    "HAS_CERTIFICATE": [("Employee", "Certificate")],
-    "REQUIRES": [("Project", "Skill")],
-    "MENTORS": [("Employee", "Employee")],
-    "OWNED_BY": [("Project", "Department")],
-    "LOCATED_AT": [("Department", "Office")],
 }
 
 # 시스템 메타데이터 보호 (사용자가 수정/삭제 불가)
