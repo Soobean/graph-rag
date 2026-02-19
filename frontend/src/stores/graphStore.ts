@@ -1,15 +1,17 @@
 import { create } from 'zustand';
 import type { FlowNode, FlowEdge, LayoutConfig } from '../types/graph';
-import type { ExplainableGraphData, GraphNode, GraphEdge } from '../types/api';
+import type { ExplainableGraphData, GraphNode, GraphEdge, TabularData } from '../types/api';
 
 interface GraphState {
   nodes: FlowNode[];
   edges: FlowEdge[];
   selectedNodeId: string | null;
   layoutConfig: LayoutConfig;
+  tabularData: TabularData | null;
 
   // Actions
   setGraphData: (data: ExplainableGraphData) => void;
+  setTabularData: (data: TabularData) => void;
   selectNode: (nodeId: string | null) => void;
   getSelectedNode: () => FlowNode | null;
   clearGraph: () => void;
@@ -287,6 +289,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   edges: [],
   selectedNodeId: null,
   layoutConfig: defaultLayoutConfig,
+  tabularData: null,
 
   setGraphData: (data: ExplainableGraphData) => {
     const { layoutConfig } = get();
@@ -305,6 +308,16 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     set({
       nodes: flowNodes,
       edges: flowEdges,
+      tabularData: null,
+    });
+  },
+
+  setTabularData: (data: TabularData) => {
+    set({
+      nodes: [],
+      edges: [],
+      selectedNodeId: null,
+      tabularData: data,
     });
   },
 
@@ -331,6 +344,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       nodes: [],
       edges: [],
       selectedNodeId: null,
+      tabularData: null,
     });
   },
 

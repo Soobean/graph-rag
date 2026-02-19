@@ -116,6 +116,14 @@ export interface HealthResponse {
   neo4j_connected: boolean;
 }
 
+// Tabular Data (for aggregation query results)
+export interface TabularData {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total_count: number;
+  has_more: boolean;
+}
+
 // SSE Streaming Types
 export interface StreamingMetadata {
   intent: string;
@@ -125,6 +133,7 @@ export interface StreamingMetadata {
   result_count: number;
   execution_path: string[];
   graph_data?: ExplainableGraphData;
+  tabular_data?: TabularData;
 }
 
 export type StreamingEventType = 'metadata' | 'chunk' | 'done' | 'error';
