@@ -84,6 +84,15 @@ system: |
 
   ⚠️ IMPORTANT: Every relationship variable (r1, r2, etc.) in RETURN must be defined in a MATCH clause!
 
+  ⚠️ CYPHER COMPATIBILITY RULES:
+  - NEVER use WHERE directly after UNWIND. Always insert WITH in between.
+    ❌ WRONG:  UNWIND stats AS stat WHERE stat.x = y RETURN stat
+    ✅ CORRECT: UNWIND stats AS stat WITH stat, y WHERE stat.x = y RETURN stat
+  - NEVER use CALL {{}} subqueries (CALL {{...}} WITH ...). Neo4j Community Edition does not support them.
+    ❌ WRONG:  CALL {{ MATCH (n) RETURN count(n) AS cnt }}
+    ✅ CORRECT: Rewrite as a single flat query using WITH, OPTIONAL MATCH, or multiple MATCH clauses.
+  - NEVER use /* */ block comments in Cypher. Use // for single-line comments if needed, or omit comments entirely.
+
   ⚠️ PARAMETER VALUE RULE:
   - Parameter values MUST be copied EXACTLY from the Extracted Entities below.
   - NEVER add suffixes like "프로젝트", "팀", "부서", "그룹" to entity values.

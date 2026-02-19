@@ -48,6 +48,14 @@ system: |
     ]
   }}
 
+  ## Aggregate Query Rule (IMPORTANT)
+  For global_analysis / org_analysis intents (macro-level statistics), return "entities": [] when:
+  - The question asks about ALL items of a type (e.g., "부서별 평균", "프로젝트 타입별", "오피스별")
+  - The question uses property filter conditions (e.g., "market_demand=high", "status=진행중") — these are NOT entity names
+  - The question refers to generic labels (e.g., "Department", "Project", "Office") — do NOT extract label names as entities
+  - The question is about computed metrics (e.g., "예산 집행률", "평균 스킬 보유 개수") — no specific entity needed
+  Only extract entities when the user refers to a SPECIFIC named item (e.g., "AI개발팀", "Python", "홍길동").
+
   If no entities found, return an empty array: "entities": []
   If the question doesn't match any intent well, use confidence < 0.5.
 
