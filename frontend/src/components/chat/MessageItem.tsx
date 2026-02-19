@@ -1,4 +1,6 @@
 import { User, Bot, Loader2, AlertCircle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/types/chat';
 
@@ -51,8 +53,14 @@ export function MessageItem({ message, className }: MessageItemProps) {
             <span className="text-sm">{message.error}</span>
           </div>
         ) : (
-          <div className="prose prose-sm max-w-none text-foreground">
-            <p className="whitespace-pre-wrap">{message.content}</p>
+          <div className="prose prose-sm max-w-none text-foreground prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-pre:my-2 prose-pre:bg-muted prose-pre:text-foreground prose-code:text-foreground prose-code:before:content-none prose-code:after:content-none">
+            {isUser ? (
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            ) : (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+            )}
           </div>
         )}
 
