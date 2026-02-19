@@ -9,8 +9,11 @@ load_to_neo4j.py의 인라인 Cypher 계산을 CSV 레벨로 이동.
 
 import csv
 import os
+import random
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "company_realistic")
+
+SEED = 42
 
 # ─── 상수 ────────────────────────────────────────────
 
@@ -33,6 +36,15 @@ HIGH_DEMAND_SKILLS = {
 MEDIUM_DEMAND_SKILLS = {"SQL", "PostgreSQL", "Node.js", "Spring Boot"}
 
 PROFICIENCY_FACTOR = {"전문가": 1.0, "고급": 0.85, "중급": 0.7, "초급": 0.5}
+
+ROLE_HOUR_MULTIPLIER = {
+    "개발자": 1.0,
+    "TL": 0.9,
+    "디자이너": 0.85,
+    "QA": 0.8,
+    "PM": 0.75,
+    "기획자": 0.7,
+}
 
 
 def base_rate(years_exp: int) -> int:
@@ -164,18 +176,57 @@ def enrich_employee_skill(skill_map: dict):
 
 def enrich_employee_project(emp_map: dict, proj_map: dict):
     print("\n[5/6] employee_project.csv 보강...")
+    rng = random.Random(SEED)
     rows = read_csv("employee_project.csv")
+
+    # 1단계: 프로젝트별 가중 기여도 합산 (정규화 분모)
+    from collections import defaultdict
+
+    proj_weighted_sum = defaultdict(float)
+    for row in rows:
+        cp = int(row.get("contribution_percent", 50))
+        role = row.get("role", "개발자")
+        role_factor = ROLE_HOUR_MULTIPLIER.get(role, 1.0)
+        proj_weighted_sum[row["project_id"]] += cp * role_factor
+
+    # 2단계: 정규화된 share로 allocated_hours 계산
     for row in rows:
         emp = emp_map.get(row["employee_id"], {})
         proj = proj_map.get(row["project_id"], {})
         row["agreed_rate"] = int(emp.get("hourly_rate", 0))
-        est_hours = int(proj.get("estimated_hours", 3000))
-        headcount = int(proj.get("required_headcount", 3))
-        alloc = int(est_hours / headcount) if headcount > 0 else 0
-        row["allocated_hours"] = alloc
+
+        # share = (my_cp × role_factor) / sum(all_cp × role_factor)
+        # allocated = estimated_hours × share × jitter
+        estimated = int(proj.get("estimated_hours", 3000))
+        contribution = int(row.get("contribution_percent", 50))
+        role = row.get("role", "개발자")
+        role_factor = ROLE_HOUR_MULTIPLIER.get(role, 1.0)
+        weighted_total = proj_weighted_sum[row["project_id"]]
+        share = (contribution * role_factor) / weighted_total if weighted_total > 0 else 0
+
+        jitter = rng.uniform(0.90, 1.10)
+        alloc = estimated * share * jitter
+        alloc = round(alloc / 10) * 10  # 10단위 반올림
+        alloc = max(40, min(2400, alloc))
+        row["allocated_hours"] = int(alloc)
+
+        # actual_hours: status별 삼각분포/균등분포
         status = proj.get("status", "")
-        ratio = {"완료": 0.95, "진행중": 0.5}.get(status, 0)
-        row["actual_hours"] = int(alloc * ratio)
+        if status == "완료":
+            ratio = rng.triangular(0.85, 1.15, 0.97)
+        elif status == "진행중":
+            ratio = rng.triangular(0.25, 0.75, 0.50)
+        elif status == "계획":
+            ratio = 0.0
+        elif status == "보류":
+            ratio = rng.uniform(0.03, 0.25)
+        elif status == "취소":
+            ratio = rng.uniform(0.01, 0.12)
+        else:
+            ratio = 0.0
+        actual = round(alloc * ratio / 10) * 10  # 10단위 반올림
+        row["actual_hours"] = max(0, int(actual))
+
     fields = [
         "employee_id", "project_id", "role", "contribution_percent",
         "agreed_rate", "allocated_hours", "actual_hours",
