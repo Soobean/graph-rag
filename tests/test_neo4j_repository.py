@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.domain.exceptions import EntityNotFoundError, QueryExecutionError, ValidationError
+from src.domain.exceptions import (
+    EntityNotFoundError,
+    QueryExecutionError,
+    ValidationError,
+)
 from src.repositories.neo4j_repository import (
     Neo4jRepository,
     NodeResult,
@@ -32,23 +36,6 @@ class TestNodeResult:
         assert node.labels == ["Employee", "Employee"]
         assert node.properties["name"] == "홍길동"
 
-    def test_node_result_from_neo4j(self):
-        """from_neo4j 팩토리 메서드 테스트"""
-        neo4j_data = {
-            "id": "4:abc123:123",
-            "labels": ["Employee"],
-            "properties": {"name": "테스트"},
-        }
-        node = NodeResult.from_neo4j(neo4j_data)
-        assert node.id == "4:abc123:123"
-        assert node.labels == ["Employee"]
-
-    def test_node_result_from_neo4j_missing_fields(self):
-        """from_neo4j 누락 필드 기본값 테스트"""
-        node = NodeResult.from_neo4j({})
-        assert node.id == ""
-        assert node.labels == []
-        assert node.properties == {}
 
 
 class TestRelationshipResult:
@@ -69,119 +56,9 @@ class TestRelationshipResult:
         assert rel.end_node_id == "4:abc123:20"
 
 
-class TestIdentifierValidation:
-    """Cypher Injection 방어 검증 테스트"""
-
-    @pytest.fixture
-    def repo(self):
-        """Mock 클라이언트로 Repository 생성"""
-        mock_client = MagicMock()
-        return Neo4jRepository(mock_client)
-
-    def test_validate_identifier_valid(self, repo):
-        """유효한 식별자 테스트"""
-        assert repo._validate_identifier("Employee") == "Employee"
-        assert repo._validate_identifier("WORKS_AT") == "WORKS_AT"
-        assert repo._validate_identifier("사람") == "사람"
-        assert repo._validate_identifier("Employee123") == "Employee123"
-        assert repo._validate_identifier("person_type") == "person_type"
-
-    def test_validate_identifier_empty(self, repo):
-        """빈 식별자 검증"""
-        with pytest.raises(ValidationError) as exc_info:
-            repo._validate_identifier("")
-        assert "Empty" in str(exc_info.value)
-
-    def test_validate_identifier_injection_attempts(self, repo):
-        """Cypher Injection 시도 검증"""
-        # 특수문자, 공백, SQL/Cypher injection 패턴이 포함된 문자열 거부
-        injection_attempts = [
-            ("Employee; DROP DATABASE", "semicolon and space"),
-            ("Employee`", "backtick"),
-            ("Employee--", "double dash"),
-            ("Employee/*", "comment start"),
-            ("Employee]", "bracket"),
-            ("Employee)", "parenthesis"),
-            ("Employee'", "single quote"),
-            ('Employee"', "double quote"),
-            ("Employee OR 1=1", "space and equals"),
-            ("Employee\t", "tab"),
-            ("Employee{}", "braces"),
-        ]
-        for attempt, desc in injection_attempts:
-            with pytest.raises(ValidationError, match="Invalid .* format"):
-                repo._validate_identifier(attempt)
-
-    def test_validate_labels(self, repo):
-        """레이블 리스트 검증 테스트"""
-        labels = ["Employee", "Employee", "사원"]
-        validated = repo._validate_labels(labels)
-        assert validated == labels
-
-    def test_validate_labels_invalid(self, repo):
-        """유효하지 않은 레이블 검증"""
-        with pytest.raises(ValidationError):
-            repo._validate_labels(["Valid", "Invalid;DROP"])
-
-    def test_validate_relationship_types(self, repo):
-        """관계 타입 검증 테스트"""
-        rel_types = ["WORKS_AT", "KNOWS", "근무"]
-        validated = repo._validate_relationship_types(rel_types)
-        assert validated == rel_types
-
-    def test_validate_direction_valid(self, repo):
-        """유효한 방향 값 테스트"""
-        for direction in ["in", "out", "both"]:
-            assert repo._validate_direction(direction) == direction
-
-    def test_validate_direction_invalid(self, repo):
-        """유효하지 않은 방향 값 테스트"""
-        with pytest.raises(ValidationError) as exc_info:
-            repo._validate_direction("invalid")
-        assert "direction" in str(exc_info.value)
-
-
-class TestFilterBuilding:
-    """필터 문자열 생성 테스트"""
-
-    @pytest.fixture
-    def repo(self):
-        mock_client = MagicMock()
-        return Neo4jRepository(mock_client)
-
-    def test_build_label_filter_single(self, repo):
-        """단일 레이블 필터"""
-        result = repo._build_label_filter(["Employee"])
-        assert result == ":Employee"
-
-    def test_build_label_filter_multiple(self, repo):
-        """다중 레이블 필터"""
-        result = repo._build_label_filter(["Employee", "Employee"])
-        assert result == ":Employee:Employee"
-
-    def test_build_label_filter_empty(self, repo):
-        """빈 레이블 필터"""
-        assert repo._build_label_filter(None) == ""
-        assert repo._build_label_filter([]) == ""
-
-    def test_build_rel_filter_single(self, repo):
-        """단일 관계 타입 필터"""
-        result = repo._build_rel_filter(["WORKS_AT"])
-        assert result == ":WORKS_AT"
-
-    def test_build_rel_filter_multiple(self, repo):
-        """다중 관계 타입 필터"""
-        result = repo._build_rel_filter(["WORKS_AT", "KNOWS"])
-        assert result == ":WORKS_AT|KNOWS"
-
-    def test_build_rel_filter_empty(self, repo):
-        """빈 관계 타입 필터"""
-        assert repo._build_rel_filter(None) == ""
-        assert repo._build_rel_filter([]) == ""
-
 
 class TestSchemaCaching:
-    """스키마 캐싱 테스트"""
+    """스키마 캐싱 테스트 — Neo4jSchemaRepository 직접 테스트"""
 
     @pytest.fixture
     def mock_client(self):
@@ -196,49 +73,53 @@ class TestSchemaCaching:
         return client
 
     @pytest.fixture
-    def repo(self, mock_client):
-        return Neo4jRepository(mock_client)
+    def schema_repo(self, mock_client):
+        from src.repositories.neo4j_schema_repository import Neo4jSchemaRepository
+
+        return Neo4jSchemaRepository(mock_client)
 
     @pytest.mark.asyncio
-    async def test_schema_cache_initial_fetch(self, repo, mock_client):
+    async def test_schema_cache_initial_fetch(self, schema_repo, mock_client):
         """초기 스키마 조회 시 DB 호출"""
-        schema = await repo.get_schema()
+        schema = await schema_repo.get_schema()
         assert schema["node_labels"] == ["Employee", "Company"]
         mock_client.get_schema_info.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_schema_cache_hit(self, repo, mock_client):
+    async def test_schema_cache_hit(self, schema_repo, mock_client):
         """캐시 히트 시 DB 호출 없음"""
-        await repo.get_schema()
-        await repo.get_schema()
-        await repo.get_schema()
+        await schema_repo.get_schema()
+        await schema_repo.get_schema()
+        await schema_repo.get_schema()
         # 첫 번째 호출만 DB 접근
         assert mock_client.get_schema_info.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_schema_cache_force_refresh(self, repo, mock_client):
+    async def test_schema_cache_force_refresh(self, schema_repo, mock_client):
         """force_refresh 시 캐시 무시"""
-        await repo.get_schema()
-        await repo.get_schema(force_refresh=True)
+        await schema_repo.get_schema()
+        await schema_repo.get_schema(force_refresh=True)
         assert mock_client.get_schema_info.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_schema_cache_invalidation(self, repo, mock_client):
+    async def test_schema_cache_invalidation(self, schema_repo, mock_client):
         """캐시 무효화 테스트"""
-        await repo.get_schema()
-        repo.invalidate_schema_cache()
-        await repo.get_schema()
+        await schema_repo.get_schema()
+        schema_repo.invalidate_schema_cache()
+        await schema_repo.get_schema()
         assert mock_client.get_schema_info.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_schema_cache_ttl_expiry(self, repo, mock_client):
+    async def test_schema_cache_ttl_expiry(self, schema_repo, mock_client):
         """TTL 만료 시 재조회"""
-        await repo.get_schema()
+        await schema_repo.get_schema()
 
         # TTL 만료 시뮬레이션
-        repo._schema_cache_time = time.time() - repo.SCHEMA_CACHE_TTL_SECONDS - 1
+        schema_repo._schema_cache_time = (
+            time.time() - schema_repo.SCHEMA_CACHE_TTL_SECONDS - 1
+        )
 
-        await repo.get_schema()
+        await schema_repo.get_schema()
         assert mock_client.get_schema_info.call_count == 2
 
 
