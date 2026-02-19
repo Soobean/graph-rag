@@ -55,7 +55,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
     clearAllHistory,
   } = useChatStore();
 
-  const { setGraphData, clearGraph } = useGraphStore();
+  const { setGraphData, setTabularData, clearGraph } = useGraphStore();
   const { demoRole } = useUiStore();
 
   const messages = getCurrentMessages();
@@ -113,9 +113,11 @@ export function ChatPanel({ className }: ChatPanelProps) {
             thoughtProcess,
           });
 
-          // Graph 데이터가 있으면 graphStore에 설정
+          // Graph 데이터가 있으면 graphStore에 설정, 없으면 tabular 데이터 확인
           if (metadata.graph_data) {
             setGraphData(metadata.graph_data);
+          } else if (metadata.tabular_data) {
+            setTabularData(metadata.tabular_data);
           }
         }
       },
@@ -140,7 +142,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
         }
       },
     }),
-    [updateMessage, setGraphData]
+    [updateMessage, setGraphData, setTabularData]
   );
 
   const { state: streamingState, startStreaming } =

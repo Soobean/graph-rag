@@ -16,6 +16,7 @@ import { GitBranchPlus, CirclePlus } from 'lucide-react';
 import { QueryNode, ExpandedNode, ResultNode } from './nodes';
 import { AnimatedEdge } from './edges';
 import { NodeDetailPanel } from './NodeDetailPanel';
+import { ResultTable } from './ResultTable';
 import { CreateNodeDialog } from '@/components/admin/graph-edit/CreateNodeDialog';
 import { CreateEdgeDialog } from '@/components/admin/graph-edit/CreateEdgeDialog';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,7 @@ interface GraphViewerProps {
 }
 
 function GraphViewerInner({ className }: GraphViewerProps) {
-  const { nodes: storeNodes, edges: storeEdges, selectNode, addNode, addEdge } = useGraphStore();
+  const { nodes: storeNodes, edges: storeEdges, tabularData, selectNode, addNode, addEdge } = useGraphStore();
 
   const [createNodeOpen, setCreateNodeOpen] = useState(false);
   const [createEdgeOpen, setCreateEdgeOpen] = useState(false);
@@ -107,6 +108,9 @@ function GraphViewerInner({ className }: GraphViewerProps) {
   }, [nodes]);
 
   if (nodes.length === 0) {
+    if (tabularData) {
+      return <ResultTable data={tabularData} className={className} />;
+    }
     return (
       <div className={cn('flex h-full items-center justify-center bg-muted/20', className)}>
         <div className="text-center text-muted-foreground">

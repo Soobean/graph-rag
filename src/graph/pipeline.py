@@ -715,6 +715,10 @@ class GraphRAGPipeline:
         graph_data = self._build_graph_data(state)
         if graph_data:
             metadata["graph_data"] = graph_data
+        else:
+            tabular_data = self._build_tabular_data(state)
+            if tabular_data:
+                metadata["tabular_data"] = tabular_data
 
         return metadata
 
@@ -818,6 +822,10 @@ class GraphRAGPipeline:
         # 유효한 엣지만 필터링
         valid_edges = [e for e in edges_list if e["source"] in nodes_map and e["target"] in nodes_map]
 
+        # 노드가 없으면 그래프 데이터 없음 (집계 결과 등)
+        if not nodes_map:
+            return None
+
         return {
             "nodes": list(nodes_map.values())[:limit],
             "edges": valid_edges,
@@ -826,6 +834,35 @@ class GraphRAGPipeline:
             "query_entity_ids": query_entity_ids,
             "expanded_entity_ids": expanded_entity_ids,
             "result_entity_ids": result_entity_ids,
+            "has_more": len(graph_results) > limit,
+        }
+
+    def _build_tabular_data(
+        self, state: dict[str, Any], limit: int = 100
+    ) -> dict[str, Any] | None:
+        """집계 쿼리 결과를 테이블 형식으로 변환 (스칼라 값만 추출)"""
+        graph_results = state.get("graph_results", [])
+        if not graph_results:
+            return None
+
+        first_row = graph_results[0]
+        # 스칼라 값만 컬럼으로 사용 (노드/관계 객체 제외)
+        columns = [
+            k
+            for k, v in first_row.items()
+            if isinstance(v, (str, int, float, bool, type(None)))
+        ]
+        if not columns:
+            return None
+
+        rows = [
+            {col: row.get(col) for col in columns}
+            for row in graph_results[:limit]
+        ]
+        return {
+            "columns": columns,
+            "rows": rows,
+            "total_count": len(graph_results),
             "has_more": len(graph_results) > limit,
         }
 
