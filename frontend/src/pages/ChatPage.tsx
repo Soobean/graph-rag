@@ -1,12 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SplitView } from '@/components/layout/SplitView';
 import { ChatPanel } from '@/components/chat';
 import { GraphViewer } from '@/components/graph';
-import { ThinkingPanel } from '@/components/thinking';
-import { useChatStore, useUiStore } from '@/stores';
+import { useUiStore } from '@/stores';
 import { useHealth } from '@/api/hooks';
-import { Activity, AlertCircle, Columns, Settings, Target } from 'lucide-react';
+import { Activity, AlertCircle, Columns, Settings, Target, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import type { DemoRole } from '@/stores/uiStore';
@@ -19,13 +17,8 @@ const ROLE_STYLES: Record<DemoRole, string> = {
 };
 
 export function ChatPage() {
-  const { activeRightTab, setActiveRightTab, demoRole, setDemoRole } = useUiStore();
-  const { getCurrentMessages } = useChatStore();
+  const { isRightPanelOpen, closeRightPanel, demoRole, setDemoRole } = useUiStore();
   const { data: health, isError } = useHealth();
-
-  const messages = getCurrentMessages();
-  const lastAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant' && !m.isLoading);
-  const thoughtProcess = lastAssistantMessage?.thoughtProcess || null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -78,27 +71,19 @@ export function ChatPage() {
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         <SplitView
-          leftPanel={<ChatPanel />}
+          rightCollapsed={!isRightPanelOpen}
+          leftPanel={<ChatPanel className="bg-white" />}
           rightPanel={
             <div className="flex h-full flex-col">
-              <Tabs
-                value={activeRightTab}
-                onValueChange={(v: string) => setActiveRightTab(v as 'graph' | 'thinking')}
-                className="flex h-full flex-col"
-              >
-                <div className="border-b border-border px-4 py-2">
-                  <TabsList>
-                    <TabsTrigger value="graph">Graph</TabsTrigger>
-                    <TabsTrigger value="thinking">Thinking</TabsTrigger>
-                  </TabsList>
-                </div>
-                <TabsContent value="graph" className="flex-1 min-h-0 m-0 data-[state=inactive]:hidden">
-                  <GraphViewer className="h-full" />
-                </TabsContent>
-                <TabsContent value="thinking" className="flex-1 min-h-0 m-0 overflow-hidden data-[state=inactive]:hidden">
-                  <ThinkingPanel thoughtProcess={thoughtProcess} className="h-full" />
-                </TabsContent>
-              </Tabs>
+              <div className="flex items-center justify-between border-b border-border px-4 py-2">
+                <span className="text-sm font-medium">Graph</span>
+                <Button variant="ghost" size="icon" onClick={closeRightPanel} title="패널 닫기">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex-1 min-h-0">
+                <GraphViewer className="h-full" />
+              </div>
             </div>
           }
         />

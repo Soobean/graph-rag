@@ -5,10 +5,11 @@ import { cn } from '@/lib/utils';
 interface SplitViewProps {
   leftPanel: React.ReactNode;
   rightPanel: React.ReactNode;
+  rightCollapsed?: boolean;
   className?: string;
 }
 
-export function SplitView({ leftPanel, rightPanel, className }: SplitViewProps) {
+export function SplitView({ leftPanel, rightPanel, rightCollapsed = false, className }: SplitViewProps) {
   const { leftPanelWidth, setLeftPanelWidth } = useUiStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -53,25 +54,32 @@ export function SplitView({ leftPanel, rightPanel, className }: SplitViewProps) 
     >
       {/* Left Panel */}
       <div
-        className="h-full overflow-hidden border-r border-border"
-        style={{ width: `${leftPanelWidth}%` }}
+        className="h-full overflow-hidden transition-all duration-300 ease-in-out"
+        style={{ width: rightCollapsed ? '100%' : `${leftPanelWidth}%` }}
       >
         {leftPanel}
       </div>
 
-      {/* Resize Handle */}
+      {/* Resize Handle — hidden when collapsed */}
+      {!rightCollapsed && (
+        <div
+          className={cn(
+            'w-[3px] cursor-col-resize transition-colors',
+            'bg-transparent hover:bg-primary/20',
+            'shadow-[inset_1px_0_0_0_rgb(0_0_0/0.04)]',
+            isDragging && 'bg-primary/30'
+          )}
+          onMouseDown={handleMouseDown}
+        />
+      )}
+
+      {/* Right Panel — CSS transition for width */}
       <div
         className={cn(
-          'w-1 cursor-col-resize bg-border hover:bg-primary/50 transition-colors',
-          isDragging && 'bg-primary'
+          'h-full transition-all duration-300 ease-in-out overflow-hidden bg-gray-50/50',
+          rightCollapsed ? 'w-0 opacity-0' : 'opacity-100'
         )}
-        onMouseDown={handleMouseDown}
-      />
-
-      {/* Right Panel */}
-      <div
-        className="h-full overflow-hidden"
-        style={{ width: `${100 - leftPanelWidth}%` }}
+        style={rightCollapsed ? undefined : { width: `${100 - leftPanelWidth}%` }}
       >
         {rightPanel}
       </div>

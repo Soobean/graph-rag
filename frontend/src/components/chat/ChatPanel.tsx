@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, PanelRightOpen } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { Button } from '@/components/ui/button';
@@ -35,7 +36,6 @@ function getStepDescription(nodeName: string, metadata: StreamingMetadata): stri
     cypher_generator: 'Cypher 쿼리 생성',
     graph_executor: `쿼리 실행: ${metadata.result_count}건 조회`,
     response_generator: '응답 생성',
-    response_generator_empty: '결과 없음 - 기본 응답',
     clarification_handler: '명확화 요청',
   };
   return descMap[nodeName] || nodeName;
@@ -57,7 +57,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
   } = useChatStore();
 
   const { setGraphData, setTabularData, clearGraph } = useGraphStore();
-  const { demoRole } = useUiStore();
+  const { demoRole, isRightPanelOpen, openRightPanel, closeRightPanel } = useUiStore();
 
   const messages = getCurrentMessages();
 
@@ -115,8 +115,10 @@ export function ChatPanel({ className }: ChatPanelProps) {
 
           if (metadata.graph_data) {
             setGraphData(metadata.graph_data);
+            openRightPanel();
           } else if (metadata.tabular_data) {
             setTabularData(metadata.tabular_data);
+            openRightPanel();
           }
         }
       },
@@ -141,7 +143,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
         }
       },
     }),
-    [updateMessage, setStreamingMessageId, setGraphData, setTabularData]
+    [updateMessage, setStreamingMessageId, setGraphData, setTabularData, openRightPanel]
   );
 
   const { state: streamingState, startStreaming } =
@@ -183,25 +185,89 @@ export function ChatPanel({ className }: ChatPanelProps) {
   const handleClearHistory = useCallback(() => {
     clearAllHistory();
     clearGraph();
-    // 새 세션 생성
+    closeRightPanel();
     createSession();
-  }, [clearAllHistory, clearGraph, createSession]);
+  }, [clearAllHistory, clearGraph, closeRightPanel, createSession]);
+
+  const isLanding = messages.length === 0;
 
   return (
     <div className={cn('flex h-full flex-col', className)}>
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h2 className="text-lg font-semibold">Chat</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleClearHistory}
-          title="Clear history"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-      <MessageList messages={messages} />
-      <ChatInput onSend={handleSend} isLoading={streamingState.isStreaming} />
+      <AnimatePresence mode="wait">
+        {isLanding ? (
+          // ── 랜딩 모드 ──
+          <motion.div
+            key="landing"
+            className="flex flex-1 flex-col items-center justify-center"
+            exit={{ opacity: 0, y: -30, transition: { duration: 0.2 } }}
+          >
+            <h2 className="mb-2 text-center text-2xl font-semibold text-foreground/80">
+              Graph RAG Explorer
+            </h2>
+            <p className="mb-8 text-center text-sm text-muted-foreground">
+              질문을 입력하여 그래프 데이터를 검색하세요.
+            </p>
+            {/* layoutId로 입력창 공유 애니메이션 */}
+            <motion.div layoutId="chat-input" className="w-full max-w-2xl px-4">
+              <ChatInput onSend={handleSend} isLoading={streamingState.isStreaming} className="border-t-0" />
+            </motion.div>
+          </motion.div>
+        ) : (
+          // ── 대화 모드 ──
+          <motion.div
+            key="conversation"
+            className="flex flex-1 flex-col min-h-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+          >
+            {/* 헤더 슬라이드 다운 */}
+            <motion.div
+              className="flex items-center justify-between border-b border-border px-4 py-3"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.15 }}
+            >
+              <h2 className="text-lg font-semibold">Chat</h2>
+              <div className="flex items-center gap-1">
+                {!isRightPanelOpen && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={openRightPanel}
+                    title="그래프 패널 열기"
+                  >
+                    <PanelRightOpen className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleClearHistory}
+                  title="Clear history"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </motion.div>
+
+            {/* 메시지 리스트 페이드인 */}
+            <motion.div
+              className="flex-1 min-h-0"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.25 }}
+            >
+              <MessageList messages={messages} />
+            </motion.div>
+
+            {/* layoutId로 입력창 공유 애니메이션 (중앙 → 하단) */}
+            <motion.div layoutId="chat-input" className="w-full">
+              <ChatInput onSend={handleSend} isLoading={streamingState.isStreaming} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -11,6 +11,8 @@ export interface FlowNodeData extends Record<string, unknown> {
   depth: number;
   style: NodeStyle;
   isSelected?: boolean;
+  hiddenCount?: number;   // progressive disclosure: 숨겨진 이웃 노드 수
+  isNew?: boolean;        // expand 시 새로 나타난 노드 (애니메이션용)
 }
 
 // React Flow 노드 타입

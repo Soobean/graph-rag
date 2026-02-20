@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -7,6 +7,7 @@ import {
   BackgroundVariant,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   ReactFlowProvider,
   type NodeMouseHandler,
 } from '@xyflow/react';
@@ -40,7 +41,9 @@ interface GraphViewerProps {
 }
 
 function GraphViewerInner({ className }: GraphViewerProps) {
-  const { nodes: storeNodes, edges: storeEdges, tabularData, selectNode, addNode, addEdge } = useGraphStore();
+  const { nodes: storeNodes, edges: storeEdges, tabularData, selectNode, addNode, addEdge, expandNode } = useGraphStore();
+  const layoutVersion = useGraphStore((s) => s._layoutVersion);
+  const { fitView } = useReactFlow();
 
   const [createNodeOpen, setCreateNodeOpen] = useState(false);
   const [createEdgeOpen, setCreateEdgeOpen] = useState(false);
@@ -48,17 +51,36 @@ function GraphViewerInner({ className }: GraphViewerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(storeNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(storeEdges);
 
-  // Store 변경 시 로컬 상태 동기화 (기존 노드의 드래그 위치 보존)
+  // 새 그래프 데이터 도착 시 fitView 재호출
+  // CSS transition(300ms) 완료 후 resize 이벤트를 발생시켜
+  // React Flow가 컨테이너 크기를 정확히 감지하게 한 뒤 fitView 실행
   useEffect(() => {
+    if (storeNodes.length > 0) {
+      const timer = setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+        requestAnimationFrame(() => fitView({ padding: 0.15, duration: 400, minZoom: 0.3 }));
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [storeNodes, fitView]);
+
+  // Store 변경 시 로컬 상태 동기화
+  // _layoutVersion 변경(expand/new data) 시 dagre position 사용,
+  // 그 외(선택 등) 기존 드래그 위치 보존
+  const layoutVersionRef = useRef(layoutVersion);
+  useEffect(() => {
+    const isRelayout = layoutVersion !== layoutVersionRef.current;
+    layoutVersionRef.current = layoutVersion;
+
     setNodes((currentNodes) => {
-      if (currentNodes.length === 0) return storeNodes;
+      if (isRelayout || currentNodes.length === 0) return storeNodes;
       const posMap = new Map(currentNodes.map((n) => [n.id, n.position]));
       return storeNodes.map((sn) => ({
         ...sn,
         position: posMap.get(sn.id) ?? sn.position,
       }));
     });
-  }, [storeNodes, setNodes]);
+  }, [storeNodes, setNodes, layoutVersion]);
 
   useEffect(() => {
     setEdges(storeEdges);
@@ -74,6 +96,14 @@ function GraphViewerInner({ className }: GraphViewerProps) {
   const handlePaneClick = useCallback(() => {
     selectNode(null);
   }, [selectNode]);
+
+  // 더블클릭으로 숨겨진 이웃 노드 확장
+  const handleNodeDoubleClick: NodeMouseHandler<FlowNode> = useCallback(
+    (_event, node) => {
+      expandNode(node.id);
+    },
+    [expandNode]
+  );
 
   // Edge creation: add missing endpoint nodes to graph, then add the edge
   const handleEdgeCreated = useCallback(
@@ -102,17 +132,12 @@ function GraphViewerInner({ className }: GraphViewerProps) {
     []
   );
 
-  // 최대 depth 계산
-  const maxDepth = useMemo(() => {
-    return Math.max(...nodes.map(n => n.data?.depth ?? 0), 0);
-  }, [nodes]);
-
   if (nodes.length === 0) {
     if (tabularData) {
       return <ResultTable data={tabularData} className={className} />;
     }
     return (
-      <div className={cn('flex h-full items-center justify-center bg-muted/20', className)}>
+      <div className={cn('flex h-full items-center justify-center bg-gray-50/50', className)}>
         <div className="text-center text-muted-foreground">
           <p className="text-lg font-medium">No Graph Data</p>
           <p className="text-sm mt-2">질문을 입력하면 그래프가 표시됩니다.</p>
@@ -123,40 +148,32 @@ function GraphViewerInner({ className }: GraphViewerProps) {
 
   return (
     <div className={cn('relative h-full w-full', className)}>
-      {/* Hop 헤더 (고정) */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex justify-center gap-4 py-2 bg-gradient-to-b from-background via-background/80 to-transparent">
-        {Array.from({ length: maxDepth + 1 }, (_, i) => (
-          <div
-            key={i}
-            className="px-4 py-1.5 rounded-full bg-slate-800 text-white text-xs font-semibold shadow-md"
-          >
-            Hop {i + 1}
-          </div>
-        ))}
-      </div>
-
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
+        fitViewOptions={{ padding: 0.15, minZoom: 0.3 }}
         minZoom={0.1}
         maxZoom={2}
       >
-        <Controls />
+        <Controls className="!shadow-sm !border !border-gray-200 !rounded-lg" />
         <MiniMap
-          nodeStrokeWidth={3}
+          nodeStrokeWidth={2}
+          nodeColor="#e2e8f0"
+          maskColor="rgba(0,0,0,0.05)"
+          className="!shadow-sm !border !border-gray-200 !rounded-lg"
           zoomable
           pannable
         />
-        <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={0.8} color="#e2e8f0" />
       </ReactFlow>
       <NodeDetailPanel />
 
@@ -165,7 +182,7 @@ function GraphViewerInner({ className }: GraphViewerProps) {
         <Button
           size="sm"
           variant="secondary"
-          className="shadow-lg"
+          className="shadow-sm border border-gray-200"
           title="Create node"
           onClick={() => setCreateNodeOpen(true)}
         >
@@ -175,7 +192,7 @@ function GraphViewerInner({ className }: GraphViewerProps) {
         <Button
           size="sm"
           variant="secondary"
-          className="shadow-lg"
+          className="shadow-sm border border-gray-200"
           title="Create edge"
           onClick={() => setCreateEdgeOpen(true)}
         >
