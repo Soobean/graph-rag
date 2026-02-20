@@ -128,7 +128,9 @@ async def delete_projection(
         return {
             "success": True,
             "dropped": dropped,
-            "message": "프로젝션이 삭제되었습니다." if dropped else "삭제할 프로젝션이 없습니다.",
+            "message": "프로젝션이 삭제되었습니다."
+            if dropped
+            else "삭제할 프로젝션이 없습니다.",
         }
 
     except Exception as e:

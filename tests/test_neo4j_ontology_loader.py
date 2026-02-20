@@ -10,12 +10,11 @@ Neo4jOntologyLoader 및 HybridOntologyLoader 테스트
 - 실행: pytest -m integration
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.domain.ontology.loader import ExpansionConfig
-
 
 # ============================================================================
 # Neo4jOntologyLoader 유닛 테스트 (Mock)
@@ -36,6 +35,7 @@ class TestNeo4jOntologyLoader:
     def loader(self, mock_client):
         """Neo4jOntologyLoader with mocked client"""
         from src.domain.ontology.neo4j_loader import Neo4jOntologyLoader
+
         return Neo4jOntologyLoader(mock_client)
 
     # -------------------------------------------------------------------------
@@ -87,7 +87,9 @@ class TestNeo4jOntologyLoader:
         """동의어 목록 조회 성공"""
         mock_client.execute_query.side_effect = [
             [{"canonical_name": "Python"}],  # get_canonical
-            [{"canonical": "Python", "aliases": ["파이썬", "Python3", "Py"]}],  # get_synonyms
+            [
+                {"canonical": "Python", "aliases": ["파이썬", "Python3", "Py"]}
+            ],  # get_synonyms
         ]
 
         result = await loader.get_synonyms("파이썬", "skills")
@@ -157,7 +159,15 @@ class TestNeo4jOntologyLoader:
             # get_canonical 응답
             [{"canonical_name": "Python"}],
             # get_synonyms_with_weights 응답
-            [{"canonical": "Python", "synonyms": [{"name": "파이썬", "weight": 1.0}, {"name": "Python3", "weight": 0.8}]}],
+            [
+                {
+                    "canonical": "Python",
+                    "synonyms": [
+                        {"name": "파이썬", "weight": 1.0},
+                        {"name": "Python3", "weight": 0.8},
+                    ],
+                }
+            ],
             # get_children 응답
             [{"children": ["Django", "FastAPI"]}],
         ]
@@ -213,10 +223,12 @@ class TestNeo4jOntologyLoader:
     async def test_health_check_healthy(self, loader, mock_client):
         """정상 상태 확인"""
         mock_client.execute_query.return_value = [
-            {"concept_stats": [
-                {"type": "skill", "count": 32},
-                {"type": "category", "count": 3},
-            ]}
+            {
+                "concept_stats": [
+                    {"type": "skill", "count": 32},
+                    {"type": "category", "count": 3},
+                ]
+            }
         ]
 
         result = await loader.health_check()
@@ -267,10 +279,7 @@ class TestHybridOntologyLoader:
         """Neo4j 모드 초기화"""
         from src.domain.ontology.hybrid_loader import HybridOntologyLoader
 
-        loader = HybridOntologyLoader(
-            neo4j_client=mock_neo4j_client,
-            mode="neo4j"
-        )
+        loader = HybridOntologyLoader(neo4j_client=mock_neo4j_client, mode="neo4j")
 
         assert loader.mode == "neo4j"
         assert loader._yaml_loader is None
@@ -280,10 +289,7 @@ class TestHybridOntologyLoader:
         """하이브리드 모드 초기화"""
         from src.domain.ontology.hybrid_loader import HybridOntologyLoader
 
-        loader = HybridOntologyLoader(
-            neo4j_client=mock_neo4j_client,
-            mode="hybrid"
-        )
+        loader = HybridOntologyLoader(neo4j_client=mock_neo4j_client, mode="hybrid")
 
         assert loader.mode == "hybrid"
         assert loader._yaml_loader is not None
@@ -361,10 +367,7 @@ class TestHybridOntologyLoader:
 
         mock_neo4j_client.execute_query.return_value = [{"canonical_name": "Python"}]
 
-        loader = HybridOntologyLoader(
-            neo4j_client=mock_neo4j_client,
-            mode="neo4j"
-        )
+        loader = HybridOntologyLoader(neo4j_client=mock_neo4j_client, mode="neo4j")
         result = await loader.get_canonical("파이썬", "skills")
 
         assert result == "Python"
@@ -385,10 +388,7 @@ class TestHybridOntologyLoader:
             [{"children": []}],
         ]
 
-        loader = HybridOntologyLoader(
-            neo4j_client=mock_neo4j_client,
-            mode="neo4j"
-        )
+        loader = HybridOntologyLoader(neo4j_client=mock_neo4j_client, mode="neo4j")
         result = await loader.expand_concept("파이썬", "skills")
 
         assert "Python" in result
@@ -404,10 +404,7 @@ class TestHybridOntologyLoader:
 
         mock_neo4j_client.execute_query.side_effect = Exception("Connection failed")
 
-        loader = HybridOntologyLoader(
-            neo4j_client=mock_neo4j_client,
-            mode="hybrid"
-        )
+        loader = HybridOntologyLoader(neo4j_client=mock_neo4j_client, mode="hybrid")
         result = await loader.get_canonical("파이썬", "skills")
 
         # YAML 폴백으로 정상 결과
@@ -421,10 +418,7 @@ class TestHybridOntologyLoader:
         # Neo4j에서 못찾음 (term 그대로 반환)
         mock_neo4j_client.execute_query.return_value = [{"canonical_name": None}]
 
-        loader = HybridOntologyLoader(
-            neo4j_client=mock_neo4j_client,
-            mode="hybrid"
-        )
+        loader = HybridOntologyLoader(neo4j_client=mock_neo4j_client, mode="hybrid")
         result = await loader.get_canonical("파이썬", "skills")
 
         # YAML 폴백으로 정상 결과
@@ -455,10 +449,7 @@ class TestHybridOntologyLoader:
             {"concept_stats": [{"type": "skill", "count": 32}]}
         ]
 
-        loader = HybridOntologyLoader(
-            neo4j_client=mock_neo4j_client,
-            mode="hybrid"
-        )
+        loader = HybridOntologyLoader(neo4j_client=mock_neo4j_client, mode="hybrid")
         result = await loader.health_check()
 
         assert result["mode"] == "hybrid"
@@ -506,6 +497,7 @@ class TestNeo4jOntologyLoaderIntegration:
     async def loader(self, neo4j_client):
         """실제 Neo4jOntologyLoader"""
         from src.domain.ontology.neo4j_loader import Neo4jOntologyLoader
+
         return Neo4jOntologyLoader(neo4j_client)
 
     @pytest.mark.asyncio
@@ -547,5 +539,6 @@ class TestNeo4jOntologyLoaderIntegration:
         neo4j_synonyms = set(await loader.get_synonyms("Python", "skills"))
 
         # Neo4j가 YAML의 상위 집합이어야 함 (동일하거나 더 많아야 함)
-        assert yaml_synonyms.issubset(neo4j_synonyms) or yaml_synonyms == neo4j_synonyms, \
-            f"YAML: {yaml_synonyms}, Neo4j: {neo4j_synonyms}"
+        assert (
+            yaml_synonyms.issubset(neo4j_synonyms) or yaml_synonyms == neo4j_synonyms
+        ), f"YAML: {yaml_synonyms}, Neo4j: {neo4j_synonyms}"

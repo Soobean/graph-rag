@@ -190,14 +190,20 @@ _MANAGER_REL_RULES: dict[str, RelationshipAccessRule] = {}  # 전체 허용
 
 _EDITOR_REL_RULES: dict[str, RelationshipAccessRule] = {
     "HAS_SKILL": RelationshipAccessRule(("proficiency", "years_used", "rate_factor")),
-    "WORKS_ON": RelationshipAccessRule(("role", "contribution_percent", "allocated_hours")),
-    "REQUIRES": RelationshipAccessRule(("required_proficiency", "required_headcount", "priority", "importance")),
+    "WORKS_ON": RelationshipAccessRule(
+        ("role", "contribution_percent", "allocated_hours")
+    ),
+    "REQUIRES": RelationshipAccessRule(
+        ("required_proficiency", "required_headcount", "priority", "importance")
+    ),
 }
 
 _VIEWER_REL_RULES: dict[str, RelationshipAccessRule] = {
     "HAS_SKILL": RelationshipAccessRule(("proficiency", "years_used")),
     "WORKS_ON": RelationshipAccessRule(("role",)),
-    "REQUIRES": RelationshipAccessRule(("required_proficiency", "priority", "importance")),
+    "REQUIRES": RelationshipAccessRule(
+        ("required_proficiency", "priority", "importance")
+    ),
 }
 
 # =============================================================================
@@ -227,12 +233,27 @@ _MANAGER_RULES: dict[str, NodeAccessRule] = {
 
 _EDITOR_RULES: dict[str, NodeAccessRule] = {
     "Employee": NodeAccessRule(
-        ("name", "job_type", "years_experience", "hire_date", "availability", "max_projects"),
+        (
+            "name",
+            "job_type",
+            "years_experience",
+            "hire_date",
+            "availability",
+            "max_projects",
+        ),
         "all",
     ),
     "Skill": NodeAccessRule(ALL_PROPS, "all"),
     "Project": NodeAccessRule(
-        ("name", "type", "status", "start_date", "duration_months", "estimated_hours", "required_headcount"),
+        (
+            "name",
+            "type",
+            "status",
+            "start_date",
+            "duration_months",
+            "estimated_hours",
+            "required_headcount",
+        ),
         "all",
     ),
     "Department": NodeAccessRule(("name", "head_count"), "all"),

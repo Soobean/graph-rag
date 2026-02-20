@@ -20,6 +20,7 @@ from src.graph.state import GraphRAGState
 # 테스트 헬퍼: Neo4j 결과 레코드 팩토리
 # =============================================================================
 
+
 def _node(label: str, props: dict | None = None) -> dict:
     """Neo4j 노드 형태 dict 생성"""
     return {
@@ -39,7 +40,9 @@ def _rel(rel_type: str, props: dict | None = None) -> dict:
     }
 
 
-def _user(roles: list[str], department: str | None = None, is_admin: bool = False) -> UserContext:
+def _user(
+    roles: list[str], department: str | None = None, is_admin: bool = False
+) -> UserContext:
     """테스트용 UserContext 생성"""
     return UserContext(
         user_id="test",
@@ -54,6 +57,7 @@ def _user(roles: list[str], department: str | None = None, is_admin: bool = Fals
 # =============================================================================
 # GraphExecutorNode 4차원 필터링 테스트
 # =============================================================================
+
 
 class TestAccessEnforcementD1:
     """D1: 라벨 접근 제어"""
@@ -171,13 +175,18 @@ class TestAccessEnforcementD2:
         """viewer → Employee에서 name, job_type만 보임"""
         executor, mock_neo4j = node
         mock_neo4j.execute_cypher.return_value = [
-            {"e": _node("Employee", {
-                "name": "김철수",
-                "job_type": "정규직",
-                "years_experience": 5,
-                "hire_date": "2020-01-01",
-                "salary": 50000000,
-            })},
+            {
+                "e": _node(
+                    "Employee",
+                    {
+                        "name": "김철수",
+                        "job_type": "정규직",
+                        "years_experience": 5,
+                        "hire_date": "2020-01-01",
+                        "salary": 50000000,
+                    },
+                )
+            },
         ]
 
         state = GraphRAGState(
@@ -198,13 +207,18 @@ class TestAccessEnforcementD2:
         """editor → Employee에서 name, job_type, experience, hire_date 보임"""
         executor, mock_neo4j = node
         mock_neo4j.execute_cypher.return_value = [
-            {"e": _node("Employee", {
-                "name": "김철수",
-                "job_type": "정규직",
-                "years_experience": 5,
-                "hire_date": "2020-01-01",
-                "salary": 50000000,
-            })},
+            {
+                "e": _node(
+                    "Employee",
+                    {
+                        "name": "김철수",
+                        "job_type": "정규직",
+                        "years_experience": 5,
+                        "hire_date": "2020-01-01",
+                        "salary": 50000000,
+                    },
+                )
+            },
         ]
 
         state = GraphRAGState(
@@ -243,13 +257,18 @@ class TestAccessEnforcementD2:
         """viewer → Employee.hourly_rate는 숨김"""
         executor, mock_neo4j = node
         mock_neo4j.execute_cypher.return_value = [
-            {"e": _node("Employee", {
-                "name": "김철수",
-                "job_type": "백엔드개발자",
-                "hourly_rate": 89250,
-                "availability": "available",
-                "max_projects": 4,
-            })},
+            {
+                "e": _node(
+                    "Employee",
+                    {
+                        "name": "김철수",
+                        "job_type": "백엔드개발자",
+                        "hourly_rate": 89250,
+                        "availability": "available",
+                        "max_projects": 4,
+                    },
+                )
+            },
         ]
 
         state = GraphRAGState(
@@ -268,15 +287,20 @@ class TestAccessEnforcementD2:
         """editor → Project.budget_allocated 숨김 (start_date, duration_months 노출)"""
         executor, mock_neo4j = node
         mock_neo4j.execute_cypher.return_value = [
-            {"p": _node("Project", {
-                "name": "챗봇 리뉴얼",
-                "type": "AI/ML",
-                "status": "진행중",
-                "start_date": "2025-01-01",
-                "budget_allocated": 5000000000,
-                "duration_months": 12,
-                "required_headcount": 8,
-            })},
+            {
+                "p": _node(
+                    "Project",
+                    {
+                        "name": "챗봇 리뉴얼",
+                        "type": "AI/ML",
+                        "status": "진행중",
+                        "start_date": "2025-01-01",
+                        "budget_allocated": 5000000000,
+                        "duration_months": 12,
+                        "required_headcount": 8,
+                    },
+                )
+            },
         ]
 
         state = GraphRAGState(
@@ -308,12 +332,15 @@ class TestAccessEnforcementD2Relationship:
         mock_neo4j.execute_cypher.return_value = [
             {
                 "e": _node("Employee", {"name": "김철수", "job_type": "백엔드개발자"}),
-                "r": _rel("HAS_SKILL", {
-                    "proficiency": "고급",
-                    "years_used": 5,
-                    "rate_factor": 0.85,
-                    "effective_rate": 123000,
-                }),
+                "r": _rel(
+                    "HAS_SKILL",
+                    {
+                        "proficiency": "고급",
+                        "years_used": 5,
+                        "rate_factor": 0.85,
+                        "effective_rate": 123000,
+                    },
+                ),
                 "s": _node("Skill", {"name": "Python"}),
             },
         ]
@@ -338,12 +365,15 @@ class TestAccessEnforcementD2Relationship:
         mock_neo4j.execute_cypher.return_value = [
             {
                 "e": _node("Employee", {"name": "김철수", "job_type": "백엔드개발자"}),
-                "r": _rel("HAS_SKILL", {
-                    "proficiency": "고급",
-                    "years_used": 5,
-                    "rate_factor": 0.85,
-                    "effective_rate": 123000,
-                }),
+                "r": _rel(
+                    "HAS_SKILL",
+                    {
+                        "proficiency": "고급",
+                        "years_used": 5,
+                        "rate_factor": 0.85,
+                        "effective_rate": 123000,
+                    },
+                ),
                 "s": _node("Skill", {"name": "Python"}),
             },
         ]
@@ -367,12 +397,15 @@ class TestAccessEnforcementD2Relationship:
         mock_neo4j.execute_cypher.return_value = [
             {
                 "e": _node("Employee", {"name": "김철수"}),
-                "r": _rel("HAS_SKILL", {
-                    "proficiency": "고급",
-                    "years_used": 5,
-                    "rate_factor": 0.85,
-                    "effective_rate": 123000,
-                }),
+                "r": _rel(
+                    "HAS_SKILL",
+                    {
+                        "proficiency": "고급",
+                        "years_used": 5,
+                        "rate_factor": 0.85,
+                        "effective_rate": 123000,
+                    },
+                ),
                 "s": _node("Skill", {"name": "Python"}),
             },
         ]
@@ -396,14 +429,20 @@ class TestAccessEnforcementD2Relationship:
         mock_neo4j.execute_cypher.return_value = [
             {
                 "e": _node("Employee", {"name": "김철수", "job_type": "백엔드개발자"}),
-                "r": _rel("WORKS_ON", {
-                    "role": "개발자",
-                    "contribution_percent": 70,
-                    "agreed_rate": 89250,
-                    "allocated_hours": 625,
-                    "actual_hours": 312,
-                }),
-                "p": _node("Project", {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"}),
+                "r": _rel(
+                    "WORKS_ON",
+                    {
+                        "role": "개발자",
+                        "contribution_percent": 70,
+                        "agreed_rate": 89250,
+                        "allocated_hours": 625,
+                        "actual_hours": 312,
+                    },
+                ),
+                "p": _node(
+                    "Project",
+                    {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"},
+                ),
             },
         ]
 
@@ -425,13 +464,19 @@ class TestAccessEnforcementD2Relationship:
         mock_neo4j.execute_cypher.return_value = [
             {
                 "e": _node("Employee", {"name": "김철수", "job_type": "백엔드개발자"}),
-                "r": _rel("WORKS_ON", {
-                    "role": "개발자",
-                    "contribution_percent": 70,
-                    "agreed_rate": 89250,
-                    "allocated_hours": 625,
-                }),
-                "p": _node("Project", {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"}),
+                "r": _rel(
+                    "WORKS_ON",
+                    {
+                        "role": "개발자",
+                        "contribution_percent": 70,
+                        "agreed_rate": 89250,
+                        "allocated_hours": 625,
+                    },
+                ),
+                "p": _node(
+                    "Project",
+                    {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"},
+                ),
             },
         ]
 
@@ -454,14 +499,20 @@ class TestAccessEnforcementD2Relationship:
         executor, mock_neo4j = node
         mock_neo4j.execute_cypher.return_value = [
             {
-                "p": _node("Project", {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"}),
-                "r": _rel("REQUIRES", {
-                    "importance": "필수",
-                    "required_proficiency": "고급",
-                    "required_headcount": 2,
-                    "max_hourly_rate": 180000,
-                    "priority": 1,
-                }),
+                "p": _node(
+                    "Project",
+                    {"name": "AI 프로젝트", "type": "AI/ML", "status": "진행중"},
+                ),
+                "r": _rel(
+                    "REQUIRES",
+                    {
+                        "importance": "필수",
+                        "required_proficiency": "고급",
+                        "required_headcount": 2,
+                        "max_hourly_rate": 180000,
+                        "priority": 1,
+                    },
+                ),
                 "s": _node("Skill", {"name": "Python"}),
             },
         ]
@@ -487,12 +538,15 @@ class TestAccessEnforcementD2Relationship:
         mock_neo4j.execute_cypher.return_value = [
             {
                 "e": _node("Employee", {"name": "김철수"}),
-                "r": _rel("HAS_SKILL", {
-                    "proficiency": "고급",
-                    "years_used": 5,
-                    "rate_factor": 0.85,
-                    "effective_rate": 123000,
-                }),
+                "r": _rel(
+                    "HAS_SKILL",
+                    {
+                        "proficiency": "고급",
+                        "years_used": 5,
+                        "rate_factor": 0.85,
+                        "effective_rate": 123000,
+                    },
+                ),
                 "s": _node("Skill", {"name": "Python"}),
                 "d": _node("Department", {"name": "백엔드개발팀"}),
             },
@@ -603,10 +657,13 @@ class TestAccessEnforcementD3:
         # Department 노드 없이 Employee.department만 있는 경우
         mock_neo4j.execute_cypher.return_value = [
             {
-                "e": _node("Employee", {
-                    "name": "김철수",
-                    "department": "백엔드개발팀",
-                }),
+                "e": _node(
+                    "Employee",
+                    {
+                        "name": "김철수",
+                        "department": "백엔드개발팀",
+                    },
+                ),
             },
         ]
 
@@ -625,10 +682,13 @@ class TestAccessEnforcementD3:
         executor, mock_neo4j = node
         mock_neo4j.execute_cypher.return_value = [
             {
-                "e": _node("Employee", {
-                    "name": "이영희",
-                    "department": "AI연구소",
-                }),
+                "e": _node(
+                    "Employee",
+                    {
+                        "name": "이영희",
+                        "department": "AI연구소",
+                    },
+                ),
             },
         ]
 
@@ -647,10 +707,13 @@ class TestAccessEnforcementD3:
         executor, mock_neo4j = node
         mock_neo4j.execute_cypher.return_value = [
             {
-                "e": _node("Employee", {
-                    "name": "김철수",
-                    "department": "Backend개발팀",
-                }),
+                "e": _node(
+                    "Employee",
+                    {
+                        "name": "김철수",
+                        "department": "Backend개발팀",
+                    },
+                ),
             },
         ]
 
@@ -841,7 +904,9 @@ class TestAccessEnforcementCombined:
         mock_neo4j.execute_cypher.return_value = [
             # 통과: Employee + HAS_SKILL + Skill (viewer 접근 가능)
             {
-                "e": _node("Employee", {"name": "김철수", "job_type": "정규직", "salary": 5000}),
+                "e": _node(
+                    "Employee", {"name": "김철수", "job_type": "정규직", "salary": 5000}
+                ),
                 "r": _rel("HAS_SKILL"),
                 "s": _node("Skill", {"name": "Python"}),
             },
@@ -897,12 +962,17 @@ class TestAccessEnforcementCombined:
         """viewer+editor → 병합 정책 (most permissive)"""
         executor, mock_neo4j = node
         mock_neo4j.execute_cypher.return_value = [
-            {"e": _node("Employee", {
-                "name": "김철수",
-                "job_type": "정규직",
-                "years_experience": 5,
-                "salary": 5000,
-            })},
+            {
+                "e": _node(
+                    "Employee",
+                    {
+                        "name": "김철수",
+                        "job_type": "정규직",
+                        "years_experience": 5,
+                        "salary": 5000,
+                    },
+                )
+            },
         ]
 
         state = GraphRAGState(
@@ -922,6 +992,7 @@ class TestAccessEnforcementCombined:
 # =============================================================================
 # CypherGeneratorNode 스키마 필터링 테스트
 # =============================================================================
+
 
 class TestSchemaFiltering:
     """CypherGenerator._filter_schema_for_policy 테스트"""
@@ -994,7 +1065,9 @@ class TestSchemaFiltering:
         assert "Skill" in filtered["node_labels"]
         assert "Concept" in filtered["node_labels"]
         assert "Department" in filtered["node_labels"]
-        assert len(filtered["relationship_types"]) == len(full_schema["relationship_types"])
+        assert len(filtered["relationship_types"]) == len(
+            full_schema["relationship_types"]
+        )
 
     def test_manager_schema_mentors_included(self, generator, full_schema):
         """manager → MENTORS 포함, IS_A/SAME_AS 제거"""

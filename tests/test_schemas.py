@@ -38,14 +38,18 @@ class TestQueryRequest:
         """빈 질문 거부"""
         with pytest.raises(ValidationError) as exc_info:
             QueryRequest(question="")
-        assert "min_length" in str(exc_info.value) or "at least 1" in str(exc_info.value)
+        assert "min_length" in str(exc_info.value) or "at least 1" in str(
+            exc_info.value
+        )
 
     def test_question_max_length(self):
         """질문 최대 길이 검증"""
         long_question = "가" * 1001
         with pytest.raises(ValidationError) as exc_info:
             QueryRequest(question=long_question)
-        assert "max_length" in str(exc_info.value) or "at most 1000" in str(exc_info.value)
+        assert "max_length" in str(exc_info.value) or "at most 1000" in str(
+            exc_info.value
+        )
 
     def test_question_at_max_length(self):
         """질문 최대 길이 경계값"""

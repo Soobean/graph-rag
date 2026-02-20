@@ -221,9 +221,7 @@ class Neo4jRepository:
     ) -> OntologyProposal | None:
         return await self._ontology_proposal.find_ontology_proposal(term, category)
 
-    async def update_proposal_frequency(
-        self, proposal_id: str, question: str
-    ) -> bool:
+    async def update_proposal_frequency(self, proposal_id: str, question: str) -> bool:
         return await self._ontology_proposal.update_proposal_frequency(
             proposal_id, question
         )
@@ -250,9 +248,7 @@ class Neo4jRepository:
     ) -> list[OntologyProposal]:
         return await self._ontology_proposal.get_pending_proposals(category, limit)
 
-    async def get_proposal_by_id(
-        self, proposal_id: str
-    ) -> OntologyProposal | None:
+    async def get_proposal_by_id(self, proposal_id: str) -> OntologyProposal | None:
         return await self._ontology_proposal.get_proposal_by_id(proposal_id)
 
     async def get_proposals_paginated(
@@ -303,14 +299,10 @@ class Neo4jRepository:
             proposal_id, expected_version, updates
         )
 
-    async def create_proposal(
-        self, proposal: OntologyProposal
-    ) -> OntologyProposal:
+    async def create_proposal(self, proposal: OntologyProposal) -> OntologyProposal:
         return await self._ontology_proposal.create_proposal(proposal)
 
-    async def get_proposal_current_version(
-        self, proposal_id: str
-    ) -> int | None:
+    async def get_proposal_current_version(self, proposal_id: str) -> int | None:
         return await self._ontology_proposal.get_proposal_current_version(proposal_id)
 
     async def update_proposal_applied_at(self, proposal_id: str) -> bool:

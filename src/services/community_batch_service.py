@@ -164,7 +164,9 @@ class CommunityBatchService:
                 await self._gds.cleanup_all_projections()
                 logger.info("All projections cleaned up after error")
             except Exception as cleanup_err:
-                logger.warning(f"Failed to cleanup projections after error: {cleanup_err}")
+                logger.warning(
+                    f"Failed to cleanup projections after error: {cleanup_err}"
+                )
             raise
 
     async def get_status(self) -> CommunityStatusResult:

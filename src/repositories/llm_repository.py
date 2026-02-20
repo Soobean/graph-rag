@@ -658,7 +658,11 @@ class LLMRepository:
         """
         prompt = self._prompt_manager.load_prompt("query_decomposition")
 
-        schema_str = self._format_schema(schema) if schema else "Schema information not available"
+        schema_str = (
+            self._format_schema(schema)
+            if schema
+            else "Schema information not available"
+        )
         system_prompt = prompt["system"].format(schema_str=schema_str)
         user_prompt = prompt["user"].format(question=question)
 
@@ -914,7 +918,9 @@ class LLMRepository:
                                 "properties": props,
                             }
                     # 관계 형식 감지
-                    elif "type" in value and ("startNodeId" in value or "start" in value):
+                    elif "type" in value and (
+                        "startNodeId" in value or "start" in value
+                    ):
                         has_node_or_rel = True
                         rel_type = value.get("type", "RELATED")
                         relationships.append(rel_type)
@@ -934,7 +940,9 @@ class LLMRepository:
                     by_label[label] = []
                 by_label[label].append(entity)
 
-            lines.append(f"총 {len(entities)}개의 고유 엔티티, {len(results)}개의 관계 결과:")
+            lines.append(
+                f"총 {len(entities)}개의 고유 엔티티, {len(results)}개의 관계 결과:"
+            )
 
             for label, ents in by_label.items():
                 lines.append(f"\n[{label}] ({len(ents)}개):")

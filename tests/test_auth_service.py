@@ -2,8 +2,9 @@
 AuthService 테스트
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.auth.jwt_handler import JWTHandler
 from src.auth.password import PasswordHandler
@@ -104,9 +105,7 @@ class TestLogin:
 
 
 class TestRefreshToken:
-    async def test_refresh_success(
-        self, auth_service, mock_user_repo, jwt_handler
-    ):
+    async def test_refresh_success(self, auth_service, mock_user_repo, jwt_handler):
         refresh = jwt_handler.create_refresh_token("u1")
         mock_user_repo.find_by_id = AsyncMock(
             return_value={
@@ -124,9 +123,7 @@ class TestRefreshToken:
         with pytest.raises(AuthenticationError, match="Invalid refresh token"):
             await auth_service.refresh_token("invalid.token.here")
 
-    async def test_refresh_with_access_token_fails(
-        self, auth_service, jwt_handler
-    ):
+    async def test_refresh_with_access_token_fails(self, auth_service, jwt_handler):
         """access token으로 refresh 시도 → 실패"""
         access = jwt_handler.create_access_token(
             {"sub": "u1", "username": "test", "roles": []}

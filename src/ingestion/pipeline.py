@@ -169,12 +169,14 @@ class IngestionPipeline:
             label = node.label.value
             if label not in nodes_by_label:
                 nodes_by_label[label] = []
-            nodes_by_label[label].append({
-                "id": node.id,
-                "props": node.properties,
-                "source_file": node.source_metadata.get("source", "unknown"),
-                "source_row": node.source_metadata.get("row_index", 0),
-            })
+            nodes_by_label[label].append(
+                {
+                    "id": node.id,
+                    "props": node.properties,
+                    "source_file": node.source_metadata.get("source", "unknown"),
+                    "source_row": node.source_metadata.get("row_index", 0),
+                }
+            )
 
         # Label별로 배치 MERGE
         for label, nodes_data in nodes_by_label.items():

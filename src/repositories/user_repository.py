@@ -105,9 +105,7 @@ class UserRepository:
             return results[0]["user"]
         return None
 
-    async def list_users(
-        self, skip: int = 0, limit: int = 50
-    ) -> list[dict[str, Any]]:
+    async def list_users(self, skip: int = 0, limit: int = 50) -> list[dict[str, Any]]:
         """사용자 목록 조회"""
         query = """
         MATCH (u:User)

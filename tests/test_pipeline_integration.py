@@ -14,8 +14,9 @@ Note:
     (기존 IntentClassifier + EntityExtractor 통합)
 """
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 
 class TestPipelineRouting:
@@ -41,9 +42,7 @@ class TestPipelineRouting:
         assert "response_generator_empty" in path
 
     @pytest.mark.asyncio
-    async def test_cypher_error_skips_executor(
-        self, pipeline, mock_llm, mock_neo4j
-    ):
+    async def test_cypher_error_skips_executor(self, pipeline, mock_llm, mock_neo4j):
         """Cypher 생성 에러 시 executor 스킵"""
         mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
@@ -61,14 +60,14 @@ class TestPipelineRouting:
         assert "response_generator_error_handler" in path
 
     @pytest.mark.asyncio
-    async def test_normal_flow_all_nodes(
-        self, pipeline, mock_llm, mock_neo4j
-    ):
+    async def test_normal_flow_all_nodes(self, pipeline, mock_llm, mock_neo4j):
         """정상 흐름 시 모든 노드 실행 (순차 실행)"""
         mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
-            "entities": [{"type": "Employee", "value": "홍길동", "normalized": "홍길동"}],
+            "entities": [
+                {"type": "Employee", "value": "홍길동", "normalized": "홍길동"}
+            ],
         }
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (p:Employee {name: $name}) RETURN p",
@@ -182,8 +181,7 @@ class TestPipelineErrorHandling:
         assert result["metadata"]["intent"] == "unknown"
         path = result["metadata"]["execution_path"]
         assert (
-            "intent_entity_extractor_error" in path
-            or "intent_entity_extractor" in path
+            "intent_entity_extractor_error" in path or "intent_entity_extractor" in path
         )
 
     @pytest.mark.asyncio
@@ -249,7 +247,11 @@ class TestPipelineEmptyResults:
             "intent": "personnel_search",
             "confidence": 0.9,
             "entities": [
-                {"type": "Employee", "value": "존재하지않는사람", "normalized": "존재하지않는사람"}
+                {
+                    "type": "Employee",
+                    "value": "존재하지않는사람",
+                    "normalized": "존재하지않는사람",
+                }
             ],
         }
         mock_llm.generate_cypher.return_value = {
@@ -351,7 +353,12 @@ class TestOntologyUpdateRouting:
 
         # 승인 결과 설정
         from datetime import UTC, datetime
-        from src.domain.adaptive.models import OntologyProposal, ProposalStatus, ProposalType
+
+        from src.domain.adaptive.models import (
+            OntologyProposal,
+            ProposalStatus,
+            ProposalType,
+        )
 
         mock_ontology_service.approve_proposal.return_value = OntologyProposal(
             proposal_type=ProposalType.NEW_SYNONYM,
@@ -372,13 +379,12 @@ class TestOntologyUpdateRouting:
         # 응답에 관련 텍스트가 있어야 함 (동의어, 등록, 추가, 접수 등)
         response = result["response"]
         assert any(
-            keyword in response for keyword in ["동의어", "등록", "추가", "접수", "적용"]
+            keyword in response
+            for keyword in ["동의어", "등록", "추가", "접수", "적용"]
         )
 
     @pytest.mark.asyncio
-    async def test_ontology_update_without_service_fallback(
-        self, pipeline, mock_llm
-    ):
+    async def test_ontology_update_without_service_fallback(self, pipeline, mock_llm):
         """OntologyService 없는 pipeline에서 ontology_update intent 처리"""
         mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "ontology_update",
@@ -441,10 +447,12 @@ class TestGlobalAnalysisRouting:
             "cypher": "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill) RETURN s.name, count(e) AS cnt ORDER BY cnt DESC",
             "parameters": {},
         }
-        mock_neo4j.execute_cypher = AsyncMock(return_value=[
-            {"s.name": "Python", "cnt": 10},
-            {"s.name": "Java", "cnt": 8},
-        ])
+        mock_neo4j.execute_cypher = AsyncMock(
+            return_value=[
+                {"s.name": "Python", "cnt": 10},
+                {"s.name": "Java", "cnt": 8},
+            ]
+        )
         mock_llm.generate_response.return_value = "전체 기술 분포입니다."
 
         result = await pipeline.run("전체 기술 분포는?")

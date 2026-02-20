@@ -115,7 +115,9 @@ class TestGraphExtractorExtract:
         # 높은 신뢰도 엣지만 남음
         assert result.edges[0].confidence == 0.95
 
-    async def test_extract_confidence_threshold_boundary(self, MockOpenAI, mock_settings):
+    async def test_extract_confidence_threshold_boundary(
+        self, MockOpenAI, mock_settings
+    ):
         """신뢰도 경계값 (0.8) 테스트"""
         extractor = self._make_extractor(MockOpenAI, mock_settings)
 
@@ -282,8 +284,10 @@ class TestIsValidRelation:
     def test_valid_person_to_skill(self, MockOpenAI, mock_settings):
         """Person → Skill (HAS_SKILL) 유효"""
         mock_settings.return_value = MagicMock(
-            azure_openai_api_key="k", azure_openai_api_version="v",
-            azure_openai_endpoint="e", heavy_model_deployment="m",
+            azure_openai_api_key="k",
+            azure_openai_api_version="v",
+            azure_openai_endpoint="e",
+            heavy_model_deployment="m",
         )
         extractor = GraphExtractor()
         src = _make_node("p", NodeType.PERSON, name="A")
@@ -295,8 +299,10 @@ class TestIsValidRelation:
     def test_invalid_skill_to_person(self, MockOpenAI, mock_settings):
         """Skill → Person (HAS_SKILL) 무효 (역방향)"""
         mock_settings.return_value = MagicMock(
-            azure_openai_api_key="k", azure_openai_api_version="v",
-            azure_openai_endpoint="e", heavy_model_deployment="m",
+            azure_openai_api_key="k",
+            azure_openai_api_version="v",
+            azure_openai_endpoint="e",
+            heavy_model_deployment="m",
         )
         extractor = GraphExtractor()
         src = _make_node("s", NodeType.SKILL, name="B")
@@ -308,8 +314,10 @@ class TestIsValidRelation:
     def test_unknown_relation_type(self, MockOpenAI, mock_settings):
         """정의되지 않은 관계 타입은 무효"""
         mock_settings.return_value = MagicMock(
-            azure_openai_api_key="k", azure_openai_api_version="v",
-            azure_openai_endpoint="e", heavy_model_deployment="m",
+            azure_openai_api_key="k",
+            azure_openai_api_version="v",
+            azure_openai_endpoint="e",
+            heavy_model_deployment="m",
         )
         extractor = GraphExtractor()
         src = _make_node("p", NodeType.PERSON, name="A")

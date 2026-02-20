@@ -64,9 +64,7 @@ class TestRelationNormalizer:
     """RelationNormalizer 테스트"""
 
     @pytest.mark.asyncio
-    async def test_group_relations_success(
-        self, normalizer, mock_llm, sample_triples
-    ):
+    async def test_group_relations_success(self, normalizer, mock_llm, sample_triples):
         """관계 그룹화 성공"""
         mock_llm.generate_json.return_value = {
             "groups": [
@@ -128,9 +126,7 @@ class TestRelationNormalizer:
         assert len(result.unmapped_relations) > 0
 
     @pytest.mark.asyncio
-    async def test_group_relations_min_frequency(
-        self, normalizer, mock_llm
-    ):
+    async def test_group_relations_min_frequency(self, normalizer, mock_llm):
         """최소 빈도 필터링"""
         # 같은 관계가 2번만 등장
         triples = [

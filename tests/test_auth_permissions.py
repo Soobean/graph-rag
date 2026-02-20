@@ -37,9 +37,13 @@ class TestCheckPermission:
 
     def test_query_intent_wildcard(self):
         """쿼리 인텐트 와일드카드: query:*/search"""
-        assert check_permission("query:*/search", "query:personnel_search/search") is True
+        assert (
+            check_permission("query:*/search", "query:personnel_search/search") is True
+        )
         assert check_permission("query:*/search", "query:org_analysis/search") is True
-        assert check_permission("query:*/search", "query:personnel_search/write") is False
+        assert (
+            check_permission("query:*/search", "query:personnel_search/write") is False
+        )
 
     def test_no_wildcard_partial_match_fails(self):
         """와일드카드 없이 부분 매칭 안 됨"""

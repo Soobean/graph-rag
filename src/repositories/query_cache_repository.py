@@ -45,7 +45,9 @@ class CachedQuery:
         # cypher_parameters는 JSON 문자열로 저장됨
         params_str = props.get("cypher_parameters", "{}")
         try:
-            params = json.loads(params_str) if isinstance(params_str, str) else params_str
+            params = (
+                json.loads(params_str) if isinstance(params_str, str) else params_str
+            )
         except json.JSONDecodeError as e:
             logger.warning(
                 f"Failed to parse cached cypher_parameters: {e}. "

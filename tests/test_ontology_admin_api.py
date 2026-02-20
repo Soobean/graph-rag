@@ -5,7 +5,7 @@ Admin API 엔드포인트 통합 테스트
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -25,7 +25,6 @@ from src.domain.exceptions import (
 )
 from src.services.ontology_service import BatchResult, OntologyService
 
-
 # =============================================================================
 # Test App Setup
 # =============================================================================
@@ -43,15 +42,17 @@ def mock_ontology_service():
     service.reject_proposal = AsyncMock()
     service.batch_approve = AsyncMock()
     service.batch_reject = AsyncMock()
-    service.get_stats = AsyncMock(return_value={
-        "total_proposals": 0,
-        "pending_count": 0,
-        "approved_count": 0,
-        "auto_approved_count": 0,
-        "rejected_count": 0,
-        "category_distribution": {},
-        "top_unresolved_terms": [],
-    })
+    service.get_stats = AsyncMock(
+        return_value={
+            "total_proposals": 0,
+            "pending_count": 0,
+            "approved_count": 0,
+            "auto_approved_count": 0,
+            "rejected_count": 0,
+            "category_distribution": {},
+            "top_unresolved_terms": [],
+        }
+    )
     return service
 
 
@@ -66,6 +67,7 @@ def app(mock_ontology_service):
         return mock_ontology_service
 
     from src.dependencies import get_ontology_service
+
     app.dependency_overrides[get_ontology_service] = get_mock_service
 
     return app
@@ -194,9 +196,7 @@ class TestListProposals:
 class TestGetProposal:
     """상세 조회 API 테스트"""
 
-    def test_get_proposal_success(
-        self, client, mock_ontology_service, sample_proposal
-    ):
+    def test_get_proposal_success(self, client, mock_ontology_service, sample_proposal):
         """제안 상세 조회 성공"""
         mock_ontology_service.get_proposal = AsyncMock(return_value=sample_proposal)
 

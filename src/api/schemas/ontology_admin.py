@@ -55,7 +55,9 @@ class ProposalCreateRequest(BaseModel):
 class ProposalUpdateRequest(BaseModel):
     """제안 수정 요청"""
 
-    expected_version: int = Field(..., ge=1, description="예상 버전 (Optimistic Locking)")
+    expected_version: int = Field(
+        ..., ge=1, description="예상 버전 (Optimistic Locking)"
+    )
     suggested_parent: str | None = Field(
         default=None, max_length=100, description="수정할 부모 개념"
     )
@@ -70,7 +72,9 @@ class ProposalUpdateRequest(BaseModel):
 class ProposalApproveRequest(BaseModel):
     """제안 승인 요청"""
 
-    expected_version: int = Field(..., ge=1, description="예상 버전 (Optimistic Locking)")
+    expected_version: int = Field(
+        ..., ge=1, description="예상 버전 (Optimistic Locking)"
+    )
     canonical: str | None = Field(
         default=None, max_length=100, description="승인 시 확정할 정규 형태"
     )
@@ -83,7 +87,9 @@ class ProposalApproveRequest(BaseModel):
 class ProposalRejectRequest(BaseModel):
     """제안 거절 요청"""
 
-    expected_version: int = Field(..., ge=1, description="예상 버전 (Optimistic Locking)")
+    expected_version: int = Field(
+        ..., ge=1, description="예상 버전 (Optimistic Locking)"
+    )
     reason: str = Field(
         ..., min_length=1, max_length=500, description="거절 사유 (필수)"
     )
@@ -104,7 +110,9 @@ class BatchRejectRequest(BaseModel):
     proposal_ids: list[str] = Field(
         ..., min_length=1, max_length=100, description="거절할 제안 ID 목록"
     )
-    reason: str = Field(..., min_length=1, max_length=500, description="거절 사유 (필수)")
+    reason: str = Field(
+        ..., min_length=1, max_length=500, description="거절 사유 (필수)"
+    )
 
 
 # ============================================
@@ -122,7 +130,9 @@ class ProposalResponse(BaseModel):
     category: str = Field(..., description="카테고리")
     suggested_action: str = Field(..., description="제안된 액션 설명")
     suggested_parent: str | None = Field(default=None, description="제안된 부모 개념")
-    suggested_canonical: str | None = Field(default=None, description="제안된 정규 형태")
+    suggested_canonical: str | None = Field(
+        default=None, description="제안된 정규 형태"
+    )
     suggested_relation_type: str | None = Field(
         default=None, description="제안된 관계 유형 (IS_A, SAME_AS, REQUIRES, PART_OF)"
     )
@@ -160,7 +170,9 @@ class BatchOperationResponse(BaseModel):
 
     success_count: int = Field(..., description="성공한 작업 수")
     failed_count: int = Field(..., description="실패한 작업 수")
-    failed_ids: list[str] = Field(default_factory=list, description="실패한 제안 ID 목록")
+    failed_ids: list[str] = Field(
+        default_factory=list, description="실패한 제안 ID 목록"
+    )
     errors: list[dict[str, str]] = Field(
         default_factory=list, description="에러 상세 (id, message)"
     )

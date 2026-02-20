@@ -76,7 +76,9 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
     def input_keys(self) -> list[str]:
         return ["entities"]
 
-    def _get_expansion_config(self, state: GraphRAGState) -> tuple[ExpansionConfig, ExpansionStrategy]:
+    def _get_expansion_config(
+        self, state: GraphRAGState
+    ) -> tuple[ExpansionConfig, ExpansionStrategy]:
         """상태 기반으로 확장 설정 결정"""
         if self._static_config is not None:
             return self._static_config, self._default_strategy

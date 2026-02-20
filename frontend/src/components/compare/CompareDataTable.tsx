@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
 import {
   Table,
@@ -223,16 +223,13 @@ function SkeletonTable() {
 function EntityTable({ rows, label }: { rows: ComparisonRow[]; label: string }) {
   const [page, setPage] = useState(0);
 
-  // Fix #1: rows 변경 시 page 초기화 (stale state 방지)
-  useEffect(() => {
-    setPage(0);
-  }, [rows]);
-
   if (rows.length === 0) return null;
 
   const PAGE_SIZE = 10;
   const totalPages = Math.ceil(rows.length / PAGE_SIZE);
-  const displayRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // rows 변경 시 page가 범위를 벗어나면 0으로 리셋 (useEffect 없이 렌더 시점 보정)
+  const safePage = page >= totalPages ? 0 : page;
+  const displayRows = rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   // Fix #2: 전체 rows에서 키 추출 (페이지별 헤더 불일치 방지)
   const commonKeys = Array.from(
@@ -302,16 +299,16 @@ function EntityTable({ rows, label }: { rows: ComparisonRow[]; label: string }) 
         >
           <button
             onClick={() => setPage((p) => p - 1)}
-            disabled={page === 0}
+            disabled={safePage === 0}
             aria-label="이전 페이지"
             className="hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
           >
             &lt; 이전
           </button>
-          <span aria-current="page">{page + 1} / {totalPages}</span>
+          <span aria-current="page">{safePage + 1} / {totalPages}</span>
           <button
             onClick={() => setPage((p) => p + 1)}
-            disabled={page >= totalPages - 1}
+            disabled={safePage >= totalPages - 1}
             aria-label="다음 페이지"
             className="hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
           >

@@ -27,7 +27,6 @@ class ClarificationHandlerNode(BaseNode[ResponseGeneratorUpdate]):
     def input_keys(self) -> list[str]:
         return ["question", "resolved_entities", "entities"]
 
-
     async def _process(self, state: GraphRAGState) -> ResponseGeneratorUpdate:
         """
         명확화 요청 응답 생성

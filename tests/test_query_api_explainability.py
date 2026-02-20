@@ -425,7 +425,9 @@ class TestQueryEndpointConceptExpansions:
                 "execution_path": ["concept_expander"],
                 "_full_state": {
                     "original_entities": {"Skill": ["파이썬"]},
-                    "expanded_entities": {"Skill": ["파이썬", "Python", "Django", "FastAPI"]},
+                    "expanded_entities": {
+                        "Skill": ["파이썬", "Python", "Django", "FastAPI"]
+                    },
                     "expansion_strategy": "normal",
                     "expansion_count": 3,
                     "graph_results": [],

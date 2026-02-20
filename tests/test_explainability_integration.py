@@ -55,9 +55,7 @@ class TestPipelineWithExplainability:
             "cypher": "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill) RETURN e",
             "parameters": {},
         }
-        mock_neo4j.execute_cypher.return_value = [
-            {"e": {"name": "홍길동", "id": 1}}
-        ]
+        mock_neo4j.execute_cypher.return_value = [{"e": {"name": "홍길동", "id": 1}}]
         mock_llm.generate_response.return_value = "홍길동을 찾았습니다."
 
         result = await pipeline.run(

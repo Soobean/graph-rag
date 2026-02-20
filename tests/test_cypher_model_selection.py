@@ -624,8 +624,8 @@ class TestCoerceToLowerParams:
 
         result = node._coerce_tolower_params(cypher, parameters)
         assert result["name"] == "4"  # 변환됨
-        assert result["age"] == 30     # 유지
-        assert result["limit"] == 10   # 유지
+        assert result["age"] == 30  # 유지
+        assert result["limit"] == 10  # 유지
 
     def test_coerce_string_param_unchanged(
         self,
@@ -649,9 +649,7 @@ class TestCoerceToLowerParams:
         """toLower()에 사용되는 리스트 내 숫자도 str로 변환"""
         node = self._make_node(mock_llm_repository, mock_neo4j_repository)
 
-        cypher = (
-            "WHERE ANY(m IN $names WHERE toLower(e.name) = toLower(m))"
-        )
+        cypher = "WHERE ANY(m IN $names WHERE toLower(e.name) = toLower(m))"
         parameters = {"names": ["홍길동", 4, "김영희"]}
 
         result = node._coerce_tolower_params(cypher, parameters)
@@ -720,9 +718,7 @@ class TestErrorHandling:
     ) -> None:
         """LLM 호출 실패 시 에러 반환"""
         mock_llm = MagicMock(spec=LLMRepository)
-        mock_llm.generate_cypher = AsyncMock(
-            side_effect=Exception("API timeout")
-        )
+        mock_llm.generate_cypher = AsyncMock(side_effect=Exception("API timeout"))
 
         node = CypherGeneratorNode(mock_llm, mock_neo4j_repository)
 

@@ -171,9 +171,7 @@ class OntologyLearner:
                 if proposal:
                     proposals.append(proposal)
             except Exception as e:
-                logger.warning(
-                    f"Failed to process entity '{item.get('term')}': {e}"
-                )
+                logger.warning(f"Failed to process entity '{item.get('term')}': {e}")
                 continue
 
         logger.info(f"Generated {len(proposals)} ontology proposals")
@@ -217,7 +215,9 @@ class OntologyLearner:
             # 자동 승인 조건 재평가 (빈도 증가 후)
             await self._check_and_auto_approve(existing)
 
-            logger.debug(f"Updated existing proposal for '{term}' (freq={existing.frequency})")
+            logger.debug(
+                f"Updated existing proposal for '{term}' (freq={existing.frequency})"
+            )
             return existing
 
         # 2. LLM 분석으로 새 제안 생성
@@ -452,7 +452,8 @@ class OntologyLearner:
 
         # 허용 타입 확인
         allowed_types = [
-            ProposalType(t) for t in self._settings.auto_approve_types
+            ProposalType(t)
+            for t in self._settings.auto_approve_types
             if t in [pt.value for pt in ProposalType]
         ]
 

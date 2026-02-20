@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.graph.nodes.entity_resolver import EntityResolverNode
 from src.graph.nodes.cypher_generator import CypherGeneratorNode
+from src.graph.nodes.entity_resolver import EntityResolverNode
 from src.graph.nodes.graph_executor import GraphExecutorNode
 from src.graph.nodes.response_generator import ResponseGeneratorNode
 from src.graph.state import GraphRAGState
@@ -156,7 +156,9 @@ class TestCypherGeneratorNode:
         assert call_kwargs["intent"] == "personnel_search"
 
     @pytest.mark.asyncio
-    async def test_generate_intent_defaults_to_unknown(self, node, mock_llm, base_state):
+    async def test_generate_intent_defaults_to_unknown(
+        self, node, mock_llm, base_state
+    ):
         """intent 미설정 시 'unknown' 전달"""
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (n) RETURN n",
@@ -221,6 +223,7 @@ class TestGraphExecutorNode:
         result = await node(state)
         assert "error" in result
         assert "graph_executor_error" in result["execution_path"]
+
 
 class TestResponseGeneratorNode:
     """ResponseGeneratorNode 테스트"""
@@ -371,6 +374,7 @@ class TestBaseNodeTimeout:
 
             async def _process(self, state):
                 import asyncio
+
                 await asyncio.sleep(5)  # 5초 — 타임아웃 유발
                 return {"execution_path": ["slow_node"]}
 

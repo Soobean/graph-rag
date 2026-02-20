@@ -19,12 +19,8 @@ class ProjectListItem(BaseModel):
 
     name: str = Field(..., description="프로젝트 이름")
     status: str | None = Field(default=None, description="프로젝트 상태")
-    budget_million: float | None = Field(
-        default=None, description="예산 (백만원)"
-    )
-    required_headcount: int | None = Field(
-        default=None, description="필요 인원"
-    )
+    budget_million: float | None = Field(default=None, description="예산 (백만원)")
+    required_headcount: int | None = Field(default=None, description="필요 인원")
 
 
 class ProjectListResponse(BaseModel):
@@ -85,9 +81,7 @@ class ProjectParticipation(BaseModel):
     progress_pct: float | None = Field(
         default=None, description="진행률 % (actual/allocated)"
     )
-    contribution_pct: float | None = Field(
-        default=None, description="투입 비율 %"
-    )
+    contribution_pct: float | None = Field(default=None, description="투입 비율 %")
 
 
 class CandidateInfo(BaseModel):
@@ -115,9 +109,7 @@ class CandidateInfo(BaseModel):
     capacity_remaining: float = Field(
         default=0.0, description="잔여 가용 여력 (max_projects - workload - 1)"
     )
-    match_reasons: list[str] = Field(
-        default_factory=list, description="추천 사유 목록"
-    )
+    match_reasons: list[str] = Field(default_factory=list, description="추천 사유 목록")
     project_participations: list[ProjectParticipation] = Field(
         default_factory=list, description="현재 프로젝트 참여 내역"
     )
@@ -130,15 +122,9 @@ class SkillCandidates(BaseModel):
     """스킬별 후보자 목록"""
 
     skill_name: str = Field(..., description="필요 스킬")
-    required_proficiency: int | None = Field(
-        default=None, description="요구 숙련도"
-    )
-    max_hourly_rate: float | None = Field(
-        default=None, description="최대 시급 (원)"
-    )
-    required_headcount: int | None = Field(
-        default=None, description="필요 인원"
-    )
+    required_proficiency: int | None = Field(default=None, description="요구 숙련도")
+    max_hourly_rate: float | None = Field(default=None, description="최대 시급 (원)")
+    required_headcount: int | None = Field(default=None, description="필요 인원")
     importance: str | None = Field(default=None, description="중요도")
     candidates: list[CandidateInfo] = Field(
         default_factory=list, description="적격 후보자 목록 (단가순)"
@@ -155,9 +141,7 @@ class FindCandidatesResponse(BaseModel):
     estimated_hours: float | None = Field(
         default=None, description="예상 총 공수 (시간)"
     )
-    required_headcount: int | None = Field(
-        default=None, description="필요 총 인원"
-    )
+    required_headcount: int | None = Field(default=None, description="필요 총 인원")
     skill_candidates: list[SkillCandidates] = Field(
         default_factory=list, description="스킬별 후보자 목록"
     )
@@ -195,9 +179,7 @@ class RecommendedCandidate(BaseModel):
     effective_rate: float = Field(..., description="유효 단가")
     availability: str | None = Field(default=None, description="가용 상태")
     match_score: int = Field(default=0, description="매칭 점수 (0~100)")
-    match_reasons: list[str] = Field(
-        default_factory=list, description="추천 사유 요약"
-    )
+    match_reasons: list[str] = Field(default_factory=list, description="추천 사유 요약")
 
 
 class SkillStaffingPlan(BaseModel):
@@ -205,9 +187,7 @@ class SkillStaffingPlan(BaseModel):
 
     skill_name: str = Field(..., description="필요 스킬")
     importance: str | None = Field(default=None, description="중요도")
-    required_headcount: int | None = Field(
-        default=None, description="필요 인원"
-    )
+    required_headcount: int | None = Field(default=None, description="필요 인원")
     recommended_candidates: list[RecommendedCandidate] = Field(
         default_factory=list, description="추천 후보자"
     )
@@ -271,24 +251,12 @@ class BudgetAnalysisResponse(BaseModel):
     project_budget: float | None = Field(
         default=None, description="프로젝트 예산 (백만원)"
     )
-    budget_allocated: float | None = Field(
-        default=None, description="배정 예산 (원)"
-    )
-    budget_spent: float | None = Field(
-        default=None, description="집행 예산 (원)"
-    )
+    budget_allocated: float | None = Field(default=None, description="배정 예산 (원)")
+    budget_spent: float | None = Field(default=None, description="집행 예산 (원)")
     team_breakdown: list[TeamMemberCost] = Field(
         default_factory=list, description="팀원별 비용 내역"
     )
-    total_planned_cost: float = Field(
-        default=0.0, description="총 계획 인건비 (원)"
-    )
-    total_actual_cost: float = Field(
-        default=0.0, description="총 실제 인건비 (원)"
-    )
-    variance: float = Field(
-        default=0.0, description="차이 (실제 - 계획, 양수=초과)"
-    )
-    variance_percent: float | None = Field(
-        default=None, description="차이 비율 (%)"
-    )
+    total_planned_cost: float = Field(default=0.0, description="총 계획 인건비 (원)")
+    total_actual_cost: float = Field(default=0.0, description="총 실제 인건비 (원)")
+    variance: float = Field(default=0.0, description="차이 (실제 - 계획, 양수=초과)")
+    variance_percent: float | None = Field(default=None, description="차이 비율 (%)")

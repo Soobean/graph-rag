@@ -181,7 +181,9 @@ class GraphRAGPipeline:
                 ontology_service=ontology_service,
                 settings=settings,
             )
-            logger.info("OntologyUpdateHandler initialized (user-driven updates enabled)")
+            logger.info(
+                "OntologyUpdateHandler initialized (user-driven updates enabled)"
+            )
 
         # 메타데이터 빌더
         self._metadata_builder = ResponseMetadataBuilder()
@@ -257,7 +259,9 @@ class GraphRAGPipeline:
                 return "response_generator"
             if intent == "ontology_update":
                 if has_ontology_handler:
-                    logger.info("Intent is ontology_update. Routing to ontology_update_handler.")
+                    logger.info(
+                        "Intent is ontology_update. Routing to ontology_update_handler."
+                    )
                     return "ontology_update_handler"
                 else:
                     logger.warning(
@@ -469,7 +473,9 @@ class GraphRAGPipeline:
             # Explainability: full_state 추가 (요청 시에만)
             if return_full_state:
                 metadata["_full_state"] = {
-                    "original_entities": final_state.get("original_entities", final_state.get("entities", {})),
+                    "original_entities": final_state.get(
+                        "original_entities", final_state.get("entities", {})
+                    ),
                     "expanded_entities": final_state.get("expanded_entities", {}),
                     "expanded_entities_by_original": final_state.get(
                         "expanded_entities_by_original", {}
@@ -636,12 +642,19 @@ class GraphRAGPipeline:
                     if isinstance(node_output, dict):
                         if "execution_path" in node_output:
                             accumulated_path.extend(node_output["execution_path"])
-                            node_output = {**node_output, "execution_path": accumulated_path.copy()}
+                            node_output = {
+                                **node_output,
+                                "execution_path": accumulated_path.copy(),
+                            }
                         final_state.update(node_output)
 
                     # 응답 생성 노드 도달 시 처리
                     # (response_generator, clarification_handler, ontology_update_handler)
-                    if node_name in ("response_generator", "clarification_handler", "ontology_update_handler"):
+                    if node_name in (
+                        "response_generator",
+                        "clarification_handler",
+                        "ontology_update_handler",
+                    ):
                         # 이미 응답이 생성된 상태 → 비스트리밍 응답 (fallback)
                         response = final_state.get("response", "")
                         if response:
@@ -665,7 +678,11 @@ class GraphRAGPipeline:
             if existing_response:
                 yield {"type": "metadata", "data": self._build_metadata(final_state)}
                 yield {"type": "chunk", "text": existing_response}
-                yield {"type": "done", "full_response": existing_response, "success": True}
+                yield {
+                    "type": "done",
+                    "full_response": existing_response,
+                    "success": True,
+                }
                 return
 
             # 메타데이터 먼저 전송

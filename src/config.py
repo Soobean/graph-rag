@@ -133,7 +133,11 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, description="디버그 모드")
     environment: str = Field(default="development", description="실행 환경")
     cors_origins: list[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"],
+        default=[
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:8080",
+        ],
         description="CORS 허용 오리진 목록 (프론트엔드 URL)",
     )
 

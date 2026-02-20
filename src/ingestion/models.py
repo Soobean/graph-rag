@@ -46,9 +46,16 @@ def generate_entity_id(
     """
     # 강한 식별자: 단독으로 엔티티를 구분할 수 있는 필드
     strong_identifiers = [
-        "id", "person_id", "employee_id", "project_id", "department_id",
-        "position_id", "skill_id", "certificate_id",
-        "email", "code",
+        "id",
+        "person_id",
+        "employee_id",
+        "project_id",
+        "department_id",
+        "position_id",
+        "skill_id",
+        "certificate_id",
+        "email",
+        "code",
     ]
 
     # 약한 식별자: 동명이인 등 충돌 가능성이 있는 필드
@@ -103,7 +110,9 @@ class Document(BaseModel):
 class Node(BaseModel):
     """추출된 노드 정보"""
 
-    id: str = Field(..., description="Unique Identifier (UUID5 generated from natural keys)")
+    id: str = Field(
+        ..., description="Unique Identifier (UUID5 generated from natural keys)"
+    )
     label: NodeType
     properties: dict[str, Any] = Field(default_factory=dict)
 

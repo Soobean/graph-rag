@@ -323,9 +323,7 @@ class TestExplainableResponse:
     def test_response_with_graph_data_only(self):
         """graph_data만 포함"""
         graph_data = ExplainableGraphData(
-            nodes=[
-                GraphNode(id="1", label="Test", name="TestNode", properties={})
-            ],
+            nodes=[GraphNode(id="1", label="Test", name="TestNode", properties={})],
             node_count=1,
         )
 
@@ -355,7 +353,9 @@ class TestExplainableResponse:
                 GraphNode(id="2", label="Employee", name="홍길동", properties={}),
             ],
             edges=[
-                GraphEdge(id="e1", source="2", target="1", label="HAS_SKILL", properties={})
+                GraphEdge(
+                    id="e1", source="2", target="1", label="HAS_SKILL", properties={}
+                )
             ],
             node_count=2,
             edge_count=1,
@@ -470,9 +470,7 @@ class TestJsonSerialization:
                 ]
             ),
             graph_data=ExplainableGraphData(
-                nodes=[
-                    GraphNode(id="1", label="Test", name="Node1", properties={})
-                ],
+                nodes=[GraphNode(id="1", label="Test", name="Node1", properties={})],
                 node_count=1,
             ),
         )

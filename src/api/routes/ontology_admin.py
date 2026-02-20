@@ -108,7 +108,9 @@ def _proposal_to_detail_response(proposal: OntologyProposal) -> ProposalDetailRe
 @router.get("/proposals", response_model=ProposalListResponse)
 async def list_proposals(
     service: Annotated[OntologyService, Depends(get_ontology_service)],
-    status: Literal["pending", "approved", "rejected", "auto_approved", "all"] = "pending",
+    status: Literal[
+        "pending", "approved", "rejected", "auto_approved", "all"
+    ] = "pending",
     proposal_type: Literal["NEW_CONCEPT", "NEW_SYNONYM", "NEW_RELATION", "all"] = "all",
     source: Literal["chat", "background", "admin", "all"] = "all",
     category: str | None = Query(default=None, max_length=50),

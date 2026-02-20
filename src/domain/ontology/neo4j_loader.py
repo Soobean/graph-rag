@@ -136,9 +136,7 @@ class Neo4jOntologyLoader:
         """
 
         try:
-            results = await self._client.execute_query(
-                query, {"canonical": canonical}
-            )
+            results = await self._client.execute_query(query, {"canonical": canonical})
             if results:
                 result = results[0]
                 synonyms = [result["canonical"]] + (result["aliases"] or [])
@@ -228,7 +226,7 @@ class Neo4jOntologyLoader:
             # 2. 동의어 조회
             if config.include_synonyms:
                 synonyms = await self.get_synonyms(canonical, category)
-                for syn in synonyms[:config.max_synonyms]:
+                for syn in synonyms[: config.max_synonyms]:
                     if syn not in seen:
                         result.append(syn)
                         seen.add(syn)
@@ -236,7 +234,7 @@ class Neo4jOntologyLoader:
             # 3. 하위 개념 조회
             if config.include_children:
                 children = await self.get_children(canonical, category)
-                for child in children[:config.max_children]:
+                for child in children[: config.max_children]:
                     if child not in seen:
                         result.append(child)
                         seen.add(child)
@@ -244,7 +242,7 @@ class Neo4jOntologyLoader:
         except Exception as e:
             logger.warning(f"expand_concept failed: {e}")
 
-        return result[:config.max_total]
+        return result[: config.max_total]
 
     async def get_all_skills(self) -> list[str]:
         """
@@ -303,8 +301,7 @@ class Neo4jOntologyLoader:
                 hierarchy[r["category"]] = {
                     "description": r["description"],
                     "subcategories": [
-                        s for s in r["subcategories"]
-                        if s["name"] is not None
+                        s for s in r["subcategories"] if s["name"] is not None
                     ],
                 }
             return hierarchy

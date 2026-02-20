@@ -55,9 +55,7 @@ class Neo4jGraphCrudRepository:
             return results[0]
         except Exception as e:
             logger.error(f"Failed to create node with label '{label}': {e}")
-            raise QueryExecutionError(
-                f"Failed to create node: {e}", query=query
-            ) from e
+            raise QueryExecutionError(f"Failed to create node: {e}", query=query) from e
 
     async def check_duplicate_node(
         self,
@@ -86,8 +84,7 @@ class Neo4jGraphCrudRepository:
         remove_clause = ""
         if remove_keys:
             validated_keys = [
-                validate_identifier(key, "property_name")
-                for key in remove_keys
+                validate_identifier(key, "property_name") for key in remove_keys
             ]
             remove_parts = [f"n.{key}" for key in validated_keys]
             remove_clause = "REMOVE " + ", ".join(remove_parts)
@@ -111,9 +108,7 @@ class Neo4jGraphCrudRepository:
             raise
         except Exception as e:
             logger.error(f"Failed to update node {node_id}: {e}")
-            raise QueryExecutionError(
-                f"Failed to update node: {e}", query=query
-            ) from e
+            raise QueryExecutionError(f"Failed to update node: {e}", query=query) from e
 
     async def delete_node_generic(
         self,
@@ -130,15 +125,11 @@ class Neo4jGraphCrudRepository:
         """
 
         try:
-            results = await self._client.execute_write(
-                query, {"node_id": node_id}
-            )
+            results = await self._client.execute_write(query, {"node_id": node_id})
             return len(results) > 0
         except Exception as e:
             logger.error(f"Failed to delete node {node_id}: {e}")
-            raise QueryExecutionError(
-                f"Failed to delete node: {e}", query=query
-            ) from e
+            raise QueryExecutionError(f"Failed to delete node: {e}", query=query) from e
 
     async def get_node_relationship_count(self, node_id: str) -> int:
         """노드에 연결된 관계 수 조회"""
@@ -181,9 +172,7 @@ class Neo4jGraphCrudRepository:
             """
 
         try:
-            results = await self._client.execute_write(
-                query, {"node_id": node_id}
-            )
+            results = await self._client.execute_write(query, {"node_id": node_id})
             if not results:
                 return {"deleted": False, "rel_count": 0, "not_found": True}
             return {
@@ -193,9 +182,7 @@ class Neo4jGraphCrudRepository:
             }
         except Exception as e:
             logger.error(f"Failed to delete node {node_id}: {e}")
-            raise QueryExecutionError(
-                f"Failed to delete node: {e}", query=query
-            ) from e
+            raise QueryExecutionError(f"Failed to delete node: {e}", query=query) from e
 
     async def create_relationship_generic(
         self,
@@ -229,7 +216,9 @@ class Neo4jGraphCrudRepository:
                 query, {"source_id": source_id, "target_id": target_id, "props": props}
             )
             if not results:
-                raise EntityNotFoundError("Source or target node", f"{source_id}, {target_id}")
+                raise EntityNotFoundError(
+                    "Source or target node", f"{source_id}, {target_id}"
+                )
             return results[0]
         except EntityNotFoundError:
             raise

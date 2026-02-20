@@ -16,11 +16,19 @@ import pytest
 from src.repositories.neo4j_entity_repository import Neo4jEntityRepository
 from src.repositories.neo4j_validators import strip_korean_suffix
 
-
 # ── Korean Suffix Stripping ──────────────────────────────────
 
 
-MOCK_KOREAN_SUFFIXES = ("프로젝트", "팀", "부서", "회사", "센터", "연구소", "본부", "사업부")
+MOCK_KOREAN_SUFFIXES = (
+    "프로젝트",
+    "팀",
+    "부서",
+    "회사",
+    "센터",
+    "연구소",
+    "본부",
+    "사업부",
+)
 
 
 @patch(
@@ -172,7 +180,9 @@ class TestFindEntitiesByNameFallback:
         assert mock_client.execute_query.await_count == 4
 
     @patch("src.repositories.neo4j_entity_repository.strip_korean_suffix")
-    async def test_suffix_same_as_original_skips_retry(self, mock_strip, repo, mock_client):
+    async def test_suffix_same_as_original_skips_retry(
+        self, mock_strip, repo, mock_client
+    ):
         """접미사 제거 결과가 원본과 같으면 재시도 스킵"""
         mock_strip.return_value = "Python"  # 변경 없음
 
@@ -197,31 +207,41 @@ class TestEmployeeDuplicationGrouping:
     def test_find_skill_candidates_uses_name_grouping(self):
         """_find_skill_candidates Cypher에 e.name 기반 그룹핑이 있는지 검증"""
         import inspect
+
         from src.services.project_staffing_service import ProjectStaffingService
 
         source = inspect.getsource(ProjectStaffingService._find_skill_candidates)
 
         # e.name 기반 그룹핑 존재 확인 (중복 노드 대응)
-        assert "e.name AS emp_name" in source, \
+        assert "e.name AS emp_name" in source, (
             "_find_skill_candidates must group by e.name to handle duplicate Employee nodes"
-        assert "WITH e.name" in source or "WITH emp_name" in source or "e.name AS emp_name" in source
+        )
+        assert (
+            "WITH e.name" in source
+            or "WITH emp_name" in source
+            or "e.name AS emp_name" in source
+        )
 
     def test_analyze_budget_uses_name_grouping(self):
         """analyze_budget Cypher에도 name 기반 그룹핑 사용"""
         import inspect
+
         from src.services.project_staffing_service import ProjectStaffingService
 
         source = inspect.getsource(ProjectStaffingService.analyze_budget)
 
-        assert "e.name AS emp_name" in source, \
+        assert "e.name AS emp_name" in source, (
             "analyze_budget must group by e.name to handle duplicate Employee nodes"
+        )
 
     def test_cypher_uses_tolower_for_skill_matching(self):
         """스킬 매칭에 tolower_match 헬퍼 사용 여부 확인"""
         import inspect
+
         from src.services.project_staffing_service import ProjectStaffingService
 
         source = inspect.getsource(ProjectStaffingService._find_skill_candidates)
 
-        assert "tolower_match" in source, \
+        assert "tolower_match" in source, (
             "_find_skill_candidates must use tolower_match for case-insensitive skill matching"
+        )

@@ -17,7 +17,6 @@ import pytest
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.project_staffing_service import ProjectStaffingService
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -88,8 +87,20 @@ def _candidate_rows():
             "current_projects": 2,
             "max_projects": 5,
             "project_details": [
-                {"name": "ETL마이그레이션", "status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 300},
-                {"name": "데이터웨어하우스", "status": "계획", "contribution_pct": None, "allocated": 200, "actual": 0},
+                {
+                    "name": "ETL마이그레이션",
+                    "status": "진행중",
+                    "contribution_pct": None,
+                    "allocated": 500,
+                    "actual": 300,
+                },
+                {
+                    "name": "데이터웨어하우스",
+                    "status": "계획",
+                    "contribution_pct": None,
+                    "allocated": 200,
+                    "actual": 0,
+                },
             ],
         },
         {
@@ -102,7 +113,13 @@ def _candidate_rows():
             "current_projects": 1,
             "max_projects": 5,
             "project_details": [
-                {"name": "챗봇 리뉴얼", "status": "진행중", "contribution_pct": 50, "allocated": 400, "actual": 200},
+                {
+                    "name": "챗봇 리뉴얼",
+                    "status": "진행중",
+                    "contribution_pct": 50,
+                    "allocated": 400,
+                    "actual": 200,
+                },
             ],
         },
     ]
@@ -163,8 +180,7 @@ class TestFindCandidates:
                     return [
                         r
                         for r in _requirements_rows()
-                        if r["skill_name"].lower()
-                        == params["skill_filter"].lower()
+                        if r["skill_name"].lower() == params["skill_filter"].lower()
                     ]
                 return _requirements_rows()
             elif "HAS_SKILL" in query:
@@ -180,9 +196,7 @@ class TestFindCandidates:
         assert result.total_skills == 1
         assert result.skill_candidates[0].skill_name == "Python"
 
-    async def test_find_candidates_min_proficiency_filter(
-        self, service, mock_neo4j
-    ):
+    async def test_find_candidates_min_proficiency_filter(self, service, mock_neo4j):
         """min_proficiency 필터 동작 확인"""
 
         async def mock_execute(query, params=None):
@@ -200,9 +214,7 @@ class TestFindCandidates:
 
         mock_neo4j.execute_cypher = AsyncMock(side_effect=mock_execute)
 
-        result = await service.find_candidates(
-            "ETL파이프라인 구축", min_proficiency=4
-        )
+        result = await service.find_candidates("ETL파이프라인 구축", min_proficiency=4)
 
         assert result.total_skills == 1
         # 결과의 후보자는 모두 proficiency >= 4
@@ -247,9 +259,7 @@ class TestFindCandidates:
 class TestMatchScore:
     """_compute_match_context() 매칭 점수 테스트"""
 
-    async def test_high_proficiency_low_rate_gets_high_score(
-        self, service, mock_neo4j
-    ):
+    async def test_high_proficiency_low_rate_gets_high_score(self, service, mock_neo4j):
         """고숙련 + 저단가 → 높은 점수"""
 
         async def mock_execute(query, params=None):
@@ -269,7 +279,12 @@ class TestMatchScore:
                         "current_projects": 1,
                         "max_projects": 5,
                         "project_details": [
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 400},
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 400,
+                            },
                         ],
                     },
                 ]
@@ -364,8 +379,7 @@ class TestMatchScore:
         # 한국어 문자열 포함 확인
         reasons_text = " ".join(candidate.match_reasons)
         assert any(
-            keyword in reasons_text
-            for keyword in ["숙련도", "예산", "가용", "투입"]
+            keyword in reasons_text for keyword in ["숙련도", "예산", "가용", "투입"]
         )
 
     async def test_no_max_rate_still_scores(self, service, mock_neo4j):
@@ -455,9 +469,7 @@ class TestMatchScore:
         assert veteran.years_used == 10
         assert newcomer.years_used == 1
 
-    async def test_years_used_does_not_override_proficiency(
-        self, service, mock_neo4j
-    ):
+    async def test_years_used_does_not_override_proficiency(self, service, mock_neo4j):
         """연차가 높아도 숙련도 등급 자체를 역전하지는 않는다"""
 
         async def mock_execute(query, params=None):
@@ -598,9 +610,24 @@ class TestWeightedWorkload:
     def test_compute_workload_nearly_done_projects(self, service):
         """거의 완료된 프로젝트 3건 → 낮은 워크로드"""
         details = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 475},
-            {"status": "진행중", "contribution_pct": None, "allocated": 300, "actual": 285},
-            {"status": "진행중", "contribution_pct": None, "allocated": 400, "actual": 390},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 500,
+                "actual": 475,
+            },
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 300,
+                "actual": 285,
+            },
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 400,
+                "actual": 390,
+            },
         ]
         workload = service._compute_workload(details)
         # 각각 95% 진행 → remaining 5% → 1.0 × 0.05 = 0.05 per project
@@ -610,7 +637,12 @@ class TestWeightedWorkload:
     def test_compute_workload_planning_vs_active(self, service):
         """'계획' 상태 프로젝트는 '진행중'보다 부담이 적다"""
         active = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 500,
+                "actual": 0,
+            },
         ]
         planning = [
             {"status": "계획", "contribution_pct": None, "allocated": 500, "actual": 0},
@@ -623,7 +655,12 @@ class TestWeightedWorkload:
     def test_compute_workload_contribution_percent(self, service):
         """contribution_percent 50% → 절반 부담"""
         full = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 500,
+                "actual": 0,
+            },
         ]
         half = [
             {"status": "진행중", "contribution_pct": 50, "allocated": 500, "actual": 0},
@@ -634,13 +671,16 @@ class TestWeightedWorkload:
     def test_compute_workload_no_hours_info(self, service):
         """시간 정보 없으면 보수적으로 풀부담"""
         details = [
-            {"status": "진행중", "contribution_pct": None, "allocated": None, "actual": None},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": None,
+                "actual": None,
+            },
         ]
         assert service._compute_workload(details) == 1.0
 
-    async def test_nearly_done_projects_high_capacity_score(
-        self, service, mock_neo4j
-    ):
+    async def test_nearly_done_projects_high_capacity_score(self, service, mock_neo4j):
         """거의 완료된 프로젝트가 많아도 가용성 점수가 높다"""
 
         async def mock_execute(query, params=None):
@@ -660,9 +700,24 @@ class TestWeightedWorkload:
                         "current_projects": 3,
                         "max_projects": 5,
                         "project_details": [
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 475},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 300, "actual": 285},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 400, "actual": 390},
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 475,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 300,
+                                "actual": 285,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 400,
+                                "actual": 390,
+                            },
                         ],
                     },
                     {
@@ -675,7 +730,12 @@ class TestWeightedWorkload:
                         "current_projects": 1,
                         "max_projects": 5,
                         "project_details": [
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 10},
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 10,
+                            },
                         ],
                     },
                 ]
@@ -714,11 +774,36 @@ class TestWeightedWorkload:
                         "current_projects": 5,
                         "max_projects": 5,
                         "project_details": [
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
                         ],
                     },
                     {
@@ -887,9 +972,7 @@ class TestBudgetAnalysis:
         assert result.total_planned_cost == 12_400_000.0
         assert result.total_actual_cost == 13_200_000.0
 
-    async def test_budget_analysis_variance_calculation(
-        self, service, mock_neo4j
-    ):
+    async def test_budget_analysis_variance_calculation(self, service, mock_neo4j):
         """variance 계산 (under/over budget)"""
 
         async def mock_execute(query, params=None):
@@ -969,9 +1052,7 @@ class TestGetCategories:
 
     async def test_get_categories_handles_error(self, service, mock_neo4j):
         """DB 에러 시 빈 리스트"""
-        mock_neo4j.execute_cypher = AsyncMock(
-            side_effect=Exception("DB Error")
-        )
+        mock_neo4j.execute_cypher = AsyncMock(side_effect=Exception("DB Error"))
 
         result = await service.get_categories()
 
@@ -986,9 +1067,7 @@ class TestGetCategories:
 class TestErrorHandling:
     """에러 핸들링 테스트"""
 
-    async def test_find_candidates_db_error_propagates(
-        self, service, mock_neo4j
-    ):
+    async def test_find_candidates_db_error_propagates(self, service, mock_neo4j):
         """_get_project_info DB 에러 전파"""
         mock_neo4j.execute_cypher = AsyncMock(
             side_effect=Exception("Connection failed")
@@ -997,9 +1076,7 @@ class TestErrorHandling:
         with pytest.raises(Exception, match="Connection failed"):
             await service.find_candidates("ETL파이프라인 구축")
 
-    async def test_find_skill_candidates_error_returns_empty(
-        self, service, mock_neo4j
-    ):
+    async def test_find_skill_candidates_error_returns_empty(self, service, mock_neo4j):
         """_find_skill_candidates 내부 에러 시 빈 리스트"""
 
         call_count = 0
@@ -1022,9 +1099,7 @@ class TestErrorHandling:
         assert result.total_candidates == 0
         assert result.skill_candidates[0].candidates == []
 
-    async def test_budget_analysis_null_values_handled(
-        self, service, mock_neo4j
-    ):
+    async def test_budget_analysis_null_values_handled(self, service, mock_neo4j):
         """agreed_rate 등이 None일 때 0으로 처리"""
 
         async def mock_execute(query, params=None):
@@ -1063,7 +1138,12 @@ class TestComputeWorkloadEdgeCases:
     def test_compute_workload_progress_0_percent(self, service):
         """progress=0% (막 시작) → 풀부담 1.0"""
         details = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 500,
+                "actual": 0,
+            },
         ]
         assert service._compute_workload(details) == 1.0
 
@@ -1071,25 +1151,45 @@ class TestComputeWorkloadEdgeCases:
         """progress=95% → 5% 잔여, progress>95% → cap at 95%"""
         # 정확히 95%
         details_95 = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 100, "actual": 95},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 100,
+                "actual": 95,
+            },
         ]
         assert service._compute_workload(details_95) == 0.05
 
         # 100% 초과 → 95% cap
         details_100 = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 100, "actual": 100},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 100,
+                "actual": 100,
+            },
         ]
         assert service._compute_workload(details_100) == 0.05
 
         details_over = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 100, "actual": 120},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 100,
+                "actual": 120,
+            },
         ]
         assert service._compute_workload(details_over) == 0.05
 
     def test_compute_workload_allocated_zero(self, service):
         """allocated=0 → division by zero 방지, 보수적으로 풀부담"""
         details = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 0, "actual": 10},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 0,
+                "actual": 10,
+            },
         ]
         # alloc=0이면 진행률 계산 불가 → remaining=1.0
         assert service._compute_workload(details) == 1.0
@@ -1112,7 +1212,12 @@ class TestComputeWorkloadEdgeCases:
     def test_compute_workload_mixed_contribution_and_hours(self, service):
         """contribution_pct와 hours 정보가 모두 있는 경우"""
         details = [
-            {"status": "진행중", "contribution_pct": 50, "allocated": 500, "actual": 250},
+            {
+                "status": "진행중",
+                "contribution_pct": 50,
+                "allocated": 500,
+                "actual": 250,
+            },
         ]
         # contrib=50% → base=0.5
         # progress=250/500=50% → remaining=50%
@@ -1214,10 +1319,30 @@ class TestMatchContextEdgeCases:
                         "current_projects": 4,
                         "max_projects": 5,
                         "project_details": [
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 250},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 250},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 250},
-                            {"status": "계획", "contribution_pct": None, "allocated": 500, "actual": 0},
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 250,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 250,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 250,
+                            },
+                            {
+                                "status": "계획",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
                         ],
                     },
                 ]
@@ -1288,7 +1413,12 @@ class TestMatchContextEdgeCases:
                         "current_projects": 1,
                         "max_projects": 5,
                         "project_details": [
-                            {"status": None, "contribution_pct": None, "allocated": None, "actual": None},
+                            {
+                                "status": None,
+                                "contribution_pct": None,
+                                "allocated": None,
+                                "actual": None,
+                            },
                         ],
                     },
                 ]
@@ -1356,9 +1486,24 @@ class TestMatchContextEdgeCases:
                         "current_projects": 3,
                         "max_projects": 3,
                         "project_details": [
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
                         ],
                     },
                 ]
@@ -1383,8 +1528,20 @@ class TestProjectParticipations:
     def test_build_participations_basic(self, service):
         """project_details → ProjectParticipation 변환"""
         details = [
-            {"name": "프로젝트A", "status": "진행중", "contribution_pct": 50, "allocated": 400, "actual": 200},
-            {"name": "프로젝트B", "status": "계획", "contribution_pct": None, "allocated": 300, "actual": 0},
+            {
+                "name": "프로젝트A",
+                "status": "진행중",
+                "contribution_pct": 50,
+                "allocated": 400,
+                "actual": 200,
+            },
+            {
+                "name": "프로젝트B",
+                "status": "계획",
+                "contribution_pct": None,
+                "allocated": 300,
+                "actual": 0,
+            },
         ]
         result = service._build_participations(details)
 
@@ -1399,8 +1556,20 @@ class TestProjectParticipations:
     def test_build_participations_no_allocated(self, service):
         """allocated=0/None → progress_pct=None"""
         details = [
-            {"name": "프로젝트C", "status": "진행중", "contribution_pct": None, "allocated": 0, "actual": 10},
-            {"name": "프로젝트D", "status": "계획", "contribution_pct": None, "allocated": None, "actual": None},
+            {
+                "name": "프로젝트C",
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 0,
+                "actual": 10,
+            },
+            {
+                "name": "프로젝트D",
+                "status": "계획",
+                "contribution_pct": None,
+                "allocated": None,
+                "actual": None,
+            },
         ]
         result = service._build_participations(details)
 
@@ -1410,7 +1579,12 @@ class TestProjectParticipations:
     def test_build_participations_missing_name(self, service):
         """name 없는 경우 → 'unknown' 기본값"""
         details = [
-            {"status": "진행중", "contribution_pct": None, "allocated": 100, "actual": 50},
+            {
+                "status": "진행중",
+                "contribution_pct": None,
+                "allocated": 100,
+                "actual": 50,
+            },
         ]
         result = service._build_participations(details)
         assert result[0].project_name == "unknown"
@@ -1484,10 +1658,34 @@ class TestProjectParticipations:
                         "current_projects": 4,
                         "max_projects": 5,
                         "project_details": [
-                            {"name": "P1", "status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"name": "P2", "status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"name": "P3", "status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
-                            {"name": "P4", "status": "진행중", "contribution_pct": None, "allocated": 500, "actual": 0},
+                            {
+                                "name": "P1",
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "name": "P2",
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "name": "P3",
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
+                            {
+                                "name": "P4",
+                                "status": "진행중",
+                                "contribution_pct": None,
+                                "allocated": 500,
+                                "actual": 0,
+                            },
                         ],
                     },
                 ]

@@ -120,9 +120,7 @@ class TransactionScope:
         result = await self._tx.run(query, parameters or {})
         records = []
         async for record in result:
-            serialized = {
-                key: _serialize_value(record[key]) for key in record.keys()
-            }
+            serialized = {key: _serialize_value(record[key]) for key in record.keys()}
             records.append(serialized)
         return records
 

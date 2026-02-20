@@ -5,11 +5,15 @@ LLM Repository 단위 테스트
     pytest tests/test_llm_repository.py -v
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.domain.exceptions import LLMConnectionError, LLMRateLimitError, LLMResponseError
+from src.domain.exceptions import (
+    LLMConnectionError,
+    LLMRateLimitError,
+    LLMResponseError,
+)
 from src.repositories.llm_repository import LLMRepository, ModelTier
 
 
@@ -100,17 +104,29 @@ class TestFormatHelpers:
             "nodes": [
                 {
                     "label": "Employee",
-                    "properties": [{"name": "name"}, {"name": "department"}, {"name": "years_experience"}],
+                    "properties": [
+                        {"name": "name"},
+                        {"name": "department"},
+                        {"name": "years_experience"},
+                    ],
                 },
                 {
                     "label": "Project",
-                    "properties": [{"name": "name"}, {"name": "status"}, {"name": "budget_million"}],
+                    "properties": [
+                        {"name": "name"},
+                        {"name": "status"},
+                        {"name": "budget_million"},
+                    ],
                 },
             ],
             "relationships": [
                 {
                     "type": "WORKS_ON",
-                    "properties": [{"name": "role"}, {"name": "allocated_hours"}, {"name": "actual_hours"}],
+                    "properties": [
+                        {"name": "role"},
+                        {"name": "allocated_hours"},
+                        {"name": "actual_hours"},
+                    ],
                 },
             ],
         }
@@ -190,7 +206,13 @@ class TestFormatHelpers:
         # _format_results는 라벨별로 최대 15개까지 표시
         # id는 1부터 시작 (0은 falsy로 처리될 수 있음)
         results = [
-            {"n": {"id": i + 1, "labels": ["Node"], "properties": {"name": f"Node{i + 1}"}}}
+            {
+                "n": {
+                    "id": i + 1,
+                    "labels": ["Node"],
+                    "properties": {"name": f"Node{i + 1}"},
+                }
+            }
             for i in range(20)
         ]
         result = repo._format_results(results)
@@ -202,9 +224,27 @@ class TestFormatHelpers:
     def test_format_results_scalar(self, repo):
         """스칼라(집계) 결과 포맷팅"""
         results = [
-            {"employee": "김철수", "project": "챗봇 리뉴얼", "allocated": 100, "actual": 160, "gap": 60},
-            {"employee": "이영희", "project": "데이터레이크", "allocated": 80, "actual": 120, "gap": 40},
-            {"employee": "박지우", "project": "API 플랫폼", "allocated": 120, "actual": 130, "gap": 10},
+            {
+                "employee": "김철수",
+                "project": "챗봇 리뉴얼",
+                "allocated": 100,
+                "actual": 160,
+                "gap": 60,
+            },
+            {
+                "employee": "이영희",
+                "project": "데이터레이크",
+                "allocated": 80,
+                "actual": 120,
+                "gap": 40,
+            },
+            {
+                "employee": "박지우",
+                "project": "API 플랫폼",
+                "allocated": 120,
+                "actual": 130,
+                "gap": 10,
+            },
         ]
         result = repo._format_results(results)
 
@@ -216,10 +256,7 @@ class TestFormatHelpers:
 
     def test_format_results_scalar_truncation(self, repo):
         """스칼라 결과 20개 초과 시 자르기"""
-        results = [
-            {"name": f"Person{i}", "count": i}
-            for i in range(25)
-        ]
+        results = [{"name": f"Person{i}", "count": i} for i in range(25)]
         result = repo._format_results(results)
 
         assert "집계 결과 (25행)" in result
@@ -522,7 +559,9 @@ class TestHighLevelMethods:
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"intent": "search", "confidence": 0.9}'
+        mock_response.choices[
+            0
+        ].message.content = '{"intent": "search", "confidence": 0.9}'
 
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
@@ -543,9 +582,9 @@ class TestHighLevelMethods:
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = (
-            '{"entities": [{"type": "Employee", "value": "홍길동", "normalized": "홍길동"}]}'
-        )
+        mock_response.choices[
+            0
+        ].message.content = '{"entities": [{"type": "Employee", "value": "홍길동", "normalized": "홍길동"}]}'
 
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
@@ -772,7 +811,6 @@ class TestFallbackMethods:
         light_response.choices[0].message.content = '{"fallback": true}'
 
         # generate_json을 직접 mock
-        original_generate_json = repo.generate_json
         call_count = 0
 
         async def mock_generate_json(*args, **kwargs):

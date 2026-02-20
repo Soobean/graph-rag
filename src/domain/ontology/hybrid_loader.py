@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 # Lazy import to avoid circular dependency
 def _get_neo4j_loader():
     from src.domain.ontology.neo4j_loader import Neo4jOntologyLoader
+
     return Neo4jOntologyLoader
 
 
@@ -85,9 +86,7 @@ class HybridOntologyLoader:
         self._neo4j_loader: Any = None  # Neo4jOntologyLoader
         if mode in ("neo4j", "hybrid"):
             if neo4j_client is None:
-                raise ValueError(
-                    f"neo4j_client is required for mode='{mode}'"
-                )
+                raise ValueError(f"neo4j_client is required for mode='{mode}'")
             Neo4jOntologyLoader = _get_neo4j_loader()
             self._neo4j_loader = Neo4jOntologyLoader(neo4j_client)
 
@@ -253,7 +252,9 @@ class HybridOntologyLoader:
         if self._yaml_loader is not None:
             self._yaml_loader.clear_cache()
 
-        if self._neo4j_loader is not None and hasattr(self._neo4j_loader, "clear_cache"):
+        if self._neo4j_loader is not None and hasattr(
+            self._neo4j_loader, "clear_cache"
+        ):
             await self._neo4j_loader.clear_cache()
 
     async def health_check(self) -> dict[str, Any]:

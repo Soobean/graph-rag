@@ -81,7 +81,9 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
         self._logger.info(f"Processing ontology update request: {question[:50]}...")
 
         # 채팅 히스토리 포맷팅 (최근 4개 메시지만)
-        chat_history = self._format_chat_history(messages[:-1][-4:]) if len(messages) > 1 else ""
+        chat_history = (
+            self._format_chat_history(messages[:-1][-4:]) if len(messages) > 1 else ""
+        )
 
         # 1. LLM으로 요청 파싱 (채팅 히스토리 포함)
         parsed = await self._parse_update_request(question, chat_history)
@@ -124,7 +126,9 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
                 )
                 applied = approved.applied_at is not None
                 response = self._generate_response(parsed, approved, applied)
-                self._logger.info(f"Ontology update auto-approved: '{term}' (confidence={confidence:.2f})")
+                self._logger.info(
+                    f"Ontology update auto-approved: '{term}' (confidence={confidence:.2f})"
+                )
 
                 return OntologyUpdateHandlerUpdate(
                     response=response,
@@ -150,7 +154,9 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
                 f"'{term}' 추가 요청이 접수되었습니다. "
                 f"관리자 검토 후 적용됩니다. (신뢰도: {confidence:.0%})"
             )
-            self._logger.info(f"Ontology update pending review: '{term}' (confidence={confidence:.2f})")
+            self._logger.info(
+                f"Ontology update pending review: '{term}' (confidence={confidence:.2f})"
+            )
 
             return OntologyUpdateHandlerUpdate(
                 response=msg,
@@ -184,7 +190,9 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
             lines.append(f"{role}: {content}")
         return "\n".join(lines)
 
-    async def _parse_update_request(self, question: str, chat_history: str = "") -> dict[str, Any] | None:
+    async def _parse_update_request(
+        self, question: str, chat_history: str = ""
+    ) -> dict[str, Any] | None:
         """LLM으로 사용자 요청 파싱"""
         try:
             prompt = self._prompt_manager.load_prompt("ontology_update_parser")
@@ -205,7 +213,9 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
             self._logger.error(f"Failed to parse update request: {e}")
             return None
 
-    def _create_proposal(self, parsed: dict[str, Any], question: str) -> OntologyProposal:
+    def _create_proposal(
+        self, parsed: dict[str, Any], question: str
+    ) -> OntologyProposal:
         """파싱 결과로 OntologyProposal 생성"""
         action = parsed.get("action", "").lower()
         term = parsed.get("term", "").strip()

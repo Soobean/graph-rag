@@ -5,9 +5,9 @@
 """
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from src.config import Settings
 from src.domain.adaptive.models import OntologyProposal, ProposalStatus, ProposalType

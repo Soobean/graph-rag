@@ -21,16 +21,20 @@ from src.infrastructure.neo4j_client import Neo4jClient
 def mock_neo4j_client():
     """Mock Neo4jClient"""
     client = MagicMock(spec=Neo4jClient)
-    client.health_check = AsyncMock(return_value={
-        "connected": True,
-        "server_info": {"version": "5.15.0", "edition": "community"},
-    })
-    client.get_schema_info = AsyncMock(return_value={
-        "node_labels": ["Employee", "Skill", "Project"],
-        "relationship_types": ["HAS_SKILL", "WORKS_ON"],
-        "indexes": [],
-        "constraints": [],
-    })
+    client.health_check = AsyncMock(
+        return_value={
+            "connected": True,
+            "server_info": {"version": "5.15.0", "edition": "community"},
+        }
+    )
+    client.get_schema_info = AsyncMock(
+        return_value={
+            "node_labels": ["Employee", "Skill", "Project"],
+            "relationship_types": ["HAS_SKILL", "WORKS_ON"],
+            "indexes": [],
+            "constraints": [],
+        }
+    )
     return client
 
 
@@ -75,9 +79,11 @@ class TestHealthAPI:
 
     def test_health_degraded(self, client, mock_neo4j_client):
         """Neo4j 연결 실패 시 degraded 상태"""
-        mock_neo4j_client.health_check = AsyncMock(return_value={
-            "connected": False,
-        })
+        mock_neo4j_client.health_check = AsyncMock(
+            return_value={
+                "connected": False,
+            }
+        )
         resp = client.get("/api/v1/health")
         assert resp.status_code == 200
         data = resp.json()

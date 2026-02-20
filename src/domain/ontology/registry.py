@@ -84,9 +84,7 @@ class OntologyRegistry:
         self._loader: OntologyLoader | HybridOntologyLoader
         if self._mode in ("neo4j", "hybrid"):
             if neo4j_client is None:
-                raise ValueError(
-                    f"neo4j_client is required for mode='{self._mode}'"
-                )
+                raise ValueError(f"neo4j_client is required for mode='{self._mode}'")
             self._loader = HybridOntologyLoader(
                 neo4j_client=neo4j_client,
                 mode=self._mode,

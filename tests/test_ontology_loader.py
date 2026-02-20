@@ -460,5 +460,3 @@ class TestExpansionStrategy:
 
         for intent in expected_intents:
             assert intent in INTENT_STRATEGY_MAP, f"Missing mapping for {intent}"
-
-

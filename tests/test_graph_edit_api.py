@@ -24,47 +24,61 @@ from src.services.graph_edit_service import (
 def mock_service():
     """Mock GraphEditService"""
     service = MagicMock(spec=GraphEditService)
-    service.create_node = AsyncMock(return_value={
-        "id": "4:abc:0",
-        "labels": ["Employee"],
-        "properties": {"name": "홍길동"},
-    })
-    service.get_node = AsyncMock(return_value={
-        "id": "4:abc:0",
-        "labels": ["Employee"],
-        "properties": {"name": "홍길동"},
-    })
-    service.search_nodes = AsyncMock(return_value=[
-        {"id": "4:abc:0", "labels": ["Employee"], "properties": {"name": "홍길동"}},
-    ])
-    service.update_node = AsyncMock(return_value={
-        "id": "4:abc:0",
-        "labels": ["Employee"],
-        "properties": {"name": "김철수"},
-    })
+    service.create_node = AsyncMock(
+        return_value={
+            "id": "4:abc:0",
+            "labels": ["Employee"],
+            "properties": {"name": "홍길동"},
+        }
+    )
+    service.get_node = AsyncMock(
+        return_value={
+            "id": "4:abc:0",
+            "labels": ["Employee"],
+            "properties": {"name": "홍길동"},
+        }
+    )
+    service.search_nodes = AsyncMock(
+        return_value=[
+            {"id": "4:abc:0", "labels": ["Employee"], "properties": {"name": "홍길동"}},
+        ]
+    )
+    service.update_node = AsyncMock(
+        return_value={
+            "id": "4:abc:0",
+            "labels": ["Employee"],
+            "properties": {"name": "김철수"},
+        }
+    )
     service.delete_node = AsyncMock()
-    service.create_edge = AsyncMock(return_value={
-        "id": "5:abc:0",
-        "type": "HAS_SKILL",
-        "source_id": "4:abc:0",
-        "target_id": "4:abc:1",
-        "properties": {},
-    })
-    service.get_edge = AsyncMock(return_value={
-        "id": "5:abc:0",
-        "type": "HAS_SKILL",
-        "source_id": "4:abc:0",
-        "target_id": "4:abc:1",
-        "properties": {},
-    })
+    service.create_edge = AsyncMock(
+        return_value={
+            "id": "5:abc:0",
+            "type": "HAS_SKILL",
+            "source_id": "4:abc:0",
+            "target_id": "4:abc:1",
+            "properties": {},
+        }
+    )
+    service.get_edge = AsyncMock(
+        return_value={
+            "id": "5:abc:0",
+            "type": "HAS_SKILL",
+            "source_id": "4:abc:0",
+            "target_id": "4:abc:1",
+            "properties": {},
+        }
+    )
     service.delete_edge = AsyncMock()
-    service.get_schema_info = AsyncMock(return_value={
-        "allowed_labels": ["Employee", "Skill"],
-        "required_properties": {"Employee": ["name"], "Skill": ["name"]},
-        "valid_relationships": {
-            "HAS_SKILL": [{"source": "Employee", "target": "Skill"}],
-        },
-    })
+    service.get_schema_info = AsyncMock(
+        return_value={
+            "allowed_labels": ["Employee", "Skill"],
+            "required_properties": {"Employee": ["name"], "Skill": ["name"]},
+            "valid_relationships": {
+                "HAS_SKILL": [{"source": "Employee", "target": "Skill"}],
+            },
+        }
+    )
     return service
 
 
@@ -90,27 +104,38 @@ def client(app):
 
 class TestCreateNodeAPI:
     def test_create_node_201(self, client):
-        resp = client.post("/api/v1/graph/nodes", json={
-            "label": "Employee",
-            "properties": {"name": "홍길동"},
-        })
+        resp = client.post(
+            "/api/v1/graph/nodes",
+            json={
+                "label": "Employee",
+                "properties": {"name": "홍길동"},
+            },
+        )
         assert resp.status_code == 201
         assert resp.json()["id"] == "4:abc:0"
 
     def test_create_node_400_validation(self, client, mock_service):
-        mock_service.create_node.side_effect = ValidationError("not allowed", field="label")
-        resp = client.post("/api/v1/graph/nodes", json={
-            "label": "Invalid",
-            "properties": {"name": "test"},
-        })
+        mock_service.create_node.side_effect = ValidationError(
+            "not allowed", field="label"
+        )
+        resp = client.post(
+            "/api/v1/graph/nodes",
+            json={
+                "label": "Invalid",
+                "properties": {"name": "test"},
+            },
+        )
         assert resp.status_code == 400
 
     def test_create_node_409_duplicate(self, client, mock_service):
         mock_service.create_node.side_effect = GraphEditConflictError("already exists")
-        resp = client.post("/api/v1/graph/nodes", json={
-            "label": "Employee",
-            "properties": {"name": "홍길동"},
-        })
+        resp = client.post(
+            "/api/v1/graph/nodes",
+            json={
+                "label": "Employee",
+                "properties": {"name": "홍길동"},
+            },
+        )
         assert resp.status_code == 409
 
 
@@ -142,24 +167,33 @@ class TestGetNodeAPI:
 
 class TestUpdateNodeAPI:
     def test_update_node_200(self, client):
-        resp = client.patch("/api/v1/graph/nodes/4:abc:0", json={
-            "properties": {"name": "김철수"},
-        })
+        resp = client.patch(
+            "/api/v1/graph/nodes/4:abc:0",
+            json={
+                "properties": {"name": "김철수"},
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["properties"]["name"] == "김철수"
 
     def test_update_node_404(self, client, mock_service):
         mock_service.update_node.side_effect = EntityNotFoundError("Node", "invalid")
-        resp = client.patch("/api/v1/graph/nodes/invalid", json={
-            "properties": {"name": "test"},
-        })
+        resp = client.patch(
+            "/api/v1/graph/nodes/invalid",
+            json={
+                "properties": {"name": "test"},
+            },
+        )
         assert resp.status_code == 404
 
     def test_update_node_409_duplicate(self, client, mock_service):
         mock_service.update_node.side_effect = GraphEditConflictError("already exists")
-        resp = client.patch("/api/v1/graph/nodes/4:abc:0", json={
-            "properties": {"name": "duplicate"},
-        })
+        resp = client.patch(
+            "/api/v1/graph/nodes/4:abc:0",
+            json={
+                "properties": {"name": "duplicate"},
+            },
+        )
         assert resp.status_code == 409
 
 
@@ -174,7 +208,9 @@ class TestDeleteNodeAPI:
         assert resp.status_code == 404
 
     def test_delete_node_409_has_relationships(self, client, mock_service):
-        mock_service.delete_node.side_effect = GraphEditConflictError("has relationships")
+        mock_service.delete_node.side_effect = GraphEditConflictError(
+            "has relationships"
+        )
         resp = client.delete("/api/v1/graph/nodes/4:abc:0")
         assert resp.status_code == 409
 
@@ -191,30 +227,41 @@ class TestDeleteNodeAPI:
 
 class TestCreateEdgeAPI:
     def test_create_edge_201(self, client):
-        resp = client.post("/api/v1/graph/edges", json={
-            "source_id": "4:abc:0",
-            "target_id": "4:abc:1",
-            "relationship_type": "HAS_SKILL",
-        })
+        resp = client.post(
+            "/api/v1/graph/edges",
+            json={
+                "source_id": "4:abc:0",
+                "target_id": "4:abc:1",
+                "relationship_type": "HAS_SKILL",
+            },
+        )
         assert resp.status_code == 201
         assert resp.json()["type"] == "HAS_SKILL"
 
     def test_create_edge_400_invalid_type(self, client, mock_service):
-        mock_service.create_edge.side_effect = ValidationError("not allowed", field="relationship_type")
-        resp = client.post("/api/v1/graph/edges", json={
-            "source_id": "4:abc:0",
-            "target_id": "4:abc:1",
-            "relationship_type": "INVALID",
-        })
+        mock_service.create_edge.side_effect = ValidationError(
+            "not allowed", field="relationship_type"
+        )
+        resp = client.post(
+            "/api/v1/graph/edges",
+            json={
+                "source_id": "4:abc:0",
+                "target_id": "4:abc:1",
+                "relationship_type": "INVALID",
+            },
+        )
         assert resp.status_code == 400
 
     def test_create_edge_404_node_not_found(self, client, mock_service):
         mock_service.create_edge.side_effect = EntityNotFoundError("Node", "invalid")
-        resp = client.post("/api/v1/graph/edges", json={
-            "source_id": "invalid",
-            "target_id": "4:abc:1",
-            "relationship_type": "HAS_SKILL",
-        })
+        resp = client.post(
+            "/api/v1/graph/edges",
+            json={
+                "source_id": "invalid",
+                "target_id": "4:abc:1",
+                "relationship_type": "HAS_SKILL",
+            },
+        )
         assert resp.status_code == 404
 
 
@@ -253,27 +300,31 @@ class TestDeleteEdgeAPI:
 
 class TestDeletionImpactAPI:
     def test_deletion_impact_200(self, client, mock_service):
-        mock_service.analyze_deletion_impact = AsyncMock(return_value={
-            "node_id": "4:abc:0",
-            "node_labels": ["Skill"],
-            "node_name": "Python",
-            "affected_relationships": [
-                {
-                    "id": "5:abc:0", "type": "HAS_SKILL", "direction": "incoming",
-                    "connected_node_id": "4:abc:1",
-                    "connected_node_labels": ["Employee"],
-                    "connected_node_name": "홍길동",
+        mock_service.analyze_deletion_impact = AsyncMock(
+            return_value={
+                "node_id": "4:abc:0",
+                "node_labels": ["Skill"],
+                "node_name": "Python",
+                "affected_relationships": [
+                    {
+                        "id": "5:abc:0",
+                        "type": "HAS_SKILL",
+                        "direction": "incoming",
+                        "connected_node_id": "4:abc:1",
+                        "connected_node_labels": ["Employee"],
+                        "connected_node_name": "홍길동",
+                    },
+                ],
+                "relationship_count": 1,
+                "concept_bridge": {
+                    "current_concept": "Python",
+                    "current_hierarchy": ["Python", "PL"],
+                    "will_break": True,
                 },
-            ],
-            "relationship_count": 1,
-            "concept_bridge": {
-                "current_concept": "Python",
-                "current_hierarchy": ["Python", "PL"],
-                "will_break": True,
-            },
-            "downstream_effects": [],
-            "summary": "test summary",
-        })
+                "downstream_effects": [],
+                "summary": "test summary",
+            }
+        )
         resp = client.get("/api/v1/graph/nodes/4:abc:0/impact")
         assert resp.status_code == 200
         data = resp.json()
@@ -291,22 +342,24 @@ class TestDeletionImpactAPI:
 
 class TestRenameImpactAPI:
     def test_rename_impact_200(self, client, mock_service):
-        mock_service.analyze_rename_impact = AsyncMock(return_value={
-            "node_id": "4:abc:0",
-            "node_labels": ["Skill"],
-            "current_name": "Python",
-            "new_name": "PythonLang",
-            "has_duplicate": False,
-            "concept_bridge": {
-                "current_concept": "Python",
-                "current_hierarchy": ["Python", "PL"],
-                "will_break": True,
-                "new_concept": None,
-                "new_hierarchy": [],
-            },
-            "downstream_effects": [],
-            "summary": "test summary",
-        })
+        mock_service.analyze_rename_impact = AsyncMock(
+            return_value={
+                "node_id": "4:abc:0",
+                "node_labels": ["Skill"],
+                "current_name": "Python",
+                "new_name": "PythonLang",
+                "has_duplicate": False,
+                "concept_bridge": {
+                    "current_concept": "Python",
+                    "current_hierarchy": ["Python", "PL"],
+                    "will_break": True,
+                    "new_concept": None,
+                    "new_hierarchy": [],
+                },
+                "downstream_effects": [],
+                "summary": "test summary",
+            }
+        )
         resp = client.post(
             "/api/v1/graph/nodes/4:abc:0/impact/rename",
             json={"new_name": "PythonLang"},

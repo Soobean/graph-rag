@@ -62,7 +62,10 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
             for entity_type, original_to_expanded in expanded_by_original.items():
                 expanded_values: set[str] = set()
                 expanded_to_originals[entity_type] = {}
-                for original_value, expanded_values_list in original_to_expanded.items():
+                for (
+                    original_value,
+                    expanded_values_list,
+                ) in original_to_expanded.items():
                     for expanded_value in expanded_values_list:
                         expanded_value = expanded_value.strip()
                         if not expanded_value:
@@ -89,7 +92,9 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
 
         resolved: list[ResolvedEntity] = []
         unresolved: list[UnresolvedEntity] = []
-        resolved_originals: set[tuple[str, str]] = set()  # (entity_type, original_value)
+        resolved_originals: set[tuple[str, str]] = (
+            set()
+        )  # (entity_type, original_value)
         question = state.get("question", "")
         now = datetime.now(UTC).isoformat()
 
@@ -130,7 +135,9 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
 
                         if has_expansion:
                             # 확장 맵을 통해 원본별 resolved 처리
-                            for orig in expanded_to_originals.get(entity_type, {}).get(value, set()):
+                            for orig in expanded_to_originals.get(entity_type, {}).get(
+                                value, set()
+                            ):
                                 resolved_originals.add((entity_type, orig))
                         else:
                             # 개별 처리: 찾은 값만 resolved로 마킹
@@ -179,9 +186,7 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
                     corrected_entities[entity_type] = [
                         db_name if v == original_value else v for v in values
                     ]
-                self._logger.info(
-                    f"Corrected entity: '{original_value}' → '{db_name}'"
-                )
+                self._logger.info(f"Corrected entity: '{original_value}' → '{db_name}'")
 
         result = EntityResolverUpdate(
             resolved_entities=resolved,

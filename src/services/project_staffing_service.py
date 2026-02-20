@@ -122,9 +122,7 @@ class ProjectStaffingService:
         project = await self._get_project_info(project_name)
 
         # 2. REQUIRES 스킬 목록 조회
-        requirements = await self._get_project_requirements(
-            project_name, skill_name
-        )
+        requirements = await self._get_project_requirements(project_name, skill_name)
 
         # 3. 스킬별 후보자 탐색
         skill_candidates_list: list[SkillCandidates] = []
@@ -215,13 +213,10 @@ class ProjectStaffingService:
 
         # 총 필요 인원으로 인당 시간 계산
         total_headcount = sum(
-            sc.required_headcount or 1
-            for sc in candidates_result.skill_candidates
+            sc.required_headcount or 1 for sc in candidates_result.skill_candidates
         )
         hours_per_person = (
-            estimated_hours / max(total_headcount, 1)
-            if estimated_hours > 0
-            else 0
+            estimated_hours / max(total_headcount, 1) if estimated_hours > 0 else 0
         )
 
         for sc in candidates_result.skill_candidates:
@@ -706,7 +701,5 @@ class ProjectStaffingService:
                 )
             return candidates
         except Exception as e:
-            logger.error(
-                f"Failed to find candidates for skill '{skill_name}': {e}"
-            )
+            logger.error(f"Failed to find candidates for skill '{skill_name}': {e}")
             return []

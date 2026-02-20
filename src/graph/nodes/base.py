@@ -86,7 +86,7 @@ class BaseNode[T](ABC):
             )
             self._logger.debug(f"Node '{self.name}' completed")
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._logger.error(
                 f"Node '{self.name}' timed out after {self.timeout_seconds}s"
             )

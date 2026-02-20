@@ -50,14 +50,16 @@ def disabled_settings():
 def mock_llm():
     """Mock LLM Repository"""
     llm = MagicMock(spec=LLMRepository)
-    llm.generate_json = AsyncMock(return_value={
-        "type": "NEW_CONCEPT",
-        "action": "skills 카테고리에 새 개념으로 추가",
-        "canonical": None,
-        "parent": "Programming",
-        "confidence": 0.85,
-        "reasoning": "LangGraph는 새로운 프레임워크입니다",
-    })
+    llm.generate_json = AsyncMock(
+        return_value={
+            "type": "NEW_CONCEPT",
+            "action": "skills 카테고리에 새 개념으로 추가",
+            "canonical": None,
+            "parent": "Programming",
+            "confidence": 0.85,
+            "reasoning": "LangGraph는 새로운 프레임워크입니다",
+        }
+    )
     return llm
 
 
@@ -78,27 +80,31 @@ def mock_neo4j():
 def mock_ontology():
     """Mock Ontology Loader"""
     ontology = MagicMock()
-    ontology.load_schema = MagicMock(return_value={
-        "concepts": {
-            "SkillCategory": [
-                {
-                    "name": "Programming",
-                    "skills": ["Python", "Java", "Go"],
-                    "subcategories": [
-                        {"name": "Backend", "skills": ["Django", "FastAPI"]},
-                    ],
-                }
-            ]
-        }
-    })
-    ontology.load_synonyms = MagicMock(return_value={
-        "skills": {
-            "Python": {
-                "canonical": "Python",
-                "aliases": ["파이썬", "Python3"],
+    ontology.load_schema = MagicMock(
+        return_value={
+            "concepts": {
+                "SkillCategory": [
+                    {
+                        "name": "Programming",
+                        "skills": ["Python", "Java", "Go"],
+                        "subcategories": [
+                            {"name": "Backend", "skills": ["Django", "FastAPI"]},
+                        ],
+                    }
+                ]
             }
         }
-    })
+    )
+    ontology.load_synonyms = MagicMock(
+        return_value={
+            "skills": {
+                "Python": {
+                    "canonical": "Python",
+                    "aliases": ["파이썬", "Python3"],
+                }
+            }
+        }
+    )
     return ontology
 
 
@@ -206,9 +212,7 @@ class TestTermValidation:
         assert learner.validate_term("---") is False
 
     @pytest.mark.asyncio
-    async def test_invalid_terms_filtered(
-        self, learner, mock_llm, mock_neo4j
-    ):
+    async def test_invalid_terms_filtered(self, learner, mock_llm, mock_neo4j):
         """유효하지 않은 용어는 처리되지 않음"""
         invalid_unresolved = [
             UnresolvedEntity(
@@ -277,13 +281,15 @@ class TestAutoApproval:
     ):
         """자동 승인 조건 충족 시 승인됨"""
         # NEW_SYNONYM 타입으로 LLM 응답 설정
-        mock_llm.generate_json = AsyncMock(return_value={
-            "type": "NEW_SYNONYM",
-            "action": "Python의 동의어로 추가",
-            "canonical": "Python",
-            "parent": None,
-            "confidence": 0.98,  # 높은 신뢰도
-        })
+        mock_llm.generate_json = AsyncMock(
+            return_value={
+                "type": "NEW_SYNONYM",
+                "action": "Python의 동의어로 추가",
+                "canonical": "Python",
+                "parent": None,
+                "confidence": 0.98,  # 높은 신뢰도
+            }
+        )
 
         # 이미 4번 등장한 기존 제안 (frequency=4)
         existing_proposal = OntologyProposal(
@@ -324,13 +330,15 @@ class TestAutoApproval:
     ):
         """NEW_CONCEPT은 자동 승인되지 않음 (allowed_types에 없음)"""
         # NEW_CONCEPT 타입으로 LLM 응답
-        mock_llm.generate_json = AsyncMock(return_value={
-            "type": "NEW_CONCEPT",
-            "action": "새 개념 추가",
-            "canonical": None,
-            "parent": "Programming",
-            "confidence": 0.99,  # 매우 높은 신뢰도
-        })
+        mock_llm.generate_json = AsyncMock(
+            return_value={
+                "type": "NEW_CONCEPT",
+                "action": "새 개념 추가",
+                "canonical": None,
+                "parent": "Programming",
+                "confidence": 0.99,  # 매우 높은 신뢰도
+            }
+        )
 
         learner = OntologyLearner(
             settings=default_settings,
@@ -354,12 +362,14 @@ class TestAutoApproval:
         # 원자적 자동 승인이 한도 초과로 실패하도록 설정
         mock_neo4j.try_auto_approve_with_limit = AsyncMock(return_value=False)
 
-        mock_llm.generate_json = AsyncMock(return_value={
-            "type": "NEW_SYNONYM",
-            "action": "동의어 추가",
-            "canonical": "Python",
-            "confidence": 0.99,
-        })
+        mock_llm.generate_json = AsyncMock(
+            return_value={
+                "type": "NEW_SYNONYM",
+                "action": "동의어 추가",
+                "canonical": "Python",
+                "confidence": 0.99,
+            }
+        )
 
         existing_proposal = OntologyProposal(
             proposal_type=ProposalType.NEW_SYNONYM,
@@ -438,10 +448,12 @@ class TestLLMAnalysis:
         self, default_settings, mock_llm, mock_neo4j, sample_unresolved
     ):
         """잘못된 LLM 응답 처리"""
-        mock_llm.generate_json = AsyncMock(return_value={
-            "type": "INVALID_TYPE",  # 잘못된 타입
-            "action": "test",
-        })
+        mock_llm.generate_json = AsyncMock(
+            return_value={
+                "type": "INVALID_TYPE",  # 잘못된 타입
+                "action": "test",
+            }
+        )
 
         learner = OntologyLearner(
             settings=default_settings,
@@ -594,9 +606,7 @@ class TestAdaptiveOntologySettingsValidation:
     def test_invalid_auto_approve_types_raises(self):
         """잘못된 auto_approve_types는 에러 발생"""
         with pytest.raises(ValueError, match="Invalid proposal types"):
-            AdaptiveOntologySettings(
-                auto_approve_types=["INVALID_TYPE"]
-            )
+            AdaptiveOntologySettings(auto_approve_types=["INVALID_TYPE"])
 
     def test_invalid_term_length_range_raises(self):
         """min_term_length > max_term_length이면 에러 발생"""

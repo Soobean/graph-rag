@@ -87,10 +87,13 @@ class TestIngestAPI:
         test_file.write_text("name,age\nAlice,30")
 
         try:
-            resp = client.post("/api/v1/ingest", json={
-                "source_type": "csv",
-                "file_path": str(test_file),
-            })
+            resp = client.post(
+                "/api/v1/ingest",
+                json={
+                    "source_type": "csv",
+                    "file_path": str(test_file),
+                },
+            )
             assert resp.status_code == 202
             data = resp.json()
             assert data["success"] is True

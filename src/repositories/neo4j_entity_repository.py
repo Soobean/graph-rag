@@ -361,7 +361,9 @@ class Neo4jEntityRepository:
             if exclude_ids:
                 exclude_set = set(exclude_ids)
                 results = [
-                    (node, score) for node, score in results if node.id not in exclude_set
+                    (node, score)
+                    for node, score in results
+                    if node.id not in exclude_set
                 ]
 
             return results[:limit]
@@ -383,7 +385,11 @@ class Neo4jEntityRepository:
                 return await self._search_nodes_fulltext(label, search, limit)
             except Exception as e:
                 err_msg = str(e).lower()
-                if "index" in err_msg or "fulltext" in err_msg or "procedure" in err_msg:
+                if (
+                    "index" in err_msg
+                    or "fulltext" in err_msg
+                    or "procedure" in err_msg
+                ):
                     logger.debug(
                         "Fulltext index not available, falling back to CONTAINS: %s", e
                     )
@@ -404,7 +410,7 @@ class Neo4jEntityRepository:
             validate_identifier(label, "label")
             label_where = "WHERE $label IN labels(n)"
 
-        escaped = re.sub(r'([+\-&|!(){}\[\]^"~*?:\\/])', r'\\\1', search)
+        escaped = re.sub(r'([+\-&|!(){}\[\]^"~*?:\\/])', r"\\\1", search)
         fulltext_search = f"{escaped}*"
 
         query = f"""

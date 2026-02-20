@@ -5,7 +5,7 @@ Neo4j 클라이언트 테스트
     pytest tests/test_neo4j_client.py -v
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -56,6 +56,7 @@ class TestGetSchemaInfoUnit:
 
         # execute_query를 모킹하여 각 쿼리에 대한 응답을 시뮬레이션
         call_count = 0
+
         async def mock_execute_query(query, parameters=None):
             nonlocal call_count
             call_count += 1
@@ -72,7 +73,11 @@ class TestGetSchemaInfoUnit:
             elif "Project" in query and "keys" in query:
                 return [{"key": "name"}, {"key": "status"}, {"key": "budget_million"}]
             elif "WORKS_ON" in query and "keys" in query:
-                return [{"key": "role"}, {"key": "allocated_hours"}, {"key": "actual_hours"}]
+                return [
+                    {"key": "role"},
+                    {"key": "allocated_hours"},
+                    {"key": "actual_hours"},
+                ]
             return []
 
         client.execute_query = mock_execute_query
@@ -110,6 +115,7 @@ class TestGetSchemaInfoUnit:
         )
 
         call_count = 0
+
         async def mock_execute_query(query, parameters=None):
             nonlocal call_count
             call_count += 1
@@ -155,7 +161,9 @@ class TestTransactionScope:
         mock_tx.run.return_value = mock_result
 
         scope = TransactionScope(mock_tx)
-        results = await scope.run_query("MATCH (n) RETURN n.name AS name, count(n) AS count")
+        results = await scope.run_query(
+            "MATCH (n) RETURN n.name AS name, count(n) AS count"
+        )
 
         assert len(results) == 1
         assert results[0]["name"] == "test"
@@ -209,7 +217,7 @@ class TestTransactionScope:
         client._driver = mock_driver
 
         with pytest.raises(ValueError, match="test error"):
-            async with client.begin_transaction() as tx:
+            async with client.begin_transaction() as _tx:
                 raise ValueError("test error")
 
         mock_tx.commit.assert_not_awaited()

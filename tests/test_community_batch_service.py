@@ -183,9 +183,7 @@ async def test_refresh_cleans_up_even_if_projection_create_fails(service, mock_g
 
 async def test_refresh_handles_double_failure(service, mock_gds):
     """detect 실패 + cleanup 실패 시 원래 에러가 전파됨"""
-    mock_gds.detect_communities = AsyncMock(
-        side_effect=RuntimeError("GDS failed")
-    )
+    mock_gds.detect_communities = AsyncMock(side_effect=RuntimeError("GDS failed"))
     mock_gds.cleanup_all_projections = AsyncMock(
         side_effect=[1, RuntimeError("Cleanup also failed")]
     )
@@ -352,9 +350,7 @@ def test_check_stale_invalid_string():
 def test_check_stale_naive_datetime():
     """타임존 없는 datetime 문자열도 UTC로 간주하여 처리"""
     # UTC 기준 1시간 전 (naive → UTC 변환 경로 검증)
-    fresh_time = (datetime.now(UTC) - timedelta(hours=1)).strftime(
-        "%Y-%m-%dT%H:%M:%S"
-    )
+    fresh_time = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
     assert CommunityBatchService._check_stale(fresh_time) is False
 
 

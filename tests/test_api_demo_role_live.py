@@ -33,6 +33,7 @@ pytestmark = pytest.mark.skipif(
 # Helper
 # ============================================
 
+
 async def stream_query(question: str, demo_role: str | None = None) -> dict:
     """SSE 스트리밍 쿼리 실행 후 결과를 dict로 반환"""
     headers = {"Content-Type": "application/json"}
@@ -111,6 +112,7 @@ async def sync_query(question: str, demo_role: str | None = None) -> dict:
 # Phase 1: API 단위 테스트
 # ============================================
 
+
 @pytest.mark.integration
 class TestDemoRoleAPIBasic:
     """X-Demo-Role 헤더가 정상적으로 처리되는지 검증"""
@@ -155,6 +157,7 @@ class TestDemoRoleAPIBasic:
 # Phase 2: D1~D4 시나리오 테스트
 # ============================================
 
+
 @pytest.mark.integration
 class TestAccessControlScenarios:
     """같은 질문, 다른 역할 -> 다른 결과 검증"""
@@ -177,8 +180,12 @@ class TestAccessControlScenarios:
         # admin 응답에는 Concept 관련 내용이 있어야 함 (또는 최소한 더 많은 결과)
         admin_response = admin_result["full_response"]
         viewer_response = viewer_result["full_response"]
-        print(f"\n[D1] admin response ({len(admin_response)} chars): {admin_response[:200]}...")
-        print(f"[D1] viewer response ({len(viewer_response)} chars): {viewer_response[:200]}...")
+        print(
+            f"\n[D1] admin response ({len(admin_response)} chars): {admin_response[:200]}..."
+        )
+        print(
+            f"[D1] viewer response ({len(viewer_response)} chars): {viewer_response[:200]}..."
+        )
 
         # 최소한 둘 다 응답이 있어야 함
         assert len(admin_response) > 0 or admin_result["done"] is not None
@@ -262,9 +269,9 @@ class TestAccessControlScenarios:
             stream_query(question, "viewer"),
         )
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"4-Role Comparison: '{question}'")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         for r in results:
             meta = r["metadata"] or {}
@@ -284,6 +291,7 @@ class TestAccessControlScenarios:
 # ============================================
 # Phase 3: 보안 경계 테스트
 # ============================================
+
 
 @pytest.mark.integration
 class TestSecurityEdgeCases:

@@ -33,9 +33,7 @@ def validate_identifier(value: str, field_name: str = "identifier") -> str:
         ValidationError: 유효하지 않은 형식인 경우
     """
     if not value:
-        raise ValidationError(
-            f"Empty {field_name} is not allowed", field=field_name
-        )
+        raise ValidationError(f"Empty {field_name} is not allowed", field=field_name)
     if not CYPHER_IDENTIFIER_PATTERN.match(value):
         raise ValidationError(
             f"Invalid {field_name} format: '{value}'. "

@@ -7,7 +7,6 @@ ThreadPoolExecutor 브릿지, 프로젝션 관리, 커뮤니티 탐지,
 실행: pytest tests/test_gds_service.py -v
 """
 
-import asyncio
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -168,10 +167,12 @@ class TestProjectionManagement:
         mock_gds = gds_service._gds
 
         # 2개의 프로젝션이 있는 DataFrame 반환
-        mock_df = pd.DataFrame([
-            {"graphName": "proj1"},
-            {"graphName": "proj2"},
-        ])
+        mock_df = pd.DataFrame(
+            [
+                {"graphName": "proj1"},
+                {"graphName": "proj2"},
+            ]
+        )
         mock_gds.graph.list.return_value = mock_df
         mock_gds.graph.get.return_value = MagicMock()
 
@@ -199,10 +200,16 @@ class TestCommunityDetection:
             "modularity": 0.72,
         }
 
-        community_df = pd.DataFrame([
-            {"community_id": 0, "member_count": 20, "sample_members": ["김철수", "이영희"]},
-            {"community_id": 1, "member_count": 15, "sample_members": ["박지우"]},
-        ])
+        community_df = pd.DataFrame(
+            [
+                {
+                    "community_id": 0,
+                    "member_count": 20,
+                    "sample_members": ["김철수", "이영희"],
+                },
+                {"community_id": 1, "member_count": 15, "sample_members": ["박지우"]},
+            ]
+        )
         mock_gds.run_cypher.return_value = community_df
 
         result = await gds_service.detect_communities(algorithm="leiden")
@@ -258,26 +265,28 @@ class TestFindSimilarEmployees:
     async def test_find_similar_employees_success(self, gds_service):
         """유사 직원 탐색 정상 반환"""
         mock_gds = gds_service._gds
-        result_df = pd.DataFrame([
-            {
-                "name": "이영희",
-                "job_type": "개발",
-                "experience": 5,
-                "community_id": 1,
-                "shared_skills": 4,
-                "similarity": 0.75,
-                "common_skills": ["Python", "React", "AWS", "Docker"],
-            },
-            {
-                "name": "박지우",
-                "job_type": "개발",
-                "experience": 3,
-                "community_id": 2,
-                "shared_skills": 3,
-                "similarity": 0.6,
-                "common_skills": ["Python", "React", "Node.js"],
-            },
-        ])
+        result_df = pd.DataFrame(
+            [
+                {
+                    "name": "이영희",
+                    "job_type": "개발",
+                    "experience": 5,
+                    "community_id": 1,
+                    "shared_skills": 4,
+                    "similarity": 0.75,
+                    "common_skills": ["Python", "React", "AWS", "Docker"],
+                },
+                {
+                    "name": "박지우",
+                    "job_type": "개발",
+                    "experience": 3,
+                    "community_id": 2,
+                    "shared_skills": 3,
+                    "similarity": 0.6,
+                    "common_skills": ["Python", "React", "Node.js"],
+                },
+            ]
+        )
         mock_gds.run_cypher.return_value = result_df
 
         results = await gds_service.find_similar_employees("김철수", top_k=5)
@@ -313,28 +322,30 @@ class TestTeamRecommendation:
     async def test_recommend_team_success(self, gds_service):
         """팀 추천 정상 반환"""
         mock_gds = gds_service._gds
-        candidates_df = pd.DataFrame([
-            {
-                "id": "1",
-                "name": "김철수",
-                "job_type": "개발",
-                "experience": 5,
-                "community_id": 1,
-                "matchedSkills": ["Python", "AWS"],
-                "skillCount": 2,
-                "skill_score": 0.67,
-            },
-            {
-                "id": "2",
-                "name": "이영희",
-                "job_type": "개발",
-                "experience": 3,
-                "community_id": 2,
-                "matchedSkills": ["React"],
-                "skillCount": 1,
-                "skill_score": 0.33,
-            },
-        ])
+        candidates_df = pd.DataFrame(
+            [
+                {
+                    "id": "1",
+                    "name": "김철수",
+                    "job_type": "개발",
+                    "experience": 5,
+                    "community_id": 1,
+                    "matchedSkills": ["Python", "AWS"],
+                    "skillCount": 2,
+                    "skill_score": 0.67,
+                },
+                {
+                    "id": "2",
+                    "name": "이영희",
+                    "job_type": "개발",
+                    "experience": 3,
+                    "community_id": 2,
+                    "matchedSkills": ["React"],
+                    "skillCount": 1,
+                    "skill_score": 0.33,
+                },
+            ]
+        )
         mock_gds.run_cypher.return_value = candidates_df
 
         result = await gds_service.recommend_team(
@@ -366,28 +377,30 @@ class TestTeamRecommendation:
         """스킬 커버리지 계산 정확성"""
         mock_gds = gds_service._gds
         # 2명이 3개 스킬 중 2개를 커버
-        candidates_df = pd.DataFrame([
-            {
-                "id": "1",
-                "name": "A",
-                "job_type": "개발",
-                "experience": 5,
-                "community_id": 1,
-                "matchedSkills": ["Python"],
-                "skillCount": 1,
-                "skill_score": 0.33,
-            },
-            {
-                "id": "2",
-                "name": "B",
-                "job_type": "개발",
-                "experience": 3,
-                "community_id": 2,
-                "matchedSkills": ["AWS"],
-                "skillCount": 1,
-                "skill_score": 0.33,
-            },
-        ])
+        candidates_df = pd.DataFrame(
+            [
+                {
+                    "id": "1",
+                    "name": "A",
+                    "job_type": "개발",
+                    "experience": 5,
+                    "community_id": 1,
+                    "matchedSkills": ["Python"],
+                    "skillCount": 1,
+                    "skill_score": 0.33,
+                },
+                {
+                    "id": "2",
+                    "name": "B",
+                    "job_type": "개발",
+                    "experience": 3,
+                    "community_id": 2,
+                    "matchedSkills": ["AWS"],
+                    "skillCount": 1,
+                    "skill_score": 0.33,
+                },
+            ]
+        )
         mock_gds.run_cypher.return_value = candidates_df
 
         result = await gds_service.recommend_team(
@@ -402,19 +415,21 @@ class TestTeamRecommendation:
         """팀 크기 제한"""
         mock_gds = gds_service._gds
         # 5명 후보, 팀 크기 2
-        candidates_df = pd.DataFrame([
-            {
-                "id": str(i),
-                "name": f"Employee{i}",
-                "job_type": "개발",
-                "experience": i,
-                "community_id": i,
-                "matchedSkills": [f"Skill{i}"],
-                "skillCount": 1,
-                "skill_score": 0.2,
-            }
-            for i in range(5)
-        ])
+        candidates_df = pd.DataFrame(
+            [
+                {
+                    "id": str(i),
+                    "name": f"Employee{i}",
+                    "job_type": "개발",
+                    "experience": i,
+                    "community_id": i,
+                    "matchedSkills": [f"Skill{i}"],
+                    "skillCount": 1,
+                    "skill_score": 0.2,
+                }
+                for i in range(5)
+            ]
+        )
         mock_gds.run_cypher.return_value = candidates_df
 
         result = await gds_service.recommend_team(
@@ -435,18 +450,22 @@ class TestCommunityDetails:
         """커뮤니티 상세 정보 조회"""
         mock_gds = gds_service._gds
 
-        members_df = pd.DataFrame([
-            {
-                "id": "1",
-                "name": "김철수",
-                "job_type": "개발",
-                "experience": 5,
-                "top_skills": ["Python", "AWS"],
-            },
-        ])
-        skills_df = pd.DataFrame([
-            {"skill": "Python", "count": 5, "percentage": 83.3},
-        ])
+        members_df = pd.DataFrame(
+            [
+                {
+                    "id": "1",
+                    "name": "김철수",
+                    "job_type": "개발",
+                    "experience": 5,
+                    "top_skills": ["Python", "AWS"],
+                },
+            ]
+        )
+        skills_df = pd.DataFrame(
+            [
+                {"skill": "Python", "count": 5, "percentage": 83.3},
+            ]
+        )
 
         mock_gds.run_cypher.side_effect = [members_df, skills_df]
 
