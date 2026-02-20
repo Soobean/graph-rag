@@ -137,6 +137,38 @@ class TestCypherGeneratorNode:
         assert "cypher_generator" in result["execution_path"]
 
     @pytest.mark.asyncio
+    async def test_generate_passes_intent(self, node, mock_llm, mock_neo4j):
+        """intent가 generate_cypher에 전달됨"""
+        mock_llm.generate_cypher.return_value = {
+            "cypher": "MATCH (e)-[r]->(s) RETURN e, r, s",
+            "parameters": {},
+        }
+
+        state = GraphRAGState(
+            question="홍길동의 스킬은?",
+            intent="personnel_search",
+            entities={"Employee": ["홍길동"]},
+        )
+
+        await node(state)
+
+        call_kwargs = mock_llm.generate_cypher.call_args.kwargs
+        assert call_kwargs["intent"] == "personnel_search"
+
+    @pytest.mark.asyncio
+    async def test_generate_intent_defaults_to_unknown(self, node, mock_llm, base_state):
+        """intent 미설정 시 'unknown' 전달"""
+        mock_llm.generate_cypher.return_value = {
+            "cypher": "MATCH (n) RETURN n",
+            "parameters": {},
+        }
+
+        await node(base_state)
+
+        call_kwargs = mock_llm.generate_cypher.call_args.kwargs
+        assert call_kwargs["intent"] == "unknown"
+
+    @pytest.mark.asyncio
     async def test_generate_error(self, node, mock_llm, base_state):
         """Cypher 생성 실패"""
         mock_llm.generate_cypher.side_effect = Exception("LLM Fail")

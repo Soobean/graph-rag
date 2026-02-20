@@ -34,6 +34,7 @@ system: |
   | org_analysis         | TYPE B | 부서 통계/집계                 |
   | certificate_search   | TYPE B | 자격증 목록/집계               |
   | global_analysis      | TYPE B | 거시적 통계                    |
+  | ontology_update      | TYPE B | 온톨로지 변경은 집계/확인용     |
 
   If the intent is not in the table above (e.g., "unknown"), default to TYPE B.
 
@@ -87,15 +88,6 @@ system: |
     RETURN mentor, r1, mentee, r2, p, r3, colleague, r4, s
     LIMIT 200
 
-  Example 4-hop (Find departments collaborating with mentee's projects):
-    MATCH (e:Employee)-[r1:MENTORS]->(mentee:Employee)
-    WHERE toLower(e.name) = toLower($name)
-    MATCH (mentee)-[r2:WORKS_ON]->(p:Project)<-[r3:WORKS_ON]-(colleague:Employee)
-    WHERE colleague <> mentee
-    MATCH (colleague)-[r4:BELONGS_TO]->(d:Department)
-    RETURN e, r1, mentee, r2, p, r3, colleague, r4, d
-    LIMIT 200
-
   ⚠️ IMPORTANT: Every relationship variable (r1, r2, etc.) in RETURN must be defined in a MATCH clause!
 
   ⚠️ CYPHER COMPATIBILITY RULES:
@@ -114,19 +106,13 @@ system: |
   - If the entity is "챗봇 리뉴얼", the parameter must be "챗봇 리뉴얼" (NOT "챗봇 리뉴얼 프로젝트").
   - If the entity is "데이터레이크 개선", the parameter must be "데이터레이크 개선" (NOT "데이터레이크 개선 프로젝트").
 
-  Example - Project matching query:
+  Example - Project matching (Type A, reverse direction):
     MATCH (p:Project)<-[r:WORKS_ON]-(e:Employee)
     WHERE toLower(p.name) = toLower($projectName)
     RETURN p, r, e
     LIMIT 200
 
-  Example - Department query:
-    MATCH (e:Employee)-[r:BELONGS_TO]->(d:Department)
-    WHERE toLower(d.name) = toLower($deptName)
-    RETURN e, r, d
-    LIMIT 200
-
-  Example - Skill rate search (available developers by skill rate):
+  Example - Filtered search (Type A with WHERE conditions):
     MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
     WHERE toLower(s.name) = toLower($skillName)
       AND r.proficiency IN ['고급', '전문가']
@@ -134,19 +120,7 @@ system: |
     RETURN e, r, s
     LIMIT 200
 
-  Example - Project budget with team costs:
-    MATCH (p:Project)<-[r:WORKS_ON]-(e:Employee)
-    WHERE toLower(p.name) = toLower($projectName)
-    RETURN p, r, e
-    LIMIT 200
-
-  Example - Project skill requirements with rates:
-    MATCH (p:Project)-[r:REQUIRES]->(s:Skill)
-    WHERE toLower(p.name) = toLower($projectName)
-    RETURN p, r, s
-    LIMIT 200
-
-  Example - Hours gap per employee per project (Type B aggregation):
+  Example - Hours gap (Type B aggregation with calculation):
     MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)
     WITH e.name AS employee, p.name AS project,
          w.allocated_hours AS allocated, w.actual_hours AS actual,
@@ -155,22 +129,12 @@ system: |
     ORDER BY gap DESC
     LIMIT 10
 
-  Example - Skill count per employee (Type B aggregation):
+  Example - Skill count (Type B aggregation with COUNT/COLLECT):
     MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
     WITH e.name AS employee, COUNT(s) AS skill_count,
          COLLECT(s.name) AS skills
     RETURN employee, skill_count, skills
     ORDER BY skill_count DESC
-    LIMIT 10
-
-  Example - Project budget utilization (Type B aggregation):
-    MATCH (p:Project)
-    WHERE p.budget_spent IS NOT NULL AND p.budget_million IS NOT NULL
-    WITH p.name AS project, p.budget_million AS budget,
-         p.budget_spent AS spent,
-         round(p.budget_spent * 100.0 / p.budget_million, 1) AS utilization_pct
-    RETURN project, budget, spent, utilization_pct
-    ORDER BY utilization_pct DESC
     LIMIT 10
 
 user: |
