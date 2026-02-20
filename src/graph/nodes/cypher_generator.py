@@ -309,6 +309,7 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 )
 
             # LLM을 통한 Cypher 생성
+            intent = state.get("intent", "unknown")
             result = await self._llm.generate_cypher(
                 question=question,
                 schema=dict(schema),  # TypedDict를 dict로 변환
@@ -317,6 +318,7 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 if query_plan
                 else None,  # Multi-hop 쿼리 계획 전달
                 use_light_model=use_light_model,
+                intent=intent,
             )
 
             cypher = result.get("cypher", "")

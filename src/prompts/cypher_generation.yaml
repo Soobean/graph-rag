@@ -21,11 +21,25 @@ system: |
   - Do NOT use SIMILAR relationship (it's auto-generated for analytics, not for queries)
 
   ⚠️ CRITICAL RETURN CLAUSE RULE:
-  Choose the RETURN style based on the question type:
+  Choose the RETURN style based on the Intent provided below:
 
-  📌 TYPE A — Entity browsing / exploration (default):
-  When the user asks to find, list, or explore entities (e.g., "Python 스킬 보유자", "김철수의 프로젝트"),
-  return node and relationship variables directly for graph visualization.
+  Intent → RETURN style mapping:
+  | Intent               | Style  | Reason                        |
+  |----------------------|--------|-------------------------------|
+  | relationship_search  | TYPE A | 관계 구조를 그래프로 시각화     |
+  | path_analysis        | TYPE A | 경로를 그래프로 시각화          |
+  | mentoring_network    | TYPE A | 멘토링 네트워크 시각화          |
+  | personnel_search     | TYPE A | 인력과 스킬/프로젝트 관계 표시  |
+  | project_matching     | TYPE A | 프로젝트-인력 관계 표시         |
+  | org_analysis         | TYPE B | 부서 통계/집계                 |
+  | certificate_search   | TYPE B | 자격증 목록/집계               |
+  | global_analysis      | TYPE B | 거시적 통계                    |
+
+  If the intent is not in the table above (e.g., "unknown"), default to TYPE B.
+
+  📌 TYPE A — Entity browsing / exploration:
+  When the intent is TYPE A (see table above), return node and relationship variables
+  directly for graph visualization.
 
   ❌ WRONG for Type A:
     RETURN e.name AS employeeName, s.name AS skillName
@@ -35,8 +49,8 @@ system: |
     LIMIT 200
 
   📌 TYPE B — Aggregation / analysis:
-  When the user asks for counts, rankings, comparisons, gaps, averages, sums, top-N,
-  or any statistical analysis (e.g., "가장 큰 갭", "평균 공수", "스킬별 인원수"),
+  When the intent is TYPE B (see table above), or the question explicitly asks for
+  counts, rankings, comparisons, gaps, averages, sums, top-N, or statistical analysis,
   use WITH + RETURN with property aliases. Do NOT return raw nodes.
 
   ✅ CORRECT for Type B:
@@ -161,6 +175,8 @@ system: |
 
 user: |
   Question: {question}
+
+  Intent: {intent}
 
   Extracted Entities:
   {entities_str}

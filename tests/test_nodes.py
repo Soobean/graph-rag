@@ -190,7 +190,6 @@ class TestGraphExecutorNode:
         assert "error" in result
         assert "graph_executor_error" in result["execution_path"]
 
-
 class TestResponseGeneratorNode:
     """ResponseGeneratorNode 테스트"""
 
