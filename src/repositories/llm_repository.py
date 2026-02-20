@@ -450,6 +450,7 @@ class LLMRepository:
         entities: list[dict[str, Any]],
         query_plan: dict[str, Any] | None = None,
         use_light_model: bool = False,
+        intent: str = "",
     ) -> CypherGenerationResult:
         """
         Cypher 쿼리 생성 (복잡도에 따른 모델 선택 지원)
@@ -463,6 +464,7 @@ class LLMRepository:
             entities: 추출된 엔티티 목록
             query_plan: Multi-hop 쿼리 계획 (선택적)
             use_light_model: True면 LIGHT 모델만 사용 (단순 쿼리 최적화)
+            intent: 질문 의도 (TYPE A/B 매핑에 사용)
 
         Returns:
             CypherGenerationResult: Generated Cypher query and metadata
@@ -481,6 +483,7 @@ class LLMRepository:
             question=question,
             entities_str=entities_str,
             query_plan_str=query_plan_str,
+            intent=intent or "unknown",
         )
 
         if use_light_model:
