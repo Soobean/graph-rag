@@ -30,7 +30,7 @@ export function MessageList({ messages, className }: MessageListProps) {
 
   return (
     <ScrollArea className={cn('flex-1', className)}>
-      <div className="divide-y divide-border">
+      <div>
         {messages.map((message) => (
           <MessageItem key={message.id} message={message} />
         ))}

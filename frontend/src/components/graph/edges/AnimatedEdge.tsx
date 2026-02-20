@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@xyflow/react';
 import type { EdgeProps } from '@xyflow/react';
 import type { FlowEdge, FlowEdgeData } from '@/types/graph';
 
@@ -14,15 +14,13 @@ function AnimatedEdgeComponent({
   data,
   style,
 }: EdgeProps<FlowEdge>) {
-  // SmoothStep path for cleaner orthogonal edges
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+  const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
     targetX,
     targetY,
     targetPosition,
-    borderRadius: 8,
   });
 
   const edgeData = data as FlowEdgeData | undefined;
@@ -36,8 +34,8 @@ function AnimatedEdgeComponent({
         markerEnd={`url(#arrow-${id})`}
         style={{
           ...style,
-          strokeWidth: 2,
-          stroke: '#64748b',
+          strokeWidth: 1.5,
+          stroke: '#d1d5db',
           strokeLinecap: 'round',
         }}
       />
@@ -48,13 +46,13 @@ function AnimatedEdgeComponent({
           viewBox="0 0 10 10"
           refX="8"
           refY="5"
-          markerWidth="6"
-          markerHeight="6"
+          markerWidth="5"
+          markerHeight="5"
           orient="auto-start-reverse"
         >
           <path
             d="M 0 0 L 10 5 L 0 10 z"
-            fill="#64748b"
+            fill="#d1d5db"
           />
         </marker>
       </defs>
@@ -62,7 +60,7 @@ function AnimatedEdgeComponent({
       {edgeData?.relationLabel && (
         <EdgeLabelRenderer>
           <div
-            className="pointer-events-auto absolute rounded-md bg-slate-700 px-2 py-1 text-xs font-medium text-white shadow-md border border-slate-600"
+            className="pointer-events-auto absolute rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             }}
