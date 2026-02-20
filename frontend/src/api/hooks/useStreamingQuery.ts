@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import type {
   QueryRequest,
   StreamingMetadata,
+  StreamingStepData,
 } from '../../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -17,6 +18,7 @@ export interface StreamingQueryState {
 export interface StreamingQueryCallbacks {
   onChunk?: (chunk: string, fullContent: string) => void;
   onMetadata?: (metadata: StreamingMetadata) => void;
+  onStep?: (step: StreamingStepData) => void;
   onComplete?: (fullResponse: string, success: boolean) => void;
   onError?: (error: string) => void;
 }
@@ -154,6 +156,13 @@ export function useStreamingQuery(
                   callbacks?.onMetadata?.(metadata);
                 } catch {
                   console.error('Failed to parse metadata:', eventData);
+                }
+              } else if (eventType === 'step') {
+                try {
+                  const stepData = JSON.parse(eventData) as StreamingStepData;
+                  callbacks?.onStep?.(stepData);
+                } catch {
+                  console.error('Failed to parse step:', eventData);
                 }
               } else if (eventType === 'chunk') {
                 accumulatedContent += eventData;

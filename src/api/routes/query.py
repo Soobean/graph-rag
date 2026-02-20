@@ -203,6 +203,9 @@ async def query_stream(
     첫 토큰이 ~100ms 내에 도착하여 체감 레이턴시가 크게 개선됩니다.
 
     SSE 이벤트 형식:
+    - event: step
+      data: {"node_name": "...", "description": "...", "step_number": 1}
+
     - event: metadata
       data: {"intent": "...", "entities": {...}, "cypher_query": "..."}
 
@@ -234,6 +237,11 @@ async def query_stream(
                 if event_type == "metadata":
                     yield {
                         "event": "metadata",
+                        "data": json.dumps(event["data"], ensure_ascii=False),
+                    }
+                elif event_type == "step":
+                    yield {
+                        "event": "step",
                         "data": json.dumps(event["data"], ensure_ascii=False),
                     }
                 elif event_type == "chunk":

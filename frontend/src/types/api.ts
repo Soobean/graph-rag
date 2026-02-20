@@ -136,11 +136,22 @@ export interface StreamingMetadata {
   tabular_data?: TabularData;
 }
 
-export type StreamingEventType = 'metadata' | 'chunk' | 'done' | 'error';
+export type StreamingEventType = 'metadata' | 'step' | 'chunk' | 'done' | 'error';
+
+export interface StreamingStepData {
+  node_name: string;
+  description: string;
+  step_number: number;
+}
 
 export interface StreamingMetadataEvent {
   type: 'metadata';
   data: StreamingMetadata;
+}
+
+export interface StreamingStepEvent {
+  type: 'step';
+  data: StreamingStepData;
 }
 
 export interface StreamingChunkEvent {
@@ -161,6 +172,7 @@ export interface StreamingErrorEvent {
 
 export type StreamingEvent =
   | StreamingMetadataEvent
+  | StreamingStepEvent
   | StreamingChunkEvent
   | StreamingDoneEvent
   | StreamingErrorEvent;

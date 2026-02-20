@@ -55,6 +55,66 @@ from src.services.ontology_service import OntologyService
 logger = logging.getLogger(__name__)
 
 
+def _build_step_description(
+    node_name: str,
+    state: dict[str, Any],
+    node_output: dict[str, Any],
+) -> str:
+    """각 파이프라인 노드의 실시간 설명을 생성한다."""
+    if node_name == "intent_entity_extractor":
+        intent = state.get("intent", "unknown")
+        confidence = state.get("intent_confidence", 0)
+        return f"의도: {intent} ({confidence * 100:.0f}%)"
+
+    if node_name == "query_decomposer":
+        path_entries = node_output.get("execution_path", [])
+        if any("skipped" in str(e).lower() for e in path_entries):
+            return "query_decomposer_skipped"
+        sub_queries = state.get("sub_queries", [])
+        if sub_queries:
+            return f"쿼리 분해: {len(sub_queries)}개 하위 쿼리"
+        return "쿼리 분해 완료"
+
+    if node_name == "cache_checker":
+        cache_hit = state.get("cache_hit", False)
+        return "cache_checker_hit" if cache_hit else "cache_checker_miss"
+
+    if node_name == "concept_expander":
+        entities = state.get("entities", {})
+        if isinstance(entities, dict):
+            count = sum(
+                len(v) if isinstance(v, list) else 1 for v in entities.values()
+            )
+        else:
+            count = 0
+        return f"엔티티 확장: {count}개"
+
+    if node_name == "entity_resolver":
+        return "그래프에서 엔티티 매칭"
+
+    if node_name == "cypher_generator":
+        return "Cypher 쿼리 생성"
+
+    if node_name == "graph_executor":
+        results = state.get("graph_results", [])
+        count = len(results) if isinstance(results, list) else 0
+        return f"쿼리 실행: {count}건 조회"
+
+    if node_name == "response_generator":
+        return "응답 생성"
+
+    if node_name == "clarification_handler":
+        return "명확화 요청"
+
+    if node_name == "community_summarizer":
+        return "커뮤니티 요약 생성"
+
+    if node_name == "ontology_update_handler":
+        return "온톨로지 업데이트"
+
+    return node_name
+
+
 class GraphRAGPipeline:
     """
     Graph RAG 파이프라인
@@ -597,6 +657,7 @@ class GraphRAGPipeline:
         파이프라인을 실행하고 응답 생성 단계에서 토큰 단위로 스트리밍합니다.
 
         SSE 이벤트 형식:
+        - step: 파이프라인 노드 완료 알림 (실시간 진행 상황)
         - metadata: 파이프라인 메타데이터 (intent, entities, cypher 등)
         - chunk: 응답 텍스트 청크
         - done: 완료 신호 + 전체 응답
@@ -608,6 +669,7 @@ class GraphRAGPipeline:
 
         Yields:
             dict: SSE 이벤트 데이터
+                - {"type": "step", "data": {"node_name": "...", "description": "...", "step_number": N}}
                 - {"type": "metadata", "data": {...}}
                 - {"type": "chunk", "text": "..."}
                 - {"type": "done", "full_response": "...", "success": True}
@@ -635,18 +697,37 @@ class GraphRAGPipeline:
             # astream을 사용하여 각 노드 결과를 추적
             final_state: dict[str, Any] = dict(initial_state)
             accumulated_path: list[str] = []
+            step_count = 0
 
             async for event in self._graph.astream(initial_state, config=config):
                 for node_name, node_output in event.items():
                     # 상태 업데이트
                     if isinstance(node_output, dict):
-                        if "execution_path" in node_output:
-                            accumulated_path.extend(node_output["execution_path"])
+                        new_path_entries = node_output.get(
+                            "execution_path", []
+                        )
+                        if new_path_entries:
+                            accumulated_path.extend(new_path_entries)
                             node_output = {
                                 **node_output,
                                 "execution_path": accumulated_path.copy(),
                             }
                         final_state.update(node_output)
+
+                    # 실시간 step 이벤트 전송
+                    step_count += 1
+                    yield {
+                        "type": "step",
+                        "data": {
+                            "node_name": node_name,
+                            "description": _build_step_description(
+                                node_name,
+                                final_state,
+                                node_output if isinstance(node_output, dict) else {},
+                            ),
+                            "step_number": step_count,
+                        },
+                    }
 
                     # 응답 생성 노드 도달 시 처리
                     # (response_generator, clarification_handler, ontology_update_handler)
@@ -688,6 +769,17 @@ class GraphRAGPipeline:
             # 메타데이터 먼저 전송
             metadata = self._build_metadata(final_state)
             yield {"type": "metadata", "data": metadata}
+
+            # 응답 생성 step 이벤트
+            step_count += 1
+            yield {
+                "type": "step",
+                "data": {
+                    "node_name": "response_generator",
+                    "description": "응답 생성",
+                    "step_number": step_count,
+                },
+            }
 
             # 스트리밍 응답 생성 조건 확인
             cypher_query = final_state.get("cypher_query", "")

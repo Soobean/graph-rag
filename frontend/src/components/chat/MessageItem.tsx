@@ -113,7 +113,7 @@ function InlineThinking({ thoughtProcess, isLoading }: {
             <div
               key={step.step_number}
               className="flex items-center gap-2 text-xs animate-in fade-in-0 slide-in-from-left-2"
-              style={{ animationDelay: `${idx * 120}ms`, animationFillMode: 'both' }}
+              style={{ animationDuration: '200ms' }}
             >
               <Icon className={cn('h-3.5 w-3.5 shrink-0', config.color)} />
               <span className="text-muted-foreground">{step.description}</span>

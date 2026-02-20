@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo, useRef } from 'react';
 import { Trash2, PanelRightOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageList } from './MessageList';
@@ -6,7 +6,7 @@ import { ChatInput } from './ChatInput';
 import { Button } from '@/components/ui/button';
 import { useChatStore, useGraphStore, useUiStore } from '@/stores';
 import { useStreamingQuery } from '@/api/hooks';
-import type { StreamingMetadata, StepType } from '@/types/api';
+import type { StreamingMetadata, StreamingStepData, StepType, ThoughtStep } from '@/types/api';
 import { cn } from '@/lib/utils';
 
 // 노드 이름을 스텝 타입으로 변환
@@ -68,6 +68,9 @@ export function ChatPanel({ className }: ChatPanelProps) {
     }
   }, [currentSessionId, createSession]);
 
+  // 실시간 step 누적용 ref (콜백 간 공유, 리렌더 없이 최신 값 유지)
+  const stepsRef = useRef<ThoughtStep[]>([]);
+
   // 스트리밍 콜백을 useMemo로 안정화
   // useChatStore.getState()로 최신 streamingMessageId를 읽어 dependency 없이 항상 최신 값 사용
   const streamingCallbacks = useMemo(
@@ -80,46 +83,75 @@ export function ChatPanel({ className }: ChatPanelProps) {
           });
         }
       },
+      onStep: (stepData: StreamingStepData) => {
+        const streamingId = useChatStore.getState().currentStreamingMessageId;
+        if (!streamingId) return;
+
+        const newStep: ThoughtStep = {
+          step_number: stepData.step_number,
+          node_name: stepData.node_name,
+          step_type: getStepType(stepData.node_name),
+          description: stepData.description,
+          details: {},
+        };
+
+        stepsRef.current = [...stepsRef.current, newStep];
+
+        updateMessage(streamingId, {
+          thoughtProcess: {
+            steps: [...stepsRef.current],
+            concept_expansions: [],
+            execution_path: stepsRef.current.map((s) => s.node_name),
+          },
+        });
+      },
       onMetadata: (metadata: StreamingMetadata) => {
         const streamingId = useChatStore.getState().currentStreamingMessageId;
-        if (streamingId) {
-          const thoughtProcess = {
-            steps: (metadata.execution_path ?? []).map((nodeName, idx) => ({
+        if (!streamingId) return;
+
+        // step 이벤트로 이미 steps가 채워진 경우 → thoughtProcess를 덮어쓰지 않음
+        // step 이벤트가 없었던 경우(구버전 호환) → metadata.execution_path로 빌드
+        const updates: Partial<import('@/types/chat').ChatMessage> = {
+          metadata: {
+            intent: metadata.intent,
+            intent_confidence: metadata.intent_confidence,
+            entities: metadata.entities,
+            cypher_query: metadata.cypher_query,
+            result_count: metadata.result_count,
+            execution_path: metadata.execution_path,
+          },
+        };
+
+        if (stepsRef.current.length === 0 && metadata.execution_path?.length) {
+          updates.thoughtProcess = {
+            steps: metadata.execution_path.map((nodeName, idx) => ({
               step_number: idx + 1,
               node_name: nodeName,
               step_type: getStepType(nodeName),
               description: getStepDescription(nodeName, metadata),
               details: {},
             })),
-            concept_expansions: Object.entries(metadata.entities ?? {}).map(([entityType, concepts]) => ({
-              original_concept: concepts[0] || '',
-              entity_type: entityType,
-              expansion_strategy: 'normal' as const,
-              expanded_concepts: concepts,
-              expansion_path: [],
-            })),
-            execution_path: metadata.execution_path ?? [],
+            concept_expansions: Object.entries(metadata.entities ?? {}).map(
+              ([entityType, concepts]) => ({
+                original_concept: concepts[0] || '',
+                entity_type: entityType,
+                expansion_strategy: 'normal' as const,
+                expanded_concepts: concepts,
+                expansion_path: [],
+              })
+            ),
+            execution_path: metadata.execution_path,
           };
+        }
 
-          updateMessage(streamingId, {
-            metadata: {
-              intent: metadata.intent,
-              intent_confidence: metadata.intent_confidence,
-              entities: metadata.entities,
-              cypher_query: metadata.cypher_query,
-              result_count: metadata.result_count,
-              execution_path: metadata.execution_path,
-            },
-            thoughtProcess,
-          });
+        updateMessage(streamingId, updates);
 
-          if (metadata.graph_data) {
-            setGraphData(metadata.graph_data);
-            openRightPanel();
-          } else if (metadata.tabular_data) {
-            setTabularData(metadata.tabular_data);
-            openRightPanel();
-          }
+        if (metadata.graph_data) {
+          setGraphData(metadata.graph_data);
+          openRightPanel();
+        } else if (metadata.tabular_data) {
+          setTabularData(metadata.tabular_data);
+          openRightPanel();
         }
       },
       onComplete: (fullResponse: string) => {
@@ -151,6 +183,9 @@ export function ChatPanel({ className }: ChatPanelProps) {
 
   const handleSend = useCallback(
     (content: string) => {
+      // 새 쿼리 시작 → step 누적 초기화
+      stepsRef.current = [];
+
       // 사용자 메시지 추가
       addMessage({
         role: 'user',
