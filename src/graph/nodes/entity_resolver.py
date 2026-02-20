@@ -7,7 +7,7 @@ Entity Resolver Node
 from datetime import UTC, datetime
 
 from src.domain.types import EntityResolverUpdate, ResolvedEntity, UnresolvedEntity
-from src.graph.nodes.base import BaseNode
+from src.graph.nodes.base import DB_TIMEOUT, BaseNode
 from src.graph.state import GraphRAGState
 from src.repositories.neo4j_repository import Neo4jRepository
 
@@ -22,6 +22,10 @@ class EntityResolverNode(BaseNode[EntityResolverUpdate]):
     @property
     def name(self) -> str:
         return "entity_resolver"
+
+    @property
+    def timeout_seconds(self) -> float:
+        return DB_TIMEOUT
 
     @property
     def input_keys(self) -> list[str]:

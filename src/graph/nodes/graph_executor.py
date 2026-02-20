@@ -10,7 +10,7 @@ from src.auth.access_policy import ALL_PROPS, AccessPolicy
 from src.config import Settings
 from src.domain.types import GraphExecutorUpdate
 from src.domain.validators import validate_read_only_cypher
-from src.graph.nodes.base import BaseNode
+from src.graph.nodes.base import DB_TIMEOUT, BaseNode
 from src.graph.state import GraphRAGState
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.repositories.query_cache_repository import QueryCacheRepository
@@ -91,6 +91,10 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
     @property
     def name(self) -> str:
         return "graph_executor"
+
+    @property
+    def timeout_seconds(self) -> float:
+        return DB_TIMEOUT
 
     @property
     def input_keys(self) -> list[str]:

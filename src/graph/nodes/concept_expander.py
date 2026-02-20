@@ -20,7 +20,7 @@ from src.domain.ontology.loader import (
     get_strategy_for_intent,
 )
 from src.domain.types import ConceptExpanderUpdate
-from src.graph.nodes.base import BaseNode
+from src.graph.nodes.base import CPU_TIMEOUT, BaseNode
 from src.graph.state import GraphRAGState
 
 if TYPE_CHECKING:
@@ -67,6 +67,10 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
     @property
     def name(self) -> str:
         return "concept_expander"
+
+    @property
+    def timeout_seconds(self) -> float:
+        return CPU_TIMEOUT
 
     @property
     def input_keys(self) -> list[str]:
