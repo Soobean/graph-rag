@@ -47,15 +47,15 @@ class TestLabelAccess:
         editor = ROLE_POLICIES["editor"]
         assert "Concept" not in editor.get_allowed_labels()
 
-    def test_viewer_no_company_office_concept(self):
-        """viewer는 Company, Office, Concept 접근 불가"""
+    def test_viewer_no_company_concept(self):
+        """viewer는 Company, Concept 접근 불가"""
         viewer = ROLE_POLICIES["viewer"]
         labels = viewer.get_allowed_labels()
         assert "Company" not in labels
-        assert "Office" not in labels
         assert "Concept" not in labels
         assert "Employee" in labels
         assert "Skill" in labels
+        assert "Office" in labels
 
     def test_viewer_label_returns_none_for_company(self):
         """viewer가 Company 라벨의 속성을 조회하면 None"""

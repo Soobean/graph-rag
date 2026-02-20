@@ -269,6 +269,7 @@ _VIEWER_RULES: dict[str, NodeAccessRule] = {
     "Department": NodeAccessRule(("name",), "all"),
     "Position": NodeAccessRule(("name", "level"), "all"),
     "Certificate": NodeAccessRule(ALL_PROPS, "all"),
+    "Office": NodeAccessRule(("name",), "all"),
 }
 
 ADMIN_POLICY = AccessPolicy(
