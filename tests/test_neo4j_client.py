@@ -5,12 +5,12 @@ Neo4j 클라이언트 테스트
     pytest tests/test_neo4j_client.py -v
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.config import Settings, get_settings
-from src.infrastructure.neo4j_client import Neo4jClient
+from src.infrastructure.neo4j_client import Neo4jClient, TransactionScope
 
 
 class TestNeo4jClientUnit:
@@ -134,6 +134,87 @@ class TestGetSchemaInfoUnit:
         assert schema["relationship_types"] == ["WORKS_ON"]
         # 인트로스펙션 실패 시 nodes/relationships 없음
         assert "nodes" not in schema
+
+
+class TestTransactionScope:
+    """TransactionScope 단위 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_run_query_serializes_results(self):
+        """트랜잭션 내 쿼리가 결과를 직렬화"""
+        mock_record = MagicMock()
+        mock_record.keys.return_value = ["name", "count"]
+        mock_record.__getitem__ = lambda self, key: {"name": "test", "count": 42}[key]
+
+        mock_result = AsyncMock()
+        mock_result.__aiter__ = lambda self: self
+        mock_result._items = [mock_record]
+        mock_result.__anext__ = AsyncMock(side_effect=[mock_record, StopAsyncIteration])
+
+        mock_tx = AsyncMock()
+        mock_tx.run.return_value = mock_result
+
+        scope = TransactionScope(mock_tx)
+        results = await scope.run_query("MATCH (n) RETURN n.name AS name, count(n) AS count")
+
+        assert len(results) == 1
+        assert results[0]["name"] == "test"
+        assert results[0]["count"] == 42
+        mock_tx.run.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_begin_transaction_commits_on_success(self):
+        """성공 시 트랜잭션 커밋"""
+        mock_tx = AsyncMock()
+        mock_tx.closed = False
+
+        mock_session = AsyncMock()
+        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.close = AsyncMock()
+
+        client = Neo4jClient(
+            uri="bolt://localhost:7687",
+            user="neo4j",
+            password="test",
+        )
+        # driver.session()이 mock_session을 반환하도록 설정
+        mock_driver = MagicMock()
+        mock_driver.session.return_value = mock_session
+        client._driver = mock_driver
+
+        async with client.begin_transaction() as tx:
+            assert isinstance(tx, TransactionScope)
+
+        mock_tx.commit.assert_awaited_once()
+        mock_tx.rollback.assert_not_awaited()
+        mock_session.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_begin_transaction_rollbacks_on_error(self):
+        """에러 시 트랜잭션 롤백"""
+        mock_tx = AsyncMock()
+        mock_tx.closed = False
+
+        mock_session = AsyncMock()
+        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.close = AsyncMock()
+
+        client = Neo4jClient(
+            uri="bolt://localhost:7687",
+            user="neo4j",
+            password="test",
+        )
+        mock_driver = MagicMock()
+        mock_driver.session.return_value = mock_session
+        client._driver = mock_driver
+
+        with pytest.raises(ValueError, match="test error"):
+            async with client.begin_transaction() as tx:
+                raise ValueError("test error")
+
+        mock_tx.commit.assert_not_awaited()
+        mock_tx.rollback.assert_awaited_once()
+        mock_session.close.assert_awaited_once()
 
 
 class TestNeo4jClientIntegration:

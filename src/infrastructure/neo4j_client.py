@@ -105,6 +105,28 @@ def _sanitize_uri(uri: str) -> str:
     return uri
 
 
+class TransactionScope:
+    """다중 쿼리 트랜잭션 내에서 쿼리를 실행하기 위한 헬퍼"""
+
+    def __init__(self, tx: Any) -> None:
+        self._tx = tx
+
+    async def run_query(
+        self,
+        query: str,
+        parameters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """트랜잭션 내에서 쿼리 실행 및 직렬화된 결과 반환"""
+        result = await self._tx.run(query, parameters or {})
+        records = []
+        async for record in result:
+            serialized = {
+                key: _serialize_value(record[key]) for key in record.keys()
+            }
+            records.append(serialized)
+        return records
+
+
 class Neo4jClient:
     """
     Neo4j 비동기 드라이버 래퍼
@@ -337,6 +359,37 @@ class Neo4jClient:
         except Neo4jError as e:
             logger.error(f"Write query failed: {e}")
             raise DatabaseError(f"Failed to execute write query: {e}") from e
+
+    @asynccontextmanager
+    async def begin_transaction(
+        self,
+        database: str | None = None,
+    ) -> AsyncIterator["TransactionScope"]:
+        """
+        다중 쿼리 트랜잭션 컨텍스트 매니저
+
+        여러 읽기/쓰기 쿼리를 하나의 트랜잭션에서 실행합니다.
+        블록 내에서 예외 발생 시 자동 롤백됩니다.
+
+        사용 예시:
+            async with client.begin_transaction() as tx:
+                source = await tx.run_query("MATCH (n) WHERE ... RETURN n", {...})
+                target = await tx.run_query("MATCH (n) WHERE ... RETURN n", {...})
+                await tx.run_query("CREATE (a)-[:REL]->(b)", {...})
+        """
+        db = database or self._database
+        session = self.driver.session(database=db)
+        tx = await session.begin_transaction()
+        scope = TransactionScope(tx)
+        try:
+            yield scope
+            await tx.commit()
+        except Exception:
+            if not tx.closed:
+                await tx.rollback()
+            raise
+        finally:
+            await session.close()
 
     async def health_check(self) -> dict[str, Any]:
         """
