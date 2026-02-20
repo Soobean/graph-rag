@@ -408,9 +408,16 @@ class Settings(BaseSettings):
                     "Ensure Managed Identity is configured for Azure OpenAI access."
                 )
 
-            # JWT 시크릿 키 기본값 경고
-            if self.auth_enabled and self.jwt_secret_key.startswith("dev-insecure"):
+            # 프로덕션에서 인증 비활성화 경고 (VPN/Gateway 뒤에서 의도적으로 끌 수 있음)
+            if not self.auth_enabled:
                 logger.warning(
+                    "AUTH_ENABLED is false in production. "
+                    "Ensure authentication is handled externally (VPN, API Gateway, etc.)."
+                )
+
+            # JWT 시크릿 키 기본값 차단 (인증 활성화 시에만)
+            if self.auth_enabled and self.jwt_secret_key.startswith("dev-insecure"):
+                raise ValueError(
                     "jwt_secret_key is using default insecure value in production! "
                     "Set a strong secret key via JWT_SECRET_KEY environment variable."
                 )

@@ -303,7 +303,12 @@ async def invalid_state_handler(
 @app.exception_handler(GraphRAGError)
 async def graphrag_error_handler(request: Request, exc: GraphRAGError) -> JSONResponse:
     """기타 도메인 예외 시 500 응답"""
-    logger.error(f"GraphRAGError: {exc.message}", exc_info=True)
+    settings = get_settings()
+    if settings.is_production:
+        # 프로덕션: 내부 정보 유출 방지 (트레이스백 제외)
+        logger.error(f"GraphRAGError: {exc.code}")
+    else:
+        logger.error(f"GraphRAGError: {exc.message}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={"detail": {"message": exc.message, "code": exc.code}},
