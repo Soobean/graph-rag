@@ -38,6 +38,7 @@ from src.domain.exceptions import (
 )
 from src.domain.ontology.registry import OntologyRegistry
 from src.graph import GraphRAGPipeline
+from src.graph.checkpointer import create_checkpointer
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
 from src.repositories.user_repository import UserRepository
@@ -114,7 +115,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     logger.info("OntologyService initialized for Pipeline injection")
 
-    # Pipeline 초기화 (스키마 + 온톨로지 로더 + 온톨로지 서비스 주입)
+    # Checkpointer 초기화
+    checkpointer = await create_checkpointer(settings.checkpointer_db_path)
+    logger.info(f"Checkpointer initialized: {type(checkpointer).__name__}")
+
+    # Pipeline 초기화 (스키마 + 온톨로지 로더 + 온톨로지 서비스 + checkpointer 주입)
     pipeline = GraphRAGPipeline(
         settings=settings,
         neo4j_repository=neo4j_repo,
@@ -124,6 +129,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ontology_loader=ontology_registry.get_loader(),
         ontology_registry=ontology_registry,
         ontology_service=ontology_service,
+        checkpointer=checkpointer,
     )
     logger.info(
         "Pipeline initialized with pre-loaded schema, ontology registry, and ontology service"

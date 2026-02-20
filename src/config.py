@@ -325,6 +325,14 @@ class Settings(BaseSettings):
         return lower_v
 
     # ============================================
+    # Checkpointer 설정
+    # ============================================
+    checkpointer_db_path: str = Field(
+        default="checkpoints.db",
+        description="SQLite checkpointer DB 경로 (':memory:'면 MemorySaver 사용)",
+    )
+
+    # ============================================
     # 로깅 설정
     # ============================================
     log_level: str = Field(

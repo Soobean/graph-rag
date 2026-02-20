@@ -3,7 +3,7 @@ Graph RAG Pipeline
 
 LangGraph를 사용한 RAG 파이프라인 정의
 - Vector Search 기반 캐싱: cache_checker 노드로 유사 질문 캐시 활용
-- MemorySaver Checkpointer로 대화 기록 자동 관리
+- Checkpointer로 대화 기록 관리 (기본 MemorySaver, 영속화 시 SqliteSaver 주입)
 - 스키마는 초기화 시 주입 (런타임 조회 제거)
 """
 
@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -91,6 +92,7 @@ class GraphRAGPipeline:
         ontology_loader: OntologyLoader | HybridOntologyLoader | None = None,
         ontology_registry: OntologyRegistry | None = None,
         ontology_service: OntologyService | None = None,
+        checkpointer: BaseCheckpointSaver | None = None,
     ):
         self._settings = settings
         self._neo4j = neo4j_repository
@@ -187,8 +189,8 @@ class GraphRAGPipeline:
         # 백그라운드 태스크 참조 저장 (GC 방지)
         self._background_tasks: set[asyncio.Task[Any]] = set()
 
-        # MemorySaver Checkpointer (대화 기록 자동 관리)
-        self._checkpointer = MemorySaver()
+        # Checkpointer (외부 주입 또는 기본 MemorySaver)
+        self._checkpointer = checkpointer or MemorySaver()
 
         # 그래프 빌드
         self._graph = self._build_graph()
@@ -196,7 +198,8 @@ class GraphRAGPipeline:
         logger.info(
             "GraphRAGPipeline initialized "
             f"(vector cache: {settings.vector_search_enabled}, "
-            f"schema injected: {graph_schema is not None}, checkpointer: MemorySaver)"
+            f"schema injected: {graph_schema is not None}, "
+            f"checkpointer: {type(self._checkpointer).__name__})"
         )
 
     def _build_graph(self) -> CompiledStateGraph:
