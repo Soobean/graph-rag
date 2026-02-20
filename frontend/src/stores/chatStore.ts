@@ -4,12 +4,14 @@ import type { ChatMessage, ChatSession } from '../types/chat';
 interface ChatState {
   sessions: ChatSession[];
   currentSessionId: string | null;
+  currentStreamingMessageId: string | null;
 
   // Actions
   createSession: () => string;
   setCurrentSession: (sessionId: string) => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string;
   updateMessage: (messageId: string, updates: Partial<ChatMessage>) => void;
+  setStreamingMessageId: (id: string | null) => void;
   getCurrentSession: () => ChatSession | null;
   getCurrentMessages: () => ChatMessage[];
   clearCurrentSession: () => void;
@@ -32,6 +34,7 @@ const generateId = (): string => {
 export const useChatStore = create<ChatState>()((set, get) => ({
   sessions: [],
   currentSessionId: null,
+  currentStreamingMessageId: null,
 
   createSession: () => {
     const newSession: ChatSession = {
@@ -85,6 +88,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }));
   },
 
+  setStreamingMessageId: (id: string | null) => {
+    set({ currentStreamingMessageId: id });
+  },
+
   getCurrentSession: () => {
     const { sessions, currentSessionId } = get();
     return sessions.find((s) => s.id === currentSessionId) || null;
@@ -114,6 +121,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     set({
       sessions: [],
       currentSessionId: null,
+      currentStreamingMessageId: null,
     });
   },
 }));

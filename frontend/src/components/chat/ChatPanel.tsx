@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 import { Trash2 } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
@@ -51,6 +51,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
     createSession,
     addMessage,
     updateMessage,
+    setStreamingMessageId,
     getCurrentMessages,
     clearAllHistory,
   } = useChatStore();
@@ -59,7 +60,6 @@ export function ChatPanel({ className }: ChatPanelProps) {
   const { demoRole } = useUiStore();
 
   const messages = getCurrentMessages();
-  const currentAssistantIdRef = useRef<string | null>(null);
 
   // 세션이 없으면 생성
   useEffect(() => {
@@ -69,20 +69,20 @@ export function ChatPanel({ className }: ChatPanelProps) {
   }, [currentSessionId, createSession]);
 
   // 스트리밍 콜백을 useMemo로 안정화
+  // useChatStore.getState()로 최신 streamingMessageId를 읽어 dependency 없이 항상 최신 값 사용
   const streamingCallbacks = useMemo(
     () => ({
       onChunk: (_chunk: string, fullContent: string) => {
-        // 청크 수신 시 메시지 업데이트 (타이핑 효과)
-        if (currentAssistantIdRef.current) {
-          updateMessage(currentAssistantIdRef.current, {
+        const streamingId = useChatStore.getState().currentStreamingMessageId;
+        if (streamingId) {
+          updateMessage(streamingId, {
             content: fullContent,
           });
         }
       },
       onMetadata: (metadata: StreamingMetadata) => {
-        // 메타데이터 수신 시 업데이트
-        if (currentAssistantIdRef.current) {
-          // execution_path로 기본 thoughtProcess 생성
+        const streamingId = useChatStore.getState().currentStreamingMessageId;
+        if (streamingId) {
           const thoughtProcess = {
             steps: (metadata.execution_path ?? []).map((nodeName, idx) => ({
               step_number: idx + 1,
@@ -101,7 +101,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
             execution_path: metadata.execution_path ?? [],
           };
 
-          updateMessage(currentAssistantIdRef.current, {
+          updateMessage(streamingId, {
             metadata: {
               intent: metadata.intent,
               intent_confidence: metadata.intent_confidence,
@@ -113,7 +113,6 @@ export function ChatPanel({ className }: ChatPanelProps) {
             thoughtProcess,
           });
 
-          // Graph 데이터가 있으면 graphStore에 설정, 없으면 tabular 데이터 확인
           if (metadata.graph_data) {
             setGraphData(metadata.graph_data);
           } else if (metadata.tabular_data) {
@@ -122,27 +121,27 @@ export function ChatPanel({ className }: ChatPanelProps) {
         }
       },
       onComplete: (fullResponse: string) => {
-        // 완료 시 최종 업데이트
-        if (currentAssistantIdRef.current) {
-          updateMessage(currentAssistantIdRef.current, {
+        const streamingId = useChatStore.getState().currentStreamingMessageId;
+        if (streamingId) {
+          updateMessage(streamingId, {
             content: fullResponse,
             isLoading: false,
           });
-          currentAssistantIdRef.current = null;
+          setStreamingMessageId(null);
         }
       },
       onError: (error: string) => {
-        // 에러 발생 시 업데이트
-        if (currentAssistantIdRef.current) {
-          updateMessage(currentAssistantIdRef.current, {
+        const streamingId = useChatStore.getState().currentStreamingMessageId;
+        if (streamingId) {
+          updateMessage(streamingId, {
             isLoading: false,
             error: error || 'An error occurred',
           });
-          currentAssistantIdRef.current = null;
+          setStreamingMessageId(null);
         }
       },
     }),
-    [updateMessage, setGraphData, setTabularData]
+    [updateMessage, setStreamingMessageId, setGraphData, setTabularData]
   );
 
   const { state: streamingState, startStreaming } =
@@ -163,22 +162,22 @@ export function ChatPanel({ className }: ChatPanelProps) {
         isLoading: true,
       });
 
-      // 이전 스트리밍이 완료되지 않았으면 로딩 상태 해제 후 ref 초기화
-      if (currentAssistantIdRef.current) {
-        updateMessage(currentAssistantIdRef.current, { isLoading: false });
-        currentAssistantIdRef.current = null;
+      // 이전 스트리밍이 완료되지 않았으면 로딩 상태 해제
+      const prevStreamingId = useChatStore.getState().currentStreamingMessageId;
+      if (prevStreamingId) {
+        updateMessage(prevStreamingId, { isLoading: false });
       }
 
-      // 스트리밍 먼저 시작 (내부 abort()가 이전 스트림을 동기적으로 종료)
+      // 새 어시스턴트 ID를 먼저 설정 (콜백이 최신 ID를 읽을 수 있도록)
+      setStreamingMessageId(assistantId);
+
+      // 스트리밍 시작 (내부 abort()가 이전 스트림을 동기적으로 종료)
       startStreaming(
         { question: content, session_id: currentSessionId || undefined },
         { demoRole }
       );
-
-      // abort 완료 후 새 어시스턴트 ID 설정 (이전 onComplete 발동 불가)
-      currentAssistantIdRef.current = assistantId;
     },
-    [addMessage, updateMessage, startStreaming, currentSessionId, demoRole]
+    [addMessage, updateMessage, setStreamingMessageId, startStreaming, currentSessionId, demoRole]
   );
 
   const handleClearHistory = useCallback(() => {
