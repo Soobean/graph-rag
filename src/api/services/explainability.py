@@ -219,7 +219,7 @@ class ExplainabilityService:
         self,
         full_state: FullState,
         resolved_entities: list[dict[str, Any]],
-        limit: int = 50,
+        limit: int = 200,
     ) -> ExplainableGraphData:
         """graph_results에서 시각화 가능한 그래프 데이터 구축 (노드 + 엣지)"""
         graph_results = full_state.get("graph_results", [])

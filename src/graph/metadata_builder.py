@@ -35,7 +35,7 @@ class ResponseMetadataBuilder:
         return metadata
 
     def build_graph_data(
-        self, state: dict[str, Any], limit: int = 50
+        self, state: dict[str, Any], limit: int = 200
     ) -> dict[str, Any] | None:
         """스트리밍용 그래프 데이터 구축"""
         graph_results = state.get("graph_results", [])

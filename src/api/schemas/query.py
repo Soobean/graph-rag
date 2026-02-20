@@ -38,9 +38,9 @@ class QueryRequest(BaseModel):
         description="그래프 데이터 포함 여부",
     )
     graph_limit: int = Field(
-        default=50,
+        default=200,
         ge=1,
-        le=200,
+        le=500,
         description="그래프 최대 노드 수",
     )
 
