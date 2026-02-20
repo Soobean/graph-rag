@@ -28,9 +28,7 @@ class TestClarificationHandlerNode:
         self, node, mock_llm_repository
     ):
         """미해결 엔티티가 있을 때 명확화 요청 생성"""
-        mock_llm_repository.generate_clarification.return_value = (
-            "홍길동이라는 이름을 가진 직원이 여러 명 있습니다. 어느 부서의 홍길동을 찾으시나요?"
-        )
+        mock_llm_repository.generate_clarification.return_value = "홍길동이라는 이름을 가진 직원이 여러 명 있습니다. 어느 부서의 홍길동을 찾으시나요?"
 
         state = {
             "question": "홍길동의 이메일은?",
@@ -218,7 +216,10 @@ class TestPipelineRouting:
 
         neo4j = MagicMock()
         neo4j.get_schema = AsyncMock(
-            return_value={"node_labels": ["Employee"], "relationship_types": ["WORKS_IN"]}
+            return_value={
+                "node_labels": ["Employee"],
+                "relationship_types": ["WORKS_IN"],
+            }
         )
         neo4j.find_entities_by_name = AsyncMock(return_value=[])  # 미해결
 
@@ -239,7 +240,7 @@ class TestPipelineRouting:
         with patch.object(
             GraphRAGPipeline, "__init__", lambda self, *args, **kwargs: None
         ):
-            pipeline = GraphRAGPipeline.__new__(GraphRAGPipeline)
+            GraphRAGPipeline.__new__(GraphRAGPipeline)
 
         # 라우팅 함수만 테스트
         from src.graph.state import GraphRAGState

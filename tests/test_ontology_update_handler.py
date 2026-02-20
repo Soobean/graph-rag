@@ -20,7 +20,6 @@ from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.ontology_service import OntologyService
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -246,9 +245,7 @@ class TestRequestParsing:
         assert "REQUIRES" in result["response"]
 
     @pytest.mark.asyncio
-    async def test_parse_failure_returns_help_message(
-        self, handler, mock_llm
-    ):
+    async def test_parse_failure_returns_help_message(self, handler, mock_llm):
         """파싱 실패 시 도움말 메시지 반환"""
         mock_llm.generate_json = AsyncMock(return_value=None)
 
@@ -275,9 +272,7 @@ class TestConfidenceValidation:
     """신뢰도 검증 테스트"""
 
     @pytest.mark.asyncio
-    async def test_low_confidence_returns_clarification(
-        self, handler, mock_llm
-    ):
+    async def test_low_confidence_returns_clarification(self, handler, mock_llm):
         """낮은 신뢰도 시 명확화 요청"""
         mock_llm.generate_json = AsyncMock(
             return_value={
@@ -312,9 +307,7 @@ class TestErrorHandling:
     """에러 처리 테스트"""
 
     @pytest.mark.asyncio
-    async def test_neo4j_save_error_handling(
-        self, handler, mock_llm, mock_neo4j
-    ):
+    async def test_neo4j_save_error_handling(self, handler, mock_llm, mock_neo4j):
         """Neo4j 저장 실패 시 에러 처리"""
         mock_neo4j.save_ontology_proposal = AsyncMock(
             side_effect=Exception("Database connection failed")
@@ -376,9 +369,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_llm_exception_handling(self, handler, mock_llm):
         """LLM 예외 발생 시 처리"""
-        mock_llm.generate_json = AsyncMock(
-            side_effect=Exception("LLM API timeout")
-        )
+        mock_llm.generate_json = AsyncMock(side_effect=Exception("LLM API timeout"))
 
         state = GraphRAGState(
             question="LangGraph를 스킬로 추가해줘",

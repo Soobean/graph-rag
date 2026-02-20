@@ -135,6 +135,7 @@ class GDSService:
         Returns:
             삭제된 projection 수
         """
+
         def _cleanup():
             dropped = 0
             try:
@@ -630,7 +631,5 @@ class GDSService:
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._executor, _get_details)
 
-        logger.info(
-            f"Community {community_id}: {result['member_count']} members"
-        )
+        logger.info(f"Community {community_id}: {result['member_count']} members")
         return result

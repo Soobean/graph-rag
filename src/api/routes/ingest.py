@@ -65,6 +65,7 @@ def sanitize_filename(filename: str) -> str:
         return f"{name}.{ext}"
     return filename[:100]
 
+
 router = APIRouter(prefix="/api/v1", tags=["ingest"])
 
 
@@ -144,7 +145,9 @@ async def _run_ingestion_job(
                 )
 
 
-@router.post("/ingest", response_model=IngestResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/ingest", response_model=IngestResponse, status_code=status.HTTP_202_ACCEPTED
+)
 async def ingest(
     request: IngestRequest,
     background_tasks: BackgroundTasks,

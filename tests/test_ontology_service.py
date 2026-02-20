@@ -4,7 +4,6 @@ OntologyService 단위 테스트
 온톨로지 제안 관리 비즈니스 로직 테스트
 """
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,7 +22,6 @@ from src.domain.exceptions import (
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.ontology_service import OntologyService
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -35,15 +33,17 @@ def mock_neo4j():
     neo4j = MagicMock(spec=Neo4jRepository)
     neo4j.get_proposal_by_id = AsyncMock(return_value=None)
     neo4j.get_proposals_paginated = AsyncMock(return_value=([], 0))
-    neo4j.get_ontology_stats = AsyncMock(return_value={
-        "total_proposals": 0,
-        "pending_count": 0,
-        "approved_count": 0,
-        "auto_approved_count": 0,
-        "rejected_count": 0,
-        "category_distribution": {},
-        "top_unresolved_terms": [],
-    })
+    neo4j.get_ontology_stats = AsyncMock(
+        return_value={
+            "total_proposals": 0,
+            "pending_count": 0,
+            "approved_count": 0,
+            "auto_approved_count": 0,
+            "rejected_count": 0,
+            "category_distribution": {},
+            "top_unresolved_terms": [],
+        }
+    )
     neo4j.create_proposal = AsyncMock()
     neo4j.update_proposal_with_version = AsyncMock(return_value=None)
     neo4j.get_proposal_current_version = AsyncMock(return_value=None)
@@ -110,7 +110,9 @@ class TestListProposals:
     """list_proposals 테스트"""
 
     @pytest.mark.asyncio
-    async def test_list_proposals_with_filters(self, service, mock_neo4j, sample_proposal):
+    async def test_list_proposals_with_filters(
+        self, service, mock_neo4j, sample_proposal
+    ):
         """필터와 함께 목록 조회"""
         mock_neo4j.get_proposals_paginated = AsyncMock(
             return_value=([sample_proposal], 1)
@@ -213,7 +215,9 @@ class TestUpdateProposal:
             category="frameworks",  # 변경됨
             suggested_action=sample_proposal.suggested_action,
         )
-        mock_neo4j.update_proposal_with_version = AsyncMock(return_value=updated_proposal)
+        mock_neo4j.update_proposal_with_version = AsyncMock(
+            return_value=updated_proposal
+        )
 
         result = await service.update_proposal(
             proposal_id="test-proposal-id",
@@ -274,7 +278,9 @@ class TestApproveProposal:
             suggested_action=sample_proposal.suggested_action,
             status=ProposalStatus.APPROVED,
         )
-        mock_neo4j.update_proposal_with_version = AsyncMock(return_value=approved_proposal)
+        mock_neo4j.update_proposal_with_version = AsyncMock(
+            return_value=approved_proposal
+        )
 
         result = await service.approve_proposal(
             proposal_id="test-proposal-id",
@@ -285,7 +291,9 @@ class TestApproveProposal:
         assert result.status == ProposalStatus.APPROVED
 
     @pytest.mark.asyncio
-    async def test_approve_already_approved_fails(self, service, mock_neo4j, sample_proposal):
+    async def test_approve_already_approved_fails(
+        self, service, mock_neo4j, sample_proposal
+    ):
         """이미 승인된 제안 재승인 시 InvalidStateError"""
         sample_proposal.status = ProposalStatus.APPROVED
         mock_neo4j.get_proposal_by_id = AsyncMock(return_value=sample_proposal)
@@ -328,7 +336,9 @@ class TestApproveProposal:
             suggested_parent="Programming Languages",
             status=ProposalStatus.APPROVED,
         )
-        mock_neo4j.update_proposal_with_version = AsyncMock(return_value=approved_proposal)
+        mock_neo4j.update_proposal_with_version = AsyncMock(
+            return_value=approved_proposal
+        )
 
         await service.approve_proposal(
             proposal_id="test-proposal-id",
@@ -366,7 +376,9 @@ class TestRejectProposal:
             status=ProposalStatus.REJECTED,
             rejection_reason="온톨로지 범위에 맞지 않음",
         )
-        mock_neo4j.update_proposal_with_version = AsyncMock(return_value=rejected_proposal)
+        mock_neo4j.update_proposal_with_version = AsyncMock(
+            return_value=rejected_proposal
+        )
 
         result = await service.reject_proposal(
             proposal_id="test-proposal-id",
@@ -378,7 +390,9 @@ class TestRejectProposal:
         assert result.status == ProposalStatus.REJECTED
 
     @pytest.mark.asyncio
-    async def test_reject_already_rejected_fails(self, service, mock_neo4j, sample_proposal):
+    async def test_reject_already_rejected_fails(
+        self, service, mock_neo4j, sample_proposal
+    ):
         """이미 거절된 제안 재거절 시 InvalidStateError"""
         sample_proposal.status = ProposalStatus.REJECTED
         mock_neo4j.get_proposal_by_id = AsyncMock(return_value=sample_proposal)
@@ -394,7 +408,9 @@ class TestRejectProposal:
     async def test_reject_with_reason(self, service, mock_neo4j, sample_proposal):
         """거절 사유가 저장됨"""
         mock_neo4j.get_proposal_by_id = AsyncMock(return_value=sample_proposal)
-        mock_neo4j.update_proposal_with_version = AsyncMock(return_value=sample_proposal)
+        mock_neo4j.update_proposal_with_version = AsyncMock(
+            return_value=sample_proposal
+        )
 
         await service.reject_proposal(
             proposal_id="test-proposal-id",
@@ -432,9 +448,7 @@ class TestBatchOperations:
     @pytest.mark.asyncio
     async def test_batch_approve_partial_failure(self, service, mock_neo4j):
         """일괄 승인 부분 실패"""
-        mock_neo4j.batch_update_proposal_status = AsyncMock(
-            return_value=(2, ["id3"])
-        )
+        mock_neo4j.batch_update_proposal_status = AsyncMock(return_value=(2, ["id3"]))
 
         result = await service.batch_approve(
             proposal_ids=["id1", "id2", "id3"],
@@ -470,17 +484,24 @@ class TestGetStats:
     @pytest.mark.asyncio
     async def test_get_stats_success(self, service, mock_neo4j):
         """통계 조회 성공"""
-        mock_neo4j.get_ontology_stats = AsyncMock(return_value={
-            "total_proposals": 100,
-            "pending_count": 50,
-            "approved_count": 30,
-            "auto_approved_count": 10,
-            "rejected_count": 10,
-            "category_distribution": {"skills": 80, "departments": 20},
-            "top_unresolved_terms": [
-                {"term": "LangGraph", "category": "skills", "frequency": 15, "confidence": 0.9},
-            ],
-        })
+        mock_neo4j.get_ontology_stats = AsyncMock(
+            return_value={
+                "total_proposals": 100,
+                "pending_count": 50,
+                "approved_count": 30,
+                "auto_approved_count": 10,
+                "rejected_count": 10,
+                "category_distribution": {"skills": 80, "departments": 20},
+                "top_unresolved_terms": [
+                    {
+                        "term": "LangGraph",
+                        "category": "skills",
+                        "frequency": 15,
+                        "confidence": 0.9,
+                    },
+                ],
+            }
+        )
 
         result = await service.get_stats()
 

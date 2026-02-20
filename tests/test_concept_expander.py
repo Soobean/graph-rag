@@ -8,7 +8,6 @@ import pytest
 
 from src.domain.ontology.loader import ExpansionConfig, OntologyLoader
 
-
 # ConceptExpanderNode의 ENTITY_TO_CATEGORY 매핑 (직접 정의)
 ENTITY_TO_CATEGORY: dict[str, str] = {
     "Skill": "skills",
@@ -190,9 +189,7 @@ class TestConceptExpander:
 
             expanded_values: set[str] = set()
             for value in values:
-                expanded_values.update(
-                    loader.expand_concept(value, category, config)
-                )
+                expanded_values.update(loader.expand_concept(value, category, config))
 
             expanded_entities[entity_type] = list(expanded_values)
 

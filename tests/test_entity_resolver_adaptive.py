@@ -1,9 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from datetime import datetime
+
+import pytest
 
 from src.graph.nodes.entity_resolver import EntityResolverNode
-from src.domain.types import EntityResolverUpdate, ResolvedEntity
 
 
 @pytest.fixture

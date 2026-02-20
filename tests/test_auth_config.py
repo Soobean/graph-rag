@@ -1,12 +1,13 @@
 """
 Auth Config 테스트
 
-Settings의 auth 관련 필드 기본값 및 프로덕션 경고를 검증합니다.
+Settings의 auth 관련 필드 기본값 및 프로덕션 검증을 테스트합니다.
 """
 
 import logging
 
 import pytest
+from pydantic import ValidationError
 
 from src.config import Settings
 
@@ -56,11 +57,11 @@ class TestAuthConfigDefaults:
 
 
 class TestAuthProductionValidation:
-    """프로덕션 환경 auth 설정 경고 검증"""
+    """프로덕션 환경 auth 설정 검증"""
 
-    def test_production_warns_insecure_jwt_secret(self, caplog):
-        """프로덕션에서 기본 JWT 시크릿 키 사용 시 경고"""
-        with caplog.at_level(logging.WARNING):
+    def test_production_blocks_insecure_jwt_secret(self):
+        """프로덕션 + auth_enabled=True에서 기본 JWT 시크릿 키 사용 시 에러"""
+        with pytest.raises(ValidationError, match="jwt_secret_key"):
             Settings(
                 environment="production",
                 neo4j_password="prod-pw",
@@ -68,27 +69,37 @@ class TestAuthProductionValidation:
                 auth_enabled=True,
                 jwt_secret_key="dev-insecure-secret-key-change-in-production",
             )
-        assert "jwt_secret_key" in caplog.text
 
-    def test_production_no_warning_with_strong_secret(self, caplog):
-        """프로덕션에서 강력한 JWT 시크릿 키 사용 시 경고 없음"""
-        with caplog.at_level(logging.WARNING):
-            Settings(
-                environment="production",
-                neo4j_password="prod-pw",
-                azure_openai_endpoint="https://test.openai.azure.com/",
-                auth_enabled=True,
-                jwt_secret_key="a-very-strong-and-random-production-secret-key-2024",
-            )
-        assert "jwt_secret_key" not in caplog.text
+    def test_production_allows_strong_secret(self):
+        """프로덕션에서 강력한 JWT 시크릿 키 사용 시 정상 생성"""
+        settings = Settings(
+            environment="production",
+            neo4j_password="prod-pw",
+            azure_openai_endpoint="https://test.openai.azure.com/",
+            auth_enabled=True,
+            jwt_secret_key="a-very-strong-and-random-production-secret-key-2024",
+        )
+        assert settings.is_production is True
 
-    def test_production_no_warning_when_auth_disabled(self, caplog):
-        """프로덕션이라도 auth_enabled=False면 JWT 경고 없음"""
+    def test_production_warns_auth_disabled(self, caplog):
+        """프로덕션에서 auth_enabled=False면 경고 (차단은 아님)"""
         with caplog.at_level(logging.WARNING):
-            Settings(
+            settings = Settings(
                 environment="production",
                 neo4j_password="prod-pw",
                 azure_openai_endpoint="https://test.openai.azure.com/",
                 auth_enabled=False,
             )
-        assert "jwt_secret_key" not in caplog.text
+        assert settings.is_production is True
+        assert "AUTH_ENABLED" in caplog.text
+
+    def test_production_no_jwt_check_when_auth_disabled(self):
+        """auth_enabled=False면 JWT secret 검사 스킵"""
+        settings = Settings(
+            environment="production",
+            neo4j_password="prod-pw",
+            azure_openai_endpoint="https://test.openai.azure.com/",
+            auth_enabled=False,
+            jwt_secret_key="dev-insecure-secret-key-change-in-production",
+        )
+        assert settings.auth_enabled is False

@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # Infrastructure Layer 의존성
 # ============================================
 
+
 def get_neo4j_client(request: Request) -> Neo4jClient:
     """
     Neo4j 클라이언트 의존성 주입
@@ -51,6 +52,7 @@ def get_neo4j_client(request: Request) -> Neo4jClient:
 # ============================================
 # Repository Layer 의존성
 # ============================================
+
 
 def get_neo4j_repository(request: Request) -> Neo4jRepository:
     """
@@ -74,6 +76,7 @@ def get_llm_repository(request: Request) -> LLMRepository:
 # Graph Pipeline 의존성
 # ============================================
 
+
 def get_graph_pipeline(request: Request) -> GraphRAGPipeline:
     """
     GraphRAG Pipeline 의존성 주입
@@ -86,6 +89,7 @@ def get_graph_pipeline(request: Request) -> GraphRAGPipeline:
 # GDS Service 의존성
 # ============================================
 
+
 def get_gds_service(request: Request) -> GDSService:
     """
     GDS Service 의존성 주입
@@ -97,6 +101,7 @@ def get_gds_service(request: Request) -> GDSService:
 # ============================================
 # Ontology Service 의존성
 # ============================================
+
 
 def get_ontology_service(request: Request) -> OntologyService:
     """
@@ -159,6 +164,7 @@ def get_staffing_service(request: Request) -> "ProjectStaffingService":
 # Explainability Service 의존성
 # ============================================
 
+
 def get_explainability_service(request: Request) -> "ExplainabilityService":
     """
     ExplainabilityService 의존성 주입
@@ -170,6 +176,7 @@ def get_explainability_service(request: Request) -> "ExplainabilityService":
 # ============================================
 # Auth Service 의존성
 # ============================================
+
 
 def get_auth_service(request: Request) -> "AuthService":
     """AuthService 의존성 주입 (app.state에서 가져옴)"""
@@ -211,7 +218,7 @@ async def get_current_user(request: Request) -> UserContext:
     if not auth_header.startswith("Bearer "):
         raise AuthenticationError("Missing or invalid Authorization header")
 
-    token = auth_header[len("Bearer "):]
+    token = auth_header[len("Bearer ") :]
     if not token:
         raise AuthenticationError("Empty token")
 

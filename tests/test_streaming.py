@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.config import Settings
-from src.repositories.llm_repository import LLMRepository, ModelTier
+from src.repositories.llm_repository import LLMRepository
 
 
 class TestLLMRepositoryStreamingMethod:
@@ -40,9 +40,7 @@ class TestLLMRepositoryStreamingMethod:
 
         mock_response = mock_async_iter()
 
-        with patch.object(
-            llm_repository, "_get_client"
-        ) as mock_get_client:
+        with patch.object(llm_repository, "_get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -60,14 +58,13 @@ class TestLLMRepositoryStreamingMethod:
     @pytest.mark.asyncio
     async def test_stream_uses_heavy_model(self, llm_repository: LLMRepository) -> None:
         """스트리밍은 HEAVY 모델 사용"""
+
         async def mock_async_iter():
             yield MagicMock(choices=[MagicMock(delta=MagicMock(content="test"))])
 
         mock_response = mock_async_iter()
 
-        with patch.object(
-            llm_repository, "_get_client"
-        ) as mock_get_client:
+        with patch.object(llm_repository, "_get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -82,7 +79,9 @@ class TestLLMRepositoryStreamingMethod:
 
             # HEAVY 모델 배포명 사용 확인
             call_kwargs = mock_client.chat.completions.create.call_args.kwargs
-            assert call_kwargs["model"] == llm_repository._settings.heavy_model_deployment
+            assert (
+                call_kwargs["model"] == llm_repository._settings.heavy_model_deployment
+            )
             assert call_kwargs["stream"] is True
 
     @pytest.mark.asyncio
@@ -104,9 +103,7 @@ class TestLLMRepositoryStreamingMethod:
 
         mock_response = mock_async_iter()
 
-        with patch.object(
-            llm_repository, "_get_client"
-        ) as mock_get_client:
+        with patch.object(llm_repository, "_get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -128,7 +125,6 @@ class TestBuildMetadata:
 
     def test_build_metadata_with_expanded_entities(self) -> None:
         """expanded_entities 우선 사용"""
-        from src.graph.pipeline import GraphRAGPipeline
 
         # _build_metadata는 인스턴스 메서드이므로 직접 호출 테스트
         state = {
@@ -198,7 +194,6 @@ class TestStreamingEndpoint:
     @pytest.mark.asyncio
     async def test_original_endpoint_unchanged(self) -> None:
         """기존 /query 엔드포인트는 변경 없음"""
-        from fastapi.testclient import TestClient
 
         from src.api.routes.query import router
 

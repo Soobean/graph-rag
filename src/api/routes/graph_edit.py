@@ -67,7 +67,9 @@ async def search_nodes(
     service: Annotated[GraphEditService, Depends(get_graph_edit_service)],
     label: str | None = Query(default=None, description="레이블 필터"),
     search: str | None = Query(default=None, description="이름 검색어 (CONTAINS)"),
-    limit: int = Query(default=DEFAULT_SEARCH_LIMIT, ge=1, le=200, description="최대 결과 수"),
+    limit: int = Query(
+        default=DEFAULT_SEARCH_LIMIT, ge=1, le=200, description="최대 결과 수"
+    ),
 ) -> NodeListResponse:
     """노드 검색 (레이블, 이름 필터)"""
     try:
@@ -113,7 +115,9 @@ async def update_node(
 async def delete_node(
     node_id: str,
     service: Annotated[GraphEditService, Depends(get_graph_edit_service)],
-    force: bool = Query(default=False, description="관계가 있어도 삭제 (DETACH DELETE)"),
+    force: bool = Query(
+        default=False, description="관계가 있어도 삭제 (DETACH DELETE)"
+    ),
 ) -> None:
     """노드 삭제"""
     try:

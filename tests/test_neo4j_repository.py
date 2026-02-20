@@ -37,7 +37,6 @@ class TestNodeResult:
         assert node.properties["name"] == "홍길동"
 
 
-
 class TestRelationshipResult:
     """RelationshipResult 데이터클래스 테스트"""
 
@@ -54,7 +53,6 @@ class TestRelationshipResult:
         assert rel.type == "WORKS_AT"
         assert rel.start_node_id == "4:abc123:10"
         assert rel.end_node_id == "4:abc123:20"
-
 
 
 class TestSchemaCaching:
@@ -140,7 +138,11 @@ class TestEntityOperations:
     async def test_find_entity_by_id_found(self, repo, mock_client):
         """ID로 엔티티 조회 - 성공"""
         mock_client.execute_query.return_value = [
-            {"id": "4:abc123:123", "labels": ["Employee"], "properties": {"name": "홍길동"}}
+            {
+                "id": "4:abc123:123",
+                "labels": ["Employee"],
+                "properties": {"name": "홍길동"},
+            }
         ]
 
         result = await repo.find_entity_by_id("4:abc123:123")
@@ -160,8 +162,16 @@ class TestEntityOperations:
     async def test_find_entities_by_name(self, repo, mock_client):
         """이름으로 엔티티 검색"""
         mock_client.execute_query.return_value = [
-            {"id": "4:abc123:1", "labels": ["Employee"], "properties": {"name": "홍길동"}},
-            {"id": "4:abc123:2", "labels": ["Employee"], "properties": {"name": "홍길순"}},
+            {
+                "id": "4:abc123:1",
+                "labels": ["Employee"],
+                "properties": {"name": "홍길동"},
+            },
+            {
+                "id": "4:abc123:2",
+                "labels": ["Employee"],
+                "properties": {"name": "홍길순"},
+            },
         ]
 
         results = await repo.find_entities_by_name("홍길")
@@ -184,9 +194,7 @@ class TestEntityOperations:
     async def test_find_entities_by_name_injection_blocked(self, repo, mock_client):
         """이름 검색 시 레이블 Injection 차단"""
         with pytest.raises(ValidationError):
-            await repo.find_entities_by_name(
-                "test", labels=["Employee; DROP DATABASE"]
-            )
+            await repo.find_entities_by_name("test", labels=["Employee; DROP DATABASE"])
 
 
 class TestCypherExecution:

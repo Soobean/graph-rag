@@ -223,7 +223,9 @@ class OpenExtractor:
         if len(document) <= chunk_size:
             return await self.extract_triples(document, schema_hint, min_confidence)
 
-        logger.info(f"Chunking document ({len(document)} chars) into {chunk_size}-char chunks")
+        logger.info(
+            f"Chunking document ({len(document)} chars) into {chunk_size}-char chunks"
+        )
 
         # Create overlapping chunks
         chunks = []
@@ -247,9 +249,7 @@ class OpenExtractor:
 
         # Deduplicate based on (subject, relation, object)
         unique_triples = self._deduplicate_triples(all_triples)
-        logger.info(
-            f"Deduplicated {len(all_triples)} -> {len(unique_triples)} triples"
-        )
+        logger.info(f"Deduplicated {len(all_triples)} -> {len(unique_triples)} triples")
 
         return unique_triples
 

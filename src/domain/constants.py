@@ -40,14 +40,7 @@ PROFICIENCY_MAP: dict[str, int] = {
 
 
 def build_proficiency_case_cypher(variable: str = "hs.proficiency") -> str:
-    """PROFICIENCY_MAP에서 Cypher CASE문을 동적 생성.
-
-    Args:
-        variable: Cypher 변수명 (기본값: "hs.proficiency")
-
-    Returns:
-        Cypher CASE 표현식 문자열
-    """
+    """PROFICIENCY_MAP 기반 Cypher CASE문 생성."""
     whens = "\n".join(
         f"               WHEN '{label}' THEN {value}"
         for label, value in PROFICIENCY_MAP.items()
@@ -58,6 +51,20 @@ def build_proficiency_case_cypher(variable: str = "hs.proficiency") -> str:
 PROJECT_STATUS_ACTIVE = "진행중"
 PROJECT_STATUS_PLANNED = "계획"
 PROJECT_STATUS_ACTIVE_LIST = [PROJECT_STATUS_ACTIVE, PROJECT_STATUS_PLANNED]
+
+
+# ── Cypher 패턴 헬퍼 ──────────────────────────────────
+
+
+def tolower_match(field: str, param: str) -> str:
+    """toLower(field) = toLower($param) 조건절 생성."""
+    return f"toLower({field}) = toLower(${param})"
+
+
+def active_statuses_literal() -> str:
+    """활성 프로젝트 상태 리터럴 (IN 절용)."""
+    return str(PROJECT_STATUS_ACTIVE_LIST).replace('"', "'")
+
 
 INTENT_DESCRIPTIONS: dict[str, str] = {
     "personnel_search": "관련 인력 정보",

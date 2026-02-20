@@ -133,7 +133,11 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, description="디버그 모드")
     environment: str = Field(default="development", description="실행 환경")
     cors_origins: list[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"],
+        default=[
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:8080",
+        ],
         description="CORS 허용 오리진 목록 (프론트엔드 URL)",
     )
 
@@ -325,6 +329,14 @@ class Settings(BaseSettings):
         return lower_v
 
     # ============================================
+    # Checkpointer 설정
+    # ============================================
+    checkpointer_db_path: str = Field(
+        default="checkpoints.db",
+        description="SQLite checkpointer DB 경로 (':memory:'면 MemorySaver 사용)",
+    )
+
+    # ============================================
     # 로깅 설정
     # ============================================
     log_level: str = Field(
@@ -408,9 +420,16 @@ class Settings(BaseSettings):
                     "Ensure Managed Identity is configured for Azure OpenAI access."
                 )
 
-            # JWT 시크릿 키 기본값 경고
-            if self.auth_enabled and self.jwt_secret_key.startswith("dev-insecure"):
+            # 프로덕션에서 인증 비활성화 경고 (VPN/Gateway 뒤에서 의도적으로 끌 수 있음)
+            if not self.auth_enabled:
                 logger.warning(
+                    "AUTH_ENABLED is false in production. "
+                    "Ensure authentication is handled externally (VPN, API Gateway, etc.)."
+                )
+
+            # JWT 시크릿 키 기본값 차단 (인증 활성화 시에만)
+            if self.auth_enabled and self.jwt_secret_key.startswith("dev-insecure"):
+                raise ValueError(
                     "jwt_secret_key is using default insecure value in production! "
                     "Set a strong secret key via JWT_SECRET_KEY environment variable."
                 )

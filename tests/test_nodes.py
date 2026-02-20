@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.graph.nodes.entity_resolver import EntityResolverNode
 from src.graph.nodes.cypher_generator import CypherGeneratorNode
+from src.graph.nodes.entity_resolver import EntityResolverNode
 from src.graph.nodes.graph_executor import GraphExecutorNode
 from src.graph.nodes.response_generator import ResponseGeneratorNode
 from src.graph.state import GraphRAGState
@@ -156,7 +156,9 @@ class TestCypherGeneratorNode:
         assert call_kwargs["intent"] == "personnel_search"
 
     @pytest.mark.asyncio
-    async def test_generate_intent_defaults_to_unknown(self, node, mock_llm, base_state):
+    async def test_generate_intent_defaults_to_unknown(
+        self, node, mock_llm, base_state
+    ):
         """intent 미설정 시 'unknown' 전달"""
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (n) RETURN n",
@@ -221,6 +223,7 @@ class TestGraphExecutorNode:
         result = await node(state)
         assert "error" in result
         assert "graph_executor_error" in result["execution_path"]
+
 
 class TestResponseGeneratorNode:
     """ResponseGeneratorNode 테스트"""
@@ -346,6 +349,77 @@ class TestResponseGeneratorNode:
         result = await node(state)
         assert "오류가 발생" in result["response"]
         assert "response_generator_error_handler" in result["execution_path"]
+
+
+class TestBaseNodeTimeout:
+    """BaseNode 타임아웃 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_timeout_returns_error(self):
+        """노드 타임아웃 시 에러 상태 반환"""
+        from src.graph.nodes.base import BaseNode
+
+        class SlowNode(BaseNode[dict]):
+            @property
+            def name(self) -> str:
+                return "slow_node"
+
+            @property
+            def timeout_seconds(self) -> float:
+                return 0.1  # 100ms
+
+            @property
+            def input_keys(self) -> list[str]:
+                return []
+
+            async def _process(self, state):
+                import asyncio
+
+                await asyncio.sleep(5)  # 5초 — 타임아웃 유발
+                return {"execution_path": ["slow_node"]}
+
+        node = SlowNode()
+        state = GraphRAGState(question="test")
+        result = await node(state)
+
+        assert "error" in result
+        assert "slow_node_timeout" in result["execution_path"]
+
+    @pytest.mark.asyncio
+    async def test_no_timeout_on_fast_node(self):
+        """빠른 노드는 정상 반환"""
+        from src.graph.nodes.base import BaseNode
+
+        class FastNode(BaseNode[dict]):
+            @property
+            def name(self) -> str:
+                return "fast_node"
+
+            @property
+            def timeout_seconds(self) -> float:
+                return 5.0
+
+            @property
+            def input_keys(self) -> list[str]:
+                return []
+
+            async def _process(self, state):
+                return {"execution_path": ["fast_node"]}
+
+        node = FastNode()
+        state = GraphRAGState(question="test")
+        result = await node(state)
+
+        assert result["execution_path"] == ["fast_node"]
+        assert "error" not in result
+
+    def test_default_timeout_values(self):
+        """노드별 기본 타임아웃 확인"""
+        from src.graph.nodes.base import CPU_TIMEOUT, DB_TIMEOUT, DEFAULT_TIMEOUT
+
+        assert DEFAULT_TIMEOUT == 30
+        assert DB_TIMEOUT == 15
+        assert CPU_TIMEOUT == 10
 
 
 class TestGraphRAGState:

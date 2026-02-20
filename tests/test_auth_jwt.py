@@ -41,10 +41,12 @@ class TestCreateAccessToken:
 
     def test_access_token_contains_payload(self, handler):
         """토큰에 페이로드 데이터 포함"""
-        token = handler.create_access_token({
-            "sub": "user1",
-            "roles": ["admin"],
-        })
+        token = handler.create_access_token(
+            {
+                "sub": "user1",
+                "roles": ["admin"],
+            }
+        )
         decoded = handler.decode_token(token)
         assert decoded["sub"] == "user1"
         assert decoded["roles"] == ["admin"]
@@ -108,9 +110,7 @@ class TestDecodeToken:
             "exp": datetime.now(UTC) - timedelta(hours=1),
             "type": "access",
         }
-        token = jwt.encode(
-            payload, jwt_settings.jwt_secret_key, algorithm="HS256"
-        )
+        token = jwt.encode(payload, jwt_settings.jwt_secret_key, algorithm="HS256")
 
         with pytest.raises(jwt.ExpiredSignatureError):
             handler.decode_token(token)

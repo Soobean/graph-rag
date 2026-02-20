@@ -26,7 +26,9 @@ def mock_neo4j_repo():
 
     # 기본 async 메서드 모킹
     repo.concept_exists = AsyncMock(return_value=False)
-    repo.create_or_get_concept = AsyncMock(return_value={"name": "test", "type": "skill"})
+    repo.create_or_get_concept = AsyncMock(
+        return_value={"name": "test", "type": "skill"}
+    )
     repo.create_same_as_relation = AsyncMock(return_value=True)
     repo.create_is_a_relation = AsyncMock(return_value=True)
     repo.create_requires_relation = AsyncMock(return_value=True)
@@ -179,7 +181,9 @@ class TestApplyNewSynonym:
         )
 
     @pytest.mark.asyncio
-    async def test_apply_new_synonym_canonical_not_exists(self, service, mock_neo4j_repo):
+    async def test_apply_new_synonym_canonical_not_exists(
+        self, service, mock_neo4j_repo
+    ):
         """NEW_SYNONYM + canonical 없음: canonical도 자동 생성"""
         mock_neo4j_repo.concept_exists = AsyncMock(return_value=False)
 
@@ -197,7 +201,9 @@ class TestApplyNewSynonym:
         assert mock_neo4j_repo.create_or_get_concept.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_apply_new_synonym_fails_without_canonical(self, service, mock_neo4j_repo):
+    async def test_apply_new_synonym_fails_without_canonical(
+        self, service, mock_neo4j_repo
+    ):
         """NEW_SYNONYM + canonical 없음: ValidationError"""
         proposal = create_proposal(
             proposal_type=ProposalType.NEW_SYNONYM,
@@ -375,7 +381,9 @@ class TestApproveWithApply:
         mock_neo4j_repo.update_proposal_applied_at.assert_called_once_with(proposal.id)
 
     @pytest.mark.asyncio
-    async def test_approve_continues_even_if_apply_fails(self, service, mock_neo4j_repo):
+    async def test_approve_continues_even_if_apply_fails(
+        self, service, mock_neo4j_repo
+    ):
         """온톨로지 적용 실패해도 승인 상태는 유지"""
         proposal = create_proposal(
             proposal_type=ProposalType.NEW_CONCEPT,

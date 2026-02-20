@@ -36,9 +36,7 @@ class AuthService:
         self._password = password_handler
         self._settings = settings
 
-    async def login(
-        self, username: str, password: str
-    ) -> dict[str, str]:
+    async def login(self, username: str, password: str) -> dict[str, str]:
         """
         로그인 처리
 
@@ -198,9 +196,7 @@ class AuthService:
             user.pop("hashed_password", None)
         return user
 
-    async def list_users(
-        self, skip: int = 0, limit: int = 50
-    ) -> list[dict[str, Any]]:
+    async def list_users(self, skip: int = 0, limit: int = 50) -> list[dict[str, Any]]:
         """사용자 목록"""
         users = await self._users.list_users(skip=skip, limit=limit)
         for u in users:

@@ -10,7 +10,7 @@ from src.auth.access_policy import ALL_PROPS, AccessPolicy
 from src.config import Settings
 from src.domain.types import GraphExecutorUpdate
 from src.domain.validators import validate_read_only_cypher
-from src.graph.nodes.base import BaseNode
+from src.graph.nodes.base import DB_TIMEOUT, BaseNode
 from src.graph.state import GraphRAGState
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.repositories.query_cache_repository import QueryCacheRepository
@@ -18,10 +18,7 @@ from src.repositories.query_cache_repository import QueryCacheRepository
 
 def _is_node(value: Any) -> bool:
     """Neo4j 노드인지 판별 (labels 키가 list인 dict)"""
-    return (
-        isinstance(value, dict)
-        and isinstance(value.get("labels"), list)
-    )
+    return isinstance(value, dict) and isinstance(value.get("labels"), list)
 
 
 def _is_relationship(value: Any) -> bool:
@@ -48,8 +45,7 @@ def _filter_node_properties(
     props = node.get("properties")
     if isinstance(props, dict):
         filtered["properties"] = {
-            k: v for k, v in props.items()
-            if k in allowed_properties
+            k: v for k, v in props.items() if k in allowed_properties
         }
     return filtered
 
@@ -67,10 +63,7 @@ def _filter_relationship_properties(
     filtered = dict(rel_data)
     props = rel_data.get("properties")
     if isinstance(props, dict):
-        filtered["properties"] = {
-            k: v for k, v in props.items()
-            if k in allowed_set
-        }
+        filtered["properties"] = {k: v for k, v in props.items() if k in allowed_set}
     return filtered
 
 
@@ -91,6 +84,10 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
     @property
     def name(self) -> str:
         return "graph_executor"
+
+    @property
+    def timeout_seconds(self) -> float:
+        return DB_TIMEOUT
 
     @property
     def input_keys(self) -> list[str]:
@@ -288,9 +285,7 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
                     # "*"는 전체 허용
                     filtered_record[key] = value
                 else:
-                    filtered_record[key] = _filter_node_properties(
-                        value, allowed_props
-                    )
+                    filtered_record[key] = _filter_node_properties(value, allowed_props)
             elif _is_relationship(value):
                 # D2 확장: 관계 속성 필터링
                 rel_type = value.get("type", "")

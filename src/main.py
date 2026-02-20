@@ -38,6 +38,7 @@ from src.domain.exceptions import (
 )
 from src.domain.ontology.registry import OntologyRegistry
 from src.graph import GraphRAGPipeline
+from src.graph.checkpointer import create_checkpointer
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories import LLMRepository, Neo4jRepository
 from src.repositories.user_repository import UserRepository
@@ -114,7 +115,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     logger.info("OntologyService initialized for Pipeline injection")
 
-    # Pipeline 초기화 (스키마 + 온톨로지 로더 + 온톨로지 서비스 주입)
+    # Checkpointer 초기화
+    checkpointer = await create_checkpointer(settings.checkpointer_db_path)
+    logger.info(f"Checkpointer initialized: {type(checkpointer).__name__}")
+
+    # Pipeline 초기화 (스키마 + 온톨로지 로더 + 온톨로지 서비스 + checkpointer 주입)
     pipeline = GraphRAGPipeline(
         settings=settings,
         neo4j_repository=neo4j_repo,
@@ -124,6 +129,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ontology_loader=ontology_registry.get_loader(),
         ontology_registry=ontology_registry,
         ontology_service=ontology_service,
+        checkpointer=checkpointer,
     )
     logger.info(
         "Pipeline initialized with pre-loaded schema, ontology registry, and ontology service"
@@ -303,7 +309,12 @@ async def invalid_state_handler(
 @app.exception_handler(GraphRAGError)
 async def graphrag_error_handler(request: Request, exc: GraphRAGError) -> JSONResponse:
     """기타 도메인 예외 시 500 응답"""
-    logger.error(f"GraphRAGError: {exc.message}", exc_info=True)
+    settings = get_settings()
+    if settings.is_production:
+        # 프로덕션: 내부 정보 유출 방지 (트레이스백 제외)
+        logger.error(f"GraphRAGError: {exc.code}")
+    else:
+        logger.error(f"GraphRAGError: {exc.message}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={"detail": {"message": exc.message, "code": exc.code}},

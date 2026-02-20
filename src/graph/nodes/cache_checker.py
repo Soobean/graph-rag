@@ -35,7 +35,6 @@ class CacheCheckerNode(BaseNode[CacheCheckerUpdate]):
     def input_keys(self) -> list[str]:
         return ["question"]
 
-
     async def _process(self, state: GraphRAGState) -> CacheCheckerUpdate:
         """
         질문에 대한 캐시 확인

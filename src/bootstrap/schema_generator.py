@@ -178,7 +178,8 @@ class SchemaGenerator:
 
         # Format schemas for prompt
         schemas_text = "\n\n".join(
-            f"### 스키마 {i + 1}\n{s.get_schema_summary()}" for i, s in enumerate(schemas)
+            f"### 스키마 {i + 1}\n{s.get_schema_summary()}"
+            for i, s in enumerate(schemas)
         )
 
         system_prompt = """당신은 지식 그래프 스키마 통합 전문가입니다.

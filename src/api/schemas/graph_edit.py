@@ -132,15 +132,11 @@ class AffectedRelationship(BaseModel):
 class ConceptBridgeImpact(BaseModel):
     """Skill↔Concept 브릿지 영향"""
 
-    current_concept: str | None = Field(
-        None, description="현재 매칭되는 Concept 이름"
-    )
+    current_concept: str | None = Field(None, description="현재 매칭되는 Concept 이름")
     current_hierarchy: list[str] = Field(
         default_factory=list, description="현재 IS_A 계층 (조상 목록)"
     )
-    will_break: bool = Field(
-        ..., description="이 작업으로 브릿지가 끊어지는지 여부"
-    )
+    will_break: bool = Field(..., description="이 작업으로 브릿지가 끊어지는지 여부")
     new_concept: str | None = Field(
         None, description="(rename only) 새 이름에 매칭되는 Concept"
     )

@@ -367,19 +367,23 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
         filtered = GraphSchema(
             node_labels=[
-                label for label in schema.get("node_labels", [])
+                label
+                for label in schema.get("node_labels", [])
                 if label in allowed_labels
             ],
             relationship_types=[
-                rel for rel in schema.get("relationship_types", [])
+                rel
+                for rel in schema.get("relationship_types", [])
                 if rel in allowed_rels
             ],
             nodes=[
-                node for node in schema.get("nodes", [])
+                node
+                for node in schema.get("nodes", [])
                 if node.get("label") in allowed_labels
             ],
             relationships=[
-                rel for rel in schema.get("relationships", [])
+                rel
+                for rel in schema.get("relationships", [])
                 if rel.get("type") in allowed_rels
             ],
             indexes=schema.get("indexes", []),

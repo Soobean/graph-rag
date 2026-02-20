@@ -249,7 +249,7 @@ class RelationNormalizer:
 - WORKS_ON, MANAGES, REPORTS_TO, HAS_SKILL, KNOWS, MENTORS, CERTIFIED_IN"""
 
         user_prompt = f"""다음 관계들의 대표 이름을 제안하세요:
-{', '.join(sanitized_variants)}
+{", ".join(sanitized_variants)}
 
 출력: 단일 SCREAMING_SNAKE_CASE 관계명만 응답하세요 (예: WORKS_ON)"""
 
@@ -281,7 +281,7 @@ class RelationNormalizer:
 
         lines = []
         for rel, count in sorted_relations[:100]:  # Limit to top 100
-            lines.append(f"- \"{rel}\": {count}회")
+            lines.append(f'- "{rel}": {count}회')
 
         return "\n".join(lines)
 

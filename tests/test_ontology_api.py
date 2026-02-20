@@ -52,7 +52,9 @@ def client(app):
 class TestOntologySchemaAPI:
     def test_schema_200(self, client, mock_loader):
         """온톨로지 스키마 조회 성공"""
-        with patch("src.api.routes.ontology.get_ontology_loader", return_value=mock_loader):
+        with patch(
+            "src.api.routes.ontology.get_ontology_loader", return_value=mock_loader
+        ):
             resp = client.get("/api/v1/ontology/schema")
         assert resp.status_code == 200
         data = resp.json()
@@ -77,7 +79,9 @@ class TestOntologySchemaAPI:
 class TestConceptStyleAPI:
     def test_style_found(self, client, mock_loader):
         """스타일이 존재하는 개념"""
-        with patch("src.api.routes.ontology.get_ontology_loader", return_value=mock_loader):
+        with patch(
+            "src.api.routes.ontology.get_ontology_loader", return_value=mock_loader
+        ):
             resp = client.get("/api/v1/ontology/concept/skills/Python/style")
         assert resp.status_code == 200
         data = resp.json()
@@ -87,7 +91,9 @@ class TestConceptStyleAPI:
     def test_style_fallback_default(self, client, mock_loader):
         """스타일이 없는 개념 → 기본 스타일 반환"""
         mock_loader.get_style_for_concept.return_value = None
-        with patch("src.api.routes.ontology.get_ontology_loader", return_value=mock_loader):
+        with patch(
+            "src.api.routes.ontology.get_ontology_loader", return_value=mock_loader
+        ):
             resp = client.get("/api/v1/ontology/concept/skills/UnknownSkill/style")
         assert resp.status_code == 200
         data = resp.json()

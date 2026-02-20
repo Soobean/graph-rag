@@ -87,7 +87,10 @@ class TestBuildThoughtProcess:
         step = result.steps[0]
         assert step.step_type == "extraction"
         assert "추출된 엔티티: 3개" in step.output_summary
-        assert step.details["entities"] == {"Employee": ["홍길동"], "Skill": ["Python", "Java"]}
+        assert step.details["entities"] == {
+            "Employee": ["홍길동"],
+            "Skill": ["Python", "Java"],
+        }
 
     def test_concept_expander_step_with_full_state(self, service):
         """개념 확장 스텝 (full_state 포함)"""
@@ -359,9 +362,21 @@ class TestBuildGraphData:
         full_state = {
             "graph_results": [
                 {
-                    "n1": {"id": 10, "labels": ["Employee"], "properties": {"name": "A"}},
-                    "n2": {"id": 20, "labels": ["Department"], "properties": {"name": "B"}},
-                    "n3": {"id": 30, "labels": ["Employee"], "properties": {"name": "C"}},
+                    "n1": {
+                        "id": 10,
+                        "labels": ["Employee"],
+                        "properties": {"name": "A"},
+                    },
+                    "n2": {
+                        "id": 20,
+                        "labels": ["Department"],
+                        "properties": {"name": "B"},
+                    },
+                    "n3": {
+                        "id": 30,
+                        "labels": ["Employee"],
+                        "properties": {"name": "C"},
+                    },
                     "rels": [
                         {
                             "id": 300,
@@ -392,13 +407,15 @@ class TestBuildGraphData:
         # 5개의 그래프 결과 생성
         graph_results = []
         for i in range(5):
-            graph_results.append({
-                "n": {
-                    "id": i,
-                    "labels": ["Node"],
-                    "properties": {"name": f"Node{i}"},
+            graph_results.append(
+                {
+                    "n": {
+                        "id": i,
+                        "labels": ["Node"],
+                        "properties": {"name": f"Node{i}"},
+                    }
                 }
-            })
+            )
 
         full_state = {
             "graph_results": graph_results,

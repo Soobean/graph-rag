@@ -45,7 +45,7 @@ class QueryExecutionError(DatabaseError):
     """쿼리 실행 실패"""
 
     def __init__(self, message: str, query: str = ""):
-        self.query = query
+        self._query = query
         super().__init__(message, code="QUERY_EXECUTION_ERROR")
 
 
@@ -119,7 +119,9 @@ class EntityExtractionError(PipelineError):
     """엔티티 추출 실패"""
 
     def __init__(self, message: str):
-        super().__init__(message, node="entity_extractor", code="ENTITY_EXTRACTION_ERROR")
+        super().__init__(
+            message, node="entity_extractor", code="ENTITY_EXTRACTION_ERROR"
+        )
 
 
 class EntityResolutionError(PipelineError):
@@ -127,15 +129,20 @@ class EntityResolutionError(PipelineError):
 
     def __init__(self, message: str, unresolved_entities: list[str] | None = None):
         self.unresolved_entities = unresolved_entities or []
-        super().__init__(message, node="entity_resolver", code="ENTITY_RESOLUTION_ERROR")
+        super().__init__(
+            message, node="entity_resolver", code="ENTITY_RESOLUTION_ERROR"
+        )
 
 
 class CypherGenerationError(PipelineError):
     """Cypher 쿼리 생성 실패"""
 
     def __init__(self, message: str, generated_query: str = ""):
-        self.generated_query = generated_query
-        super().__init__(message, node="cypher_generator", code="CYPHER_GENERATION_ERROR")
+        # generated_query는 디버그 로깅용으로만 보존
+        self._generated_query = generated_query
+        super().__init__(
+            message, node="cypher_generator", code="CYPHER_GENERATION_ERROR"
+        )
 
 
 class EmptyResultError(PipelineError):

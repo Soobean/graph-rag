@@ -307,9 +307,7 @@ class TestNormalizationResult:
 
     def test_normalize_triple(self):
         """트리플 정규화"""
-        result = NormalizationResult(
-            mapping={"참여했다": "WORKS_ON"}
-        )
+        result = NormalizationResult(mapping={"참여했다": "WORKS_ON"})
 
         original = Triple("A", "참여했다", "B", 0.9, "text")
         normalized = result.normalize_triple(original)

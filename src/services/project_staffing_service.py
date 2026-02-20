@@ -26,9 +26,10 @@ from src.api.schemas.staffing import (
 from src.domain.constants import (
     PROFICIENCY_MAP,
     PROJECT_STATUS_ACTIVE,
-    PROJECT_STATUS_ACTIVE_LIST,
     PROJECT_STATUS_PLANNED,
+    active_statuses_literal,
     build_proficiency_case_cypher,
+    tolower_match,
 )
 from src.repositories.neo4j_repository import Neo4jRepository
 
@@ -121,9 +122,7 @@ class ProjectStaffingService:
         project = await self._get_project_info(project_name)
 
         # 2. REQUIRES 스킬 목록 조회
-        requirements = await self._get_project_requirements(
-            project_name, skill_name
-        )
+        requirements = await self._get_project_requirements(project_name, skill_name)
 
         # 3. 스킬별 후보자 탐색
         skill_candidates_list: list[SkillCandidates] = []
@@ -214,13 +213,10 @@ class ProjectStaffingService:
 
         # 총 필요 인원으로 인당 시간 계산
         total_headcount = sum(
-            sc.required_headcount or 1
-            for sc in candidates_result.skill_candidates
+            sc.required_headcount or 1 for sc in candidates_result.skill_candidates
         )
         hours_per_person = (
-            estimated_hours / max(total_headcount, 1)
-            if estimated_hours > 0
-            else 0
+            estimated_hours / max(total_headcount, 1) if estimated_hours > 0 else 0
         )
 
         for sc in candidates_result.skill_candidates:
@@ -296,9 +292,9 @@ class ProjectStaffingService:
         # 프로젝트 정보 + 팀원 비용 내역 조회
         project = await self._get_project_info(project_name)
 
-        query = """
+        query = f"""
         MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)
-        WHERE toLower(p.name) = toLower($project_name)
+        WHERE {tolower_match("p.name", "project_name")}
         WITH e.name AS emp_name,
              max(w.role) AS role,
              max(w.agreed_rate) AS agreed_rate,
@@ -389,9 +385,9 @@ class ProjectStaffingService:
 
     async def _get_project_info(self, project_name: str) -> dict[str, Any]:
         """프로젝트 기본 정보 조회"""
-        query = """
+        query = f"""
         MATCH (p:Project)
-        WHERE toLower(p.name) = toLower($project_name)
+        WHERE {tolower_match("p.name", "project_name")}
         RETURN p.name AS name,
                p.budget_million AS budget_million,
                p.estimated_hours AS estimated_hours,
@@ -421,12 +417,12 @@ class ProjectStaffingService:
         params: dict[str, Any] = {"project_name": project_name}
 
         if skill_filter:
-            skill_clause = "AND toLower(s.name) = toLower($skill_filter)"
+            skill_clause = f"AND {tolower_match('s.name', 'skill_filter')}"
             params["skill_filter"] = skill_filter
 
         query = f"""
         MATCH (p:Project)-[r:REQUIRES]->(s:Skill)
-        WHERE toLower(p.name) = toLower($project_name)
+        WHERE {tolower_match("p.name", "project_name")}
         {skill_clause}
         // Project 중복 노드 대응: 스킬명 기반 그룹핑
         WITH s.name AS skill_name,
@@ -622,12 +618,12 @@ class ProjectStaffingService:
             params["max_hourly_rate"] = max_hourly_rate
 
         proficiency_case = build_proficiency_case_cypher("hs.proficiency")
-        active_statuses = str(PROJECT_STATUS_ACTIVE_LIST).replace('"', "'")
+        active_statuses = active_statuses_literal()
 
         query = f"""
         // 스킬 보유자 조회 (Employee 중복 노드 통합)
         MATCH (e:Employee)-[hs:HAS_SKILL]->(s:Skill)
-        WHERE toLower(s.name) = toLower($skill_name)
+        WHERE {tolower_match("s.name", "skill_name")}
 
         // Employee name 기반 그룹핑 (중복 노드 대응)
         // proficiency: 한글 문자열("초급"~"전문가") → 숫자 변환 후 max
@@ -705,7 +701,5 @@ class ProjectStaffingService:
                 )
             return candidates
         except Exception as e:
-            logger.error(
-                f"Failed to find candidates for skill '{skill_name}': {e}"
-            )
+            logger.error(f"Failed to find candidates for skill '{skill_name}': {e}")
             return []

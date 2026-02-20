@@ -4,8 +4,9 @@ UserRepository 테스트
 Neo4j 의존성은 Mock으로 처리합니다.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.infrastructure.neo4j_client import Neo4jClient
 from src.repositories.user_repository import UserRepository
@@ -80,7 +81,14 @@ class TestCreateUser:
 class TestUpdateUser:
     async def test_update_department(self, repo, mock_client):
         mock_client.execute_query.return_value = [
-            {"user": {"id": "u1", "username": "test", "department": "마케팅", "roles": []}}
+            {
+                "user": {
+                    "id": "u1",
+                    "username": "test",
+                    "department": "마케팅",
+                    "roles": [],
+                }
+            }
         ]
         result = await repo.update_user("u1", {"department": "마케팅"})
         assert result is not None

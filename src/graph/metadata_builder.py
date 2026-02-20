@@ -137,9 +137,7 @@ class ResponseMetadataBuilder:
                     node_id = str(value.get("id", elem_id))
                     labels = value.get("labels", [])
                     props = value.get("properties", {})
-                    name = (
-                        props.get("name", "") if isinstance(props, dict) else ""
-                    )
+                    name = props.get("name", "") if isinstance(props, dict) else ""
                     add_node(
                         node_id,
                         labels,
@@ -148,9 +146,7 @@ class ResponseMetadataBuilder:
                     )
 
                 # 관계 감지
-                elif "type" in value and (
-                    "startNodeId" in value or "start" in value
-                ):
+                elif "type" in value and ("startNodeId" in value or "start" in value):
                     rel_type = value.get("type", "RELATED")
                     edge_id = str(
                         value.get(
@@ -158,12 +154,8 @@ class ResponseMetadataBuilder:
                             value.get("elementId", f"edge_{len(edges_list)}"),
                         )
                     )
-                    source = str(
-                        value.get("startNodeId", value.get("start", ""))
-                    )
-                    target = str(
-                        value.get("endNodeId", value.get("end", ""))
-                    )
+                    source = str(value.get("startNodeId", value.get("start", "")))
+                    target = str(value.get("endNodeId", value.get("end", "")))
                     props = value.get("properties", {})
                     add_edge(edge_id, rel_type, source, target, props)
 
@@ -205,10 +197,7 @@ class ResponseMetadataBuilder:
         if not columns:
             return None
 
-        rows = [
-            {col: row.get(col) for col in columns}
-            for row in graph_results[:limit]
-        ]
+        rows = [{col: row.get(col) for col in columns} for row in graph_results[:limit]]
         return {
             "columns": columns,
             "rows": rows,

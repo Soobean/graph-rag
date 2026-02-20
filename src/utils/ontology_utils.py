@@ -33,7 +33,9 @@ async def safe_refresh_ontology_cache(
         True if refresh succeeded, False otherwise
     """
     if registry is None:
-        logger.debug(f"OntologyRegistry not available, skipping cache refresh ({context})")
+        logger.debug(
+            f"OntologyRegistry not available, skipping cache refresh ({context})"
+        )
         return False
 
     try:

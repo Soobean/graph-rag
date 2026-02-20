@@ -262,9 +262,7 @@ async def query_stream(
                     }
                 else:
                     # 알 수 없는 이벤트 타입 로깅 (디버깅용)
-                    logger.warning(
-                        "Unknown event type in streaming: %s", event_type
-                    )
+                    logger.warning("Unknown event type in streaming: %s", event_type)
 
         except LLMRateLimitError as e:
             logger.warning(f"Rate limit exceeded during streaming: {e}")

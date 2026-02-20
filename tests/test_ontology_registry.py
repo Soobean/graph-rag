@@ -210,9 +210,7 @@ class TestOntologyRegistryErrorHandling:
         registry = OntologyRegistry(mode="yaml")
 
         # 예외를 발생시키도록 패치
-        with patch.object(
-            registry, "_do_refresh", side_effect=Exception("Test error")
-        ):
+        with patch.object(registry, "_do_refresh", side_effect=Exception("Test error")):
             result = await registry.refresh()
 
         assert result is False

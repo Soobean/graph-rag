@@ -356,7 +356,9 @@ class GraphEditService:
                     "will_break": False,
                 }
 
-        downstream = await self._assess_downstream_effects(node_labels, is_deletion=True)
+        downstream = await self._assess_downstream_effects(
+            node_labels, is_deletion=True
+        )
 
         summary = self._build_deletion_summary(
             node_name=node_name,
@@ -414,7 +416,8 @@ class GraphEditService:
 
             will_break = current_bridge is not None and (
                 new_bridge is None
-                or new_bridge["concept_name"].lower() != current_bridge["concept_name"].lower()
+                or new_bridge["concept_name"].lower()
+                != current_bridge["concept_name"].lower()
             )
 
             concept_bridge = {
@@ -425,15 +428,15 @@ class GraphEditService:
                     current_bridge.get("hierarchy", []) if current_bridge else []
                 ),
                 "will_break": will_break,
-                "new_concept": (
-                    new_bridge["concept_name"] if new_bridge else None
-                ),
+                "new_concept": (new_bridge["concept_name"] if new_bridge else None),
                 "new_hierarchy": (
                     new_bridge.get("hierarchy", []) if new_bridge else []
                 ),
             }
 
-        downstream = await self._assess_downstream_effects(node_labels, is_deletion=False)
+        downstream = await self._assess_downstream_effects(
+            node_labels, is_deletion=False
+        )
 
         summary = self._build_rename_summary(
             current_name=current_name,
@@ -464,25 +467,29 @@ class GraphEditService:
         cache_count = await self._neo4j.check_cached_queries_exist()
         if cache_count > 0:
             action = "삭제" if is_deletion else "이름 변경"
-            effects.append({
-                "system": "cache",
-                "description": (
-                    f"CachedQuery {cache_count}개가 존재합니다. "
-                    f"노드 {action} 후 캐시된 응답이 stale 상태가 될 수 있습니다."
-                ),
-            })
+            effects.append(
+                {
+                    "system": "cache",
+                    "description": (
+                        f"CachedQuery {cache_count}개가 존재합니다. "
+                        f"노드 {action} 후 캐시된 응답이 stale 상태가 될 수 있습니다."
+                    ),
+                }
+            )
 
         is_skill_or_employee = bool({"Skill", "Employee"} & set(node_labels))
         if is_skill_or_employee:
             similar_count = await self._neo4j.check_similar_relationships_exist()
             if similar_count > 0:
-                effects.append({
-                    "system": "gds",
-                    "description": (
-                        f"SIMILAR 관계 {similar_count}개가 존재합니다. "
-                        f"GDS projection이 stale 상태가 될 수 있습니다."
-                    ),
-                })
+                effects.append(
+                    {
+                        "system": "gds",
+                        "description": (
+                            f"SIMILAR 관계 {similar_count}개가 존재합니다. "
+                            f"GDS projection이 stale 상태가 될 수 있습니다."
+                        ),
+                    }
+                )
 
         return effects
 
@@ -504,9 +511,7 @@ class GraphEditService:
 
         if concept_bridge and concept_bridge.get("will_break"):
             concept = concept_bridge.get("current_concept", "")
-            parts.append(
-                f"  - ⚠ Concept '{concept}'와의 이름 브릿지가 끊어집니다."
-            )
+            parts.append(f"  - ⚠ Concept '{concept}'와의 이름 브릿지가 끊어집니다.")
 
         return "\n".join(parts)
 
@@ -535,9 +540,7 @@ class GraphEditService:
                         f"  - ✅ 새 이름은 Concept '{new_concept}'와 매칭됩니다."
                     )
                 else:
-                    parts.append(
-                        "  - ⚠ 새 이름에 매칭되는 Concept가 없습니다."
-                    )
+                    parts.append("  - ⚠ 새 이름에 매칭되는 Concept가 없습니다.")
             elif concept_bridge.get("current_concept"):
                 parts.append("  - ✅ Concept 브릿지가 유지됩니다.")
             else:

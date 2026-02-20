@@ -5,12 +5,11 @@ AccessPolicy 테스트 — 3차원 접근 제어의 핵심 테스트
 """
 
 from src.auth.access_policy import (
-    ALL_PROPS,
     ADMIN_POLICY,
+    ALL_PROPS,
     ROLE_POLICIES,
     get_access_policy,
 )
-
 
 # =============================================================================
 # 역할별 라벨 접근
@@ -24,8 +23,14 @@ class TestLabelAccess:
         """admin은 모든 라벨에 접근 가능 (Company 제외 — DB에 없음)"""
         admin = ROLE_POLICIES["admin"]
         expected = {
-            "Employee", "Skill", "Project", "Department",
-            "Position", "Certificate", "Office", "Concept",
+            "Employee",
+            "Skill",
+            "Project",
+            "Department",
+            "Position",
+            "Certificate",
+            "Office",
+            "Concept",
         }
         assert admin.get_allowed_labels() == expected
 
@@ -84,7 +89,14 @@ class TestPropertyVisibility:
         editor = ROLE_POLICIES["editor"]
         props = editor.get_allowed_properties("Employee")
         assert isinstance(props, tuple)
-        assert set(props) == {"name", "job_type", "years_experience", "hire_date", "availability", "max_projects"}
+        assert set(props) == {
+            "name",
+            "job_type",
+            "years_experience",
+            "hire_date",
+            "availability",
+            "max_projects",
+        }
 
     def test_viewer_project_limited_properties(self):
         """viewer는 Project의 name, type, status, required_headcount"""
@@ -99,8 +111,13 @@ class TestPropertyVisibility:
         props = editor.get_allowed_properties("Project")
         assert isinstance(props, tuple)
         assert set(props) == {
-            "name", "type", "status", "start_date",
-            "duration_months", "estimated_hours", "required_headcount",
+            "name",
+            "type",
+            "status",
+            "start_date",
+            "duration_months",
+            "estimated_hours",
+            "required_headcount",
         }
 
     def test_viewer_skill_all_properties(self):
@@ -182,8 +199,12 @@ class TestRoleMerging:
         props = merged.get_allowed_properties("Employee")
         assert isinstance(props, tuple)
         assert set(props) == {
-            "name", "job_type", "years_experience", "hire_date",
-            "availability", "max_projects",
+            "name",
+            "job_type",
+            "years_experience",
+            "hire_date",
+            "availability",
+            "max_projects",
         }
 
     def test_viewer_manager_merge_widens_labels(self):
@@ -212,7 +233,9 @@ class TestRoleMerging:
     def test_unknown_role_ignored(self):
         """알 수 없는 역할은 무시"""
         merged = get_access_policy(["unknown_role", "viewer"])
-        assert merged.get_allowed_labels() == ROLE_POLICIES["viewer"].get_allowed_labels()
+        assert (
+            merged.get_allowed_labels() == ROLE_POLICIES["viewer"].get_allowed_labels()
+        )
 
 
 # =============================================================================

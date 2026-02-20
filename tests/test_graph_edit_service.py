@@ -21,43 +21,57 @@ def mock_repo():
     """Mock Neo4jRepository"""
     repo = MagicMock(spec=Neo4jRepository)
     repo.check_duplicate_node = AsyncMock(return_value=False)
-    repo.create_node_generic = AsyncMock(return_value={
-        "id": "4:abc:0",
-        "labels": ["Employee"],
-        "properties": {"name": "홍길동", "created_by": "anonymous_admin"},
-    })
-    repo.find_entity_by_id = AsyncMock(return_value=NodeResult(
-        id="4:abc:0",
-        labels=["Employee"],
-        properties={"name": "홍길동"},
-    ))
-    repo.update_node_properties = AsyncMock(return_value={
-        "id": "4:abc:0",
-        "labels": ["Employee"],
-        "properties": {"name": "홍길동", "updated_by": "anonymous_admin"},
-    })
-    repo.delete_node_atomic = AsyncMock(return_value={
-        "deleted": True, "rel_count": 0, "not_found": False,
-    })
+    repo.create_node_generic = AsyncMock(
+        return_value={
+            "id": "4:abc:0",
+            "labels": ["Employee"],
+            "properties": {"name": "홍길동", "created_by": "anonymous_admin"},
+        }
+    )
+    repo.find_entity_by_id = AsyncMock(
+        return_value=NodeResult(
+            id="4:abc:0",
+            labels=["Employee"],
+            properties={"name": "홍길동"},
+        )
+    )
+    repo.update_node_properties = AsyncMock(
+        return_value={
+            "id": "4:abc:0",
+            "labels": ["Employee"],
+            "properties": {"name": "홍길동", "updated_by": "anonymous_admin"},
+        }
+    )
+    repo.delete_node_atomic = AsyncMock(
+        return_value={
+            "deleted": True,
+            "rel_count": 0,
+            "not_found": False,
+        }
+    )
     # 기존 메서드도 유지 (다른 테스트에서 사용 가능)
     repo.get_node_relationship_count = AsyncMock(return_value=0)
     repo.delete_node_generic = AsyncMock(return_value=True)
-    repo.create_relationship_generic = AsyncMock(return_value={
-        "id": "5:abc:0",
-        "type": "HAS_SKILL",
-        "source_id": "4:abc:0",
-        "target_id": "4:abc:1",
-        "properties": {"created_by": "anonymous_admin"},
-        "source_labels": ["Employee"],
-        "target_labels": ["Skill"],
-    })
-    repo.find_relationship_by_id = AsyncMock(return_value={
-        "id": "5:abc:0",
-        "type": "HAS_SKILL",
-        "source_id": "4:abc:0",
-        "target_id": "4:abc:1",
-        "properties": {},
-    })
+    repo.create_relationship_generic = AsyncMock(
+        return_value={
+            "id": "5:abc:0",
+            "type": "HAS_SKILL",
+            "source_id": "4:abc:0",
+            "target_id": "4:abc:1",
+            "properties": {"created_by": "anonymous_admin"},
+            "source_labels": ["Employee"],
+            "target_labels": ["Skill"],
+        }
+    )
+    repo.find_relationship_by_id = AsyncMock(
+        return_value={
+            "id": "5:abc:0",
+            "type": "HAS_SKILL",
+            "source_id": "4:abc:0",
+            "target_id": "4:abc:1",
+            "properties": {},
+        }
+    )
     repo.delete_relationship_generic = AsyncMock(return_value=True)
     repo.search_nodes = AsyncMock(return_value=[])
     return repo
@@ -137,7 +151,9 @@ class TestSearchNodes:
         ]
         result = await service.search_nodes(label="Employee", search="홍")
         assert len(result) == 1
-        mock_repo.search_nodes.assert_awaited_once_with(label="Employee", search="홍", limit=50)
+        mock_repo.search_nodes.assert_awaited_once_with(
+            label="Employee", search="홍", limit=50
+        )
 
     async def test_search_nodes_invalid_label(self, service):
         with pytest.raises(ValidationError, match="not allowed"):
@@ -145,7 +161,9 @@ class TestSearchNodes:
 
     async def test_search_nodes_no_filter(self, service, mock_repo):
         await service.search_nodes()
-        mock_repo.search_nodes.assert_awaited_once_with(label=None, search=None, limit=50)
+        mock_repo.search_nodes.assert_awaited_once_with(
+            label=None, search=None, limit=50
+        )
 
 
 # =============================================================================
@@ -190,17 +208,23 @@ class TestUpdateNode:
 
     async def test_update_node_ignores_protected_properties(self, service, mock_repo):
         """시스템 메타데이터(created_by 등)는 사용자가 수정 불가"""
-        await service.update_node("4:abc:0", {
-            "department": "개발팀",
-            "created_by": "hacker",
-            "created_at": None,
-            "updated_at": None,
-        })
+        await service.update_node(
+            "4:abc:0",
+            {
+                "department": "개발팀",
+                "created_by": "hacker",
+                "created_at": None,
+                "updated_at": None,
+            },
+        )
         call_args = mock_repo.update_node_properties.call_args
         update_props = call_args[0][1]
         remove_keys = call_args[0][2]
         # created_by 덮어쓰기 시도는 무시됨
-        assert "created_by" not in update_props or update_props.get("created_by") != "hacker"
+        assert (
+            "created_by" not in update_props
+            or update_props.get("created_by") != "hacker"
+        )
         # created_at/updated_at null 삭제 시도도 무시됨
         assert remove_keys is None or "created_at" not in remove_keys
         assert remove_keys is None or "updated_at" not in remove_keys
@@ -220,14 +244,18 @@ class TestDeleteNode:
 
     async def test_delete_node_not_found(self, service, mock_repo):
         mock_repo.delete_node_atomic.return_value = {
-            "deleted": False, "rel_count": 0, "not_found": True,
+            "deleted": False,
+            "rel_count": 0,
+            "not_found": True,
         }
         with pytest.raises(EntityNotFoundError):
             await service.delete_node("invalid")
 
     async def test_delete_node_has_relationships(self, service, mock_repo):
         mock_repo.delete_node_atomic.return_value = {
-            "deleted": False, "rel_count": 3, "not_found": False,
+            "deleted": False,
+            "rel_count": 3,
+            "not_found": False,
         }
         with pytest.raises(GraphEditConflictError, match="3 relationship"):
             await service.delete_node("4:abc:0")
@@ -245,7 +273,9 @@ class TestDeleteNode:
 class TestCreateEdge:
     async def test_create_edge_success(self, service, mock_repo):
         mock_repo.find_entity_by_id.side_effect = [
-            NodeResult(id="4:abc:0", labels=["Employee"], properties={"name": "홍길동"}),
+            NodeResult(
+                id="4:abc:0", labels=["Employee"], properties={"name": "홍길동"}
+            ),
             NodeResult(id="4:abc:1", labels=["Skill"], properties={"name": "Python"}),
         ]
         result = await service.create_edge("4:abc:0", "4:abc:1", "HAS_SKILL")
@@ -265,17 +295,23 @@ class TestCreateEdge:
         """Skill -> Employee 방향으로 HAS_SKILL은 불가"""
         mock_repo.find_entity_by_id.side_effect = [
             NodeResult(id="4:abc:0", labels=["Skill"], properties={"name": "Python"}),
-            NodeResult(id="4:abc:1", labels=["Employee"], properties={"name": "홍길동"}),
+            NodeResult(
+                id="4:abc:1", labels=["Employee"], properties={"name": "홍길동"}
+            ),
         ]
         with pytest.raises(ValidationError, match="Invalid label combination"):
             await service.create_edge("4:abc:0", "4:abc:1", "HAS_SKILL")
 
     async def test_create_edge_with_properties(self, service, mock_repo):
         mock_repo.find_entity_by_id.side_effect = [
-            NodeResult(id="4:abc:0", labels=["Employee"], properties={"name": "홍길동"}),
+            NodeResult(
+                id="4:abc:0", labels=["Employee"], properties={"name": "홍길동"}
+            ),
             NodeResult(id="4:abc:1", labels=["Skill"], properties={"name": "Python"}),
         ]
-        await service.create_edge("4:abc:0", "4:abc:1", "HAS_SKILL", {"level": "expert"})
+        await service.create_edge(
+            "4:abc:0", "4:abc:1", "HAS_SKILL", {"level": "expert"}
+        )
         call_args = mock_repo.create_relationship_generic.call_args
         props = call_args[0][3]
         assert props["level"] == "expert"
@@ -327,18 +363,28 @@ class TestDeletionImpact:
     async def test_skill_with_concept_bridge(self, service, mock_repo):
         """Skill 삭제 시 Concept 브릿지 끊어짐 감지"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+            id="4:abc:0",
+            labels=["Skill"],
+            properties={"name": "Python"},
         )
-        mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[
-            {
-                "id": "5:abc:0", "type": "HAS_SKILL", "direction": "incoming",
-                "connected_node_id": "4:abc:1", "connected_node_labels": ["Employee"],
-                "connected_node_name": "홍길동",
-            },
-        ])
-        mock_repo.find_concept_bridge = AsyncMock(return_value={
-            "concept_name": "Python", "hierarchy": ["Python", "Programming Language"],
-        })
+        mock_repo.get_node_relationships_detailed = AsyncMock(
+            return_value=[
+                {
+                    "id": "5:abc:0",
+                    "type": "HAS_SKILL",
+                    "direction": "incoming",
+                    "connected_node_id": "4:abc:1",
+                    "connected_node_labels": ["Employee"],
+                    "connected_node_name": "홍길동",
+                },
+            ]
+        )
+        mock_repo.find_concept_bridge = AsyncMock(
+            return_value={
+                "concept_name": "Python",
+                "hierarchy": ["Python", "Programming Language"],
+            }
+        )
         mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
         mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
 
@@ -353,7 +399,9 @@ class TestDeletionImpact:
     async def test_employee_no_concept_bridge(self, service, mock_repo):
         """Employee 노드는 concept_bridge가 None"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Employee"], properties={"name": "홍길동"},
+            id="4:abc:0",
+            labels=["Employee"],
+            properties={"name": "홍길동"},
         )
         mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[])
         mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
@@ -374,7 +422,9 @@ class TestDeletionImpact:
     async def test_no_relationships(self, service, mock_repo):
         """관계 없는 노드는 안전한 삭제"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Skill"], properties={"name": "Rust"},
+            id="4:abc:0",
+            labels=["Skill"],
+            properties={"name": "Rust"},
         )
         mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[])
         mock_repo.find_concept_bridge = AsyncMock(return_value=None)
@@ -390,7 +440,9 @@ class TestDeletionImpact:
     async def test_skill_no_concept_match(self, service, mock_repo):
         """Concept 매칭 없는 Skill → 브릿지 끊어지지 않음"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Skill"], properties={"name": "CustomTool"},
+            id="4:abc:0",
+            labels=["Skill"],
+            properties={"name": "CustomTool"},
         )
         mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[])
         mock_repo.find_concept_bridge = AsyncMock(return_value=None)
@@ -405,7 +457,9 @@ class TestDeletionImpact:
     async def test_downstream_cache_and_gds(self, service, mock_repo):
         """캐시/GDS 경고 생성 확인"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+            id="4:abc:0",
+            labels=["Skill"],
+            properties={"name": "Python"},
         )
         mock_repo.get_node_relationships_detailed = AsyncMock(return_value=[])
         mock_repo.find_concept_bridge = AsyncMock(return_value=None)
@@ -428,13 +482,17 @@ class TestRenameImpact:
     async def test_skill_bridge_breaks(self, service, mock_repo):
         """Skill 이름 변경 → 브릿지 끊어짐"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+            id="4:abc:0",
+            labels=["Skill"],
+            properties={"name": "Python"},
         )
         mock_repo.check_duplicate_node = AsyncMock(return_value=False)
-        mock_repo.find_concept_bridge = AsyncMock(side_effect=[
-            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
-            None,
-        ])
+        mock_repo.find_concept_bridge = AsyncMock(
+            side_effect=[
+                {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+                None,
+            ]
+        )
         mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
         mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
 
@@ -448,13 +506,17 @@ class TestRenameImpact:
     async def test_skill_bridge_preserved(self, service, mock_repo):
         """이름 변경 후에도 Concept 매칭 유지"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+            id="4:abc:0",
+            labels=["Skill"],
+            properties={"name": "Python"},
         )
         mock_repo.check_duplicate_node = AsyncMock(return_value=False)
-        mock_repo.find_concept_bridge = AsyncMock(side_effect=[
-            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
-            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
-        ])
+        mock_repo.find_concept_bridge = AsyncMock(
+            side_effect=[
+                {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+                {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+            ]
+        )
         mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
         mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
 
@@ -466,7 +528,9 @@ class TestRenameImpact:
     async def test_duplicate_detected(self, service, mock_repo):
         """중복 이름 감지"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+            id="4:abc:0",
+            labels=["Skill"],
+            properties={"name": "Python"},
         )
         mock_repo.check_duplicate_node = AsyncMock(return_value=True)
         mock_repo.find_concept_bridge = AsyncMock(return_value=None)
@@ -486,12 +550,16 @@ class TestRenameImpact:
     async def test_same_name_case_only(self, service, mock_repo):
         """대소문자만 다르면 중복 확인 스킵"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Skill"], properties={"name": "Python"},
+            id="4:abc:0",
+            labels=["Skill"],
+            properties={"name": "Python"},
         )
-        mock_repo.find_concept_bridge = AsyncMock(side_effect=[
-            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
-            {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
-        ])
+        mock_repo.find_concept_bridge = AsyncMock(
+            side_effect=[
+                {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+                {"concept_name": "Python", "hierarchy": ["Python", "PL"]},
+            ]
+        )
         mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)
         mock_repo.check_similar_relationships_exist = AsyncMock(return_value=0)
 
@@ -504,7 +572,9 @@ class TestRenameImpact:
     async def test_non_skill_node(self, service, mock_repo):
         """비-Skill 노드는 concept_bridge가 None"""
         mock_repo.find_entity_by_id.return_value = NodeResult(
-            id="4:abc:0", labels=["Employee"], properties={"name": "홍길동"},
+            id="4:abc:0",
+            labels=["Employee"],
+            properties={"name": "홍길동"},
         )
         mock_repo.check_duplicate_node = AsyncMock(return_value=False)
         mock_repo.check_cached_queries_exist = AsyncMock(return_value=0)

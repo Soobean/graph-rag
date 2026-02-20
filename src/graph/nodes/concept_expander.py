@@ -20,7 +20,7 @@ from src.domain.ontology.loader import (
     get_strategy_for_intent,
 )
 from src.domain.types import ConceptExpanderUpdate
-from src.graph.nodes.base import BaseNode
+from src.graph.nodes.base import CPU_TIMEOUT, BaseNode
 from src.graph.state import GraphRAGState
 
 if TYPE_CHECKING:
@@ -69,10 +69,16 @@ class ConceptExpanderNode(BaseNode[ConceptExpanderUpdate]):
         return "concept_expander"
 
     @property
+    def timeout_seconds(self) -> float:
+        return CPU_TIMEOUT
+
+    @property
     def input_keys(self) -> list[str]:
         return ["entities"]
 
-    def _get_expansion_config(self, state: GraphRAGState) -> tuple[ExpansionConfig, ExpansionStrategy]:
+    def _get_expansion_config(
+        self, state: GraphRAGState
+    ) -> tuple[ExpansionConfig, ExpansionStrategy]:
         """상태 기반으로 확장 설정 결정"""
         if self._static_config is not None:
             return self._static_config, self._default_strategy

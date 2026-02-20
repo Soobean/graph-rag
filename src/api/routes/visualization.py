@@ -41,6 +41,7 @@ def _validate_label(label: str) -> str:
             detail=str(e),
         ) from e
 
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/visualization", tags=["visualization"])
@@ -76,7 +77,9 @@ async def get_subgraph(
                 center_query, {"node_id": request.node_id}
             )
         elif request.node_name:
-            label_filter = f":{_validate_label(request.node_label)}" if request.node_label else ""
+            label_filter = (
+                f":{_validate_label(request.node_label)}" if request.node_label else ""
+            )
             center_query = f"""
             MATCH (n{label_filter})
             WHERE toLower(n.name) = toLower($node_name)
