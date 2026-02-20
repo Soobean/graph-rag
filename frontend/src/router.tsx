@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ChatPage } from '@/pages/ChatPage';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
 // Lazy load admin components
@@ -67,9 +68,11 @@ export const router = createBrowserRouter([
   {
     path: '/admin',
     element: (
-      <SuspenseWrapper>
-        <AdminLayout />
-      </SuspenseWrapper>
+      <ErrorBoundary>
+        <SuspenseWrapper>
+          <AdminLayout />
+        </SuspenseWrapper>
+      </ErrorBoundary>
     ),
     children: [
       {
