@@ -217,11 +217,11 @@ class TestEmployeeDuplicationGrouping:
             "analyze_budget must group by e.name to handle duplicate Employee nodes"
 
     def test_cypher_uses_tolower_for_skill_matching(self):
-        """스킬 매칭에 toLower 사용 여부 확인"""
+        """스킬 매칭에 tolower_match 헬퍼 사용 여부 확인"""
         import inspect
         from src.services.project_staffing_service import ProjectStaffingService
 
         source = inspect.getsource(ProjectStaffingService._find_skill_candidates)
 
-        assert "toLower" in source, \
-            "_find_skill_candidates must use toLower for case-insensitive skill matching"
+        assert "tolower_match" in source, \
+            "_find_skill_candidates must use tolower_match for case-insensitive skill matching"
