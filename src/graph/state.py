@@ -16,53 +16,13 @@ from langgraph.graph.message import add_messages
 from src.auth.models import UserContext
 from src.domain.types import GraphSchema, QueryPlan, ResolvedEntity, UnresolvedEntity
 
-# ARCHITECTURE.md에 정의된 7가지 Intent Type + ontology_update + unknown
-IntentType = Literal[
-    "personnel_search",  # A. 인력 추천
-    "project_matching",  # B. 프로젝트 매칭
-    "relationship_search",  # C. 관계 탐색
-    "org_analysis",  # D. 조직 분석
-    "mentoring_network",  # E. 멘토링 네트워크
-    "certificate_search",  # F. 자격증 기반 검색
-    "path_analysis",  # G. 경로 기반 분석
-    "ontology_update",  # H. 온톨로지 업데이트 요청 (사용자 주도)
-    "global_analysis",  # I. 거시적 분석 (커뮤니티 요약 기반)
-    "unknown",  # 분류 불가
-]
-
-# Intent 분류에 사용 가능한 의도 목록 (unknown 제외)
-AVAILABLE_INTENTS: list[str] = [
-    "personnel_search",
-    "project_matching",
-    "relationship_search",
-    "org_analysis",
-    "mentoring_network",
-    "certificate_search",
-    "path_analysis",
-    "ontology_update",
-    "global_analysis",
-]
-
-# 특정 엔티티 없이도 Cypher 생성이 가능한 집계/통계 intent
-# (route_after_resolver에서 전부 unresolved여도 clarification 대신 cypher_generator로 진행)
-AGGREGATE_INTENTS: set[str] = {
-    "global_analysis",
-    "org_analysis",
-    "mentoring_network",
-    "certificate_search",
-}
-
-# 기본 엔티티 타입 (Neo4j 라벨과 일치)
-DEFAULT_ENTITY_TYPES: list[str] = [
-    "Employee",
-    "Organization",
-    "Department",
-    "Position",
-    "Project",
-    "Skill",
-    "Location",
-    "Date",
-]
+# 하위 호환: constants.py로 이동한 심볼을 re-export
+from src.graph.constants import (  # noqa: F401
+    AGGREGATE_INTENTS,
+    AVAILABLE_INTENTS,
+    DEFAULT_ENTITY_TYPES,
+    IntentType,
+)
 
 
 class GraphRAGState(TypedDict, total=False):
@@ -72,12 +32,12 @@ class GraphRAGState(TypedDict, total=False):
     ARCHITECTURE.md 3.1 참조
     """
 
-    # 1. 입력 (Input)
+    # ── 1. 입력 (Input) ────────────────────────────────
     messages: Annotated[list[BaseMessage], add_messages]  # LangGraph Native History
     question: str
     session_id: str
 
-    # 2. Query Understanding (의도 분석 및 엔티티 추출)
+    # ── 2. Query Understanding ─────────────────────────
     intent: IntentType
     intent_confidence: float
     entities: dict[str, list[str]]  # 예: {'skills': ['Python'], 'names': ['김철수']}
@@ -86,29 +46,32 @@ class GraphRAGState(TypedDict, total=False):
     unresolved_entities: list[UnresolvedEntity]  # 미해결 엔티티 (Adaptive Ontology)
     query_plan: QueryPlan  # Multi-hop 쿼리 분해 계획
 
-    # 3. Graph Retrieval (검색 단계)
+    # ── 2a. Concept Expansion 메타데이터 ───────────────
+    # ConceptExpanderNode가 반환, EntityResolver·ExplainabilityService가 참조
+    expanded_entities_by_original: dict[str, dict[str, list[str]]]  # 원본별 확장 매핑
+    original_entities: dict[str, list[str]]  # 확장 전 원본 엔티티
+    expansion_count: int  # 확장된 개념 수
+    expansion_strategy: Literal["strict", "normal", "broad"]  # 사용된 확장 전략
+
+    # ── 3. Graph Retrieval ─────────────────────────────
     schema: GraphSchema  # 그래프 스키마 정보
     cypher_query: str
-    cypher_parameters: dict[str, Any]  # Cypher 파라미터는 동적
-    graph_results: list[dict[str, Any]]  # Neo4j 쿼리 결과는 동적
+    cypher_parameters: dict[str, Any]
+    graph_results: list[dict[str, Any]]
     result_count: int
 
-    # 4. Context & Response (응답 생성)
-    context: str
+    # ── 4. Response ────────────────────────────────────
     response: str
 
-    # 5. 메타데이터 및 에러 처리
+    # ── 5. 메타데이터 및 에러 처리 ─────────────────────
     error: str | None
+    execution_path: Annotated[list[str], operator.add]  # 각 노드가 append
 
-    # 실행 경로 추적 (Reducer 사용)
-    # 각 노드에서 ["node_name"]을 리턴하면 기존 리스트에 append 됨
-    execution_path: Annotated[list[str], operator.add]
+    # ── 6. Vector Search / Cache ───────────────────────
+    question_embedding: list[float] | None
+    cache_hit: bool
+    cache_score: float
+    skip_generation: bool  # 캐시 히트 시 Cypher 생성 스킵
 
-    # 6. Vector Search / Cache 관련 필드
-    question_embedding: list[float] | None  # 질문 임베딩 벡터
-    cache_hit: bool  # 캐시 히트 여부
-    cache_score: float  # 캐시 유사도 점수
-    skip_generation: bool  # Cypher 생성 스킵 여부 (캐시 히트 시)
-
-    # 7. 접근 제어 (Access Control)
+    # ── 7. 접근 제어 (Access Control) ──────────────────
     user_context: UserContext | None
