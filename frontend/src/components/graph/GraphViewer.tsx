@@ -16,6 +16,7 @@ import { GitBranchPlus, CirclePlus } from 'lucide-react';
 
 import { QueryNode, ExpandedNode, ResultNode } from './nodes';
 import { AnimatedEdge } from './edges';
+import { getMiniMapColor } from './nodes/labelColors';
 import { NodeDetailPanel } from './NodeDetailPanel';
 import { ResultTable } from './ResultTable';
 import { CreateNodeDialog } from '@/components/admin/graph-edit/CreateNodeDialog';
@@ -167,7 +168,7 @@ function GraphViewerInner({ className }: GraphViewerProps) {
         <Controls className="!shadow-sm !border !border-gray-200 !rounded-lg" />
         <MiniMap
           nodeStrokeWidth={2}
-          nodeColor="#e2e8f0"
+          nodeColor={(node) => getMiniMapColor((node.data as { nodeLabel?: string })?.nodeLabel)}
           maskColor="rgba(0,0,0,0.05)"
           className="!shadow-sm !border !border-gray-200 !rounded-lg"
           zoomable

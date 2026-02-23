@@ -2,6 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { useGraphStore } from '@/stores';
 import type { FlowNodeData } from '@/types/graph';
+import { getLabelKey, labelStyles, defaultLabelStyle } from './labelColors';
 
 interface BaseNodeProps {
   id: string;
@@ -10,33 +11,16 @@ interface BaseNodeProps {
   variant: 'query' | 'expanded' | 'result';
 }
 
-const variantStyles = {
-  query: 'border-blue-200 bg-white ring-blue-100',
-  expanded: 'border-amber-200 bg-white ring-amber-100',
-  result: 'border-emerald-200 bg-white ring-emerald-100',
-};
-
-const variantBadgeStyles = {
-  query: 'bg-blue-500',
-  expanded: 'bg-amber-500',
-  result: 'bg-emerald-500',
-};
-
-const variantIcons = {
-  query: 'Q',
-  expanded: 'E',
-  result: 'R',
-};
-
 export function BaseNode({ id, data, selected, variant }: BaseNodeProps) {
   const expandNode = useGraphStore((s) => s.expandNode);
+  const style = labelStyles[getLabelKey(data.nodeLabel)] ?? defaultLabelStyle;
 
   return (
     <div
       className={cn(
         'relative min-w-[180px] max-w-[240px] rounded-xl border px-3 py-2.5',
         'shadow-sm hover:shadow-md transition-shadow duration-200',
-        variantStyles[variant],
+        style.border,
         selected && 'ring-2 shadow-md',
         data.isSelected && 'ring-2 ring-primary/40 shadow-md',
         data.isNew && 'animate-in fade-in-0 zoom-in-90 duration-500'
@@ -55,10 +39,10 @@ export function BaseNode({ id, data, selected, variant }: BaseNodeProps) {
         <div
           className={cn(
             'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white',
-            variantBadgeStyles[variant]
+            style.badge
           )}
         >
-          {variantIcons[variant]}
+          {style.icon}
         </div>
 
         {/* Text Content */}
@@ -72,7 +56,12 @@ export function BaseNode({ id, data, selected, variant }: BaseNodeProps) {
         </div>
       </div>
 
-      {/* Hidden count badge — 우측 상단 원형 뱃지 */}
+      {/* Query origin indicator — small dot for depth=0 nodes */}
+      {variant === 'query' && (
+        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-gray-400" />
+      )}
+
+      {/* Hidden count badge */}
       {data.hiddenCount != null && data.hiddenCount > 0 && (
         <button
           onClick={(e) => {
