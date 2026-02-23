@@ -205,6 +205,23 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
         return corrected
 
+    def _fix_not_in_syntax(self, cypher: str) -> str:
+        """
+        Neo4j Cypher는 SQL의 'NOT IN' 문법을 지원하지 않음.
+        LLM이 SQL 습관으로 잘못된 문법을 생성할 수 있으므로 후보정.
+        """
+        fixed = re.sub(
+            r"\b(WHERE|AND|OR)\s+"
+            r"((?:\w+\s*\([^)]*\)|\w+(?:\.\w+)*))"
+            r"\s+NOT\s+IN\b",
+            r"\1 NOT \2 IN",
+            cypher,
+            flags=re.IGNORECASE,
+        )
+        if fixed != cypher:
+            self._logger.info("Fixed NOT IN syntax in Cypher query")
+        return fixed
+
     def _coerce_tolower_params(
         self,
         cypher: str,
@@ -323,6 +340,9 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
             cypher = result.get("cypher", "")
             parameters = result.get("parameters", {})
+
+            # Cypher 문법 보정 (SQL-style NOT IN → Cypher NOT ... IN)
+            cypher = self._fix_not_in_syntax(cypher)
 
             # 파라미터를 엔티티 값으로 보정 (LLM 접미사 추가 방지)
             parameters = self._correct_parameters(parameters, raw_entities)

@@ -795,3 +795,167 @@ class TestErrorHandling:
 
         # Neo4j에서 스키마 조회가 호출되었는지 검증
         mock_neo4j_repository.get_schema.assert_called_once()
+
+
+class TestFixNotInSyntax:
+    """NOT IN 문법 보정 테스트 — Neo4j는 SQL의 'x NOT IN' 미지원"""
+
+    def _make_node(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> CypherGeneratorNode:
+        return CypherGeneratorNode(
+            mock_llm_repository,
+            mock_neo4j_repository,
+        )
+
+    def test_fix_where_not_in(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """WHERE x NOT IN → WHERE NOT x IN"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee) "
+            "WHERE toLower(e.name) NOT IN $excludeNames "
+            "RETURN e"
+        )
+        result = node._fix_not_in_syntax(cypher)
+        assert "NOT toLower(e.name) IN" in result
+        assert "toLower(e.name) NOT IN" not in result
+
+    def test_fix_and_not_in(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """AND x NOT IN → AND NOT x IN"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill) "
+            "WHERE toLower(s.name) IN $skills "
+            "AND toLower(e.name) NOT IN $excludeNames "
+            "RETURN e"
+        )
+        result = node._fix_not_in_syntax(cypher)
+        assert "AND NOT toLower(e.name) IN" in result
+
+    def test_fix_or_not_in(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """OR x NOT IN → OR NOT x IN"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "WHERE e.status = 'active' "
+            "OR toLower(e.name) NOT IN $names "
+            "RETURN e"
+        )
+        result = node._fix_not_in_syntax(cypher)
+        assert "OR NOT toLower(e.name) IN" in result
+
+    def test_no_change_when_correct(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """이미 올바른 NOT ... IN 문법은 변경 안 함"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee) "
+            "WHERE NOT toLower(e.name) IN $excludeNames "
+            "RETURN e"
+        )
+        result = node._fix_not_in_syntax(cypher)
+        assert result == cypher
+
+    def test_fix_multiple_not_in(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """여러 NOT IN 구문 동시 보정"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "WHERE toLower(e.name) NOT IN $names "
+            "AND toLower(e.dept) NOT IN $depts "
+            "RETURN e"
+        )
+        result = node._fix_not_in_syntax(cypher)
+        assert "NOT toLower(e.name) IN" in result
+        assert "NOT toLower(e.dept) IN" in result
+        assert "toLower(e.name) NOT IN" not in result
+        assert "toLower(e.dept) NOT IN" not in result
+
+    def test_fix_simple_property_not_in(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """단순 프로퍼티 접근도 보정"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee) "
+            "WHERE e.name NOT IN $names "
+            "RETURN e"
+        )
+        result = node._fix_not_in_syntax(cypher)
+        assert "NOT e.name IN" in result
+
+    @pytest.mark.asyncio
+    async def test_process_applies_not_in_fix(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """_process에서 NOT IN 보정이 실제로 적용되는지 검증"""
+        mock_llm_repository.generate_cypher = AsyncMock(
+            return_value={
+                "cypher": (
+                    "MATCH (candidate:Employee)-[:HAS_SKILL]->(s:Skill) "
+                    "WHERE toLower(s.name) IN $skills "
+                    "AND toLower(candidate.name) NOT IN $excludeNames "
+                    "RETURN candidate, s"
+                ),
+                "parameters": {
+                    "skills": ["Python", "Java"],
+                    "excludeNames": ["홍길동", "김영희"],
+                },
+            }
+        )
+
+        node = CypherGeneratorNode(
+            mock_llm_repository,
+            mock_neo4j_repository,
+        )
+
+        state: GraphRAGState = {
+            "question": "이들 대신 대체투입 가능한 여유 인력 추천해줘",
+            "session_id": "test",
+            "messages": [],
+            "execution_path": [],
+            "intent": "personnel_search",
+            "entities": {
+                "skills": ["Python", "Java"],
+                "employees": ["홍길동", "김영희"],
+            },
+            "schema": {
+                "node_labels": ["Employee", "Skill"],
+                "relationship_types": ["HAS_SKILL"],
+            },
+        }
+
+        result = await node._process(state)
+
+        # NOT IN이 올바른 문법으로 변환되었는지 확인
+        assert "NOT toLower(candidate.name) IN" in result["cypher_query"]
+        assert "candidate.name) NOT IN" not in result["cypher_query"]

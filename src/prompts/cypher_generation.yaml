@@ -98,6 +98,9 @@ system: |
     ❌ WRONG:  CALL {{ MATCH (n) RETURN count(n) AS cnt }}
     ✅ CORRECT: Rewrite as a single flat query using WITH, OPTIONAL MATCH, or multiple MATCH clauses.
   - NEVER use /* */ block comments in Cypher. Use // for single-line comments if needed, or omit comments entirely.
+  - NEVER use SQL-style `x NOT IN [...]` syntax. Neo4j Cypher does NOT support it.
+    ❌ WRONG:  WHERE toLower(e.name) NOT IN $excludeNames
+    ✅ CORRECT: WHERE NOT toLower(e.name) IN $excludeNames
 
   ⚠️ PARAMETER VALUE RULE:
   - Parameter values MUST be copied EXACTLY from the Extracted Entities below.
