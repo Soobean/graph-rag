@@ -107,11 +107,11 @@ interface ChartConfig {
 }
 
 const CHART_COLORS = [
-  'hsl(221, 83%, 53%)',   // blue
-  'hsl(142, 71%, 45%)',   // green
-  'hsl(280, 67%, 54%)',   // purple
-  'hsl(32, 95%, 53%)',    // orange
-  'hsl(350, 80%, 55%)',   // rose
+  'hsl(255, 50%, 52%)',   // deep purple
+  'hsl(168, 55%, 50%)',   // mint
+  'hsl(20, 75%, 58%)',    // terracotta
+  'hsl(210, 55%, 55%)',   // steel blue
+  'hsl(330, 55%, 55%)',   // magenta
 ];
 
 const MAX_CHART_BARS = 15;
