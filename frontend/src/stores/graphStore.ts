@@ -64,6 +64,21 @@ function calculateForceLayout(
   const nodeIds = new Set(nodes.map((n) => n.id));
 
   // 시뮬레이션용 노드 생성
+  // 1) center(depth=0) 노드 수 미리 계산 — 다중 center일 때 원형 배치
+  const centerCount = nodes.filter((node) => {
+    const d =
+      node.depth !== undefined && node.depth >= 0
+        ? node.depth
+        : node.role === 'start'
+          ? 0
+          : 2;
+    return d === 0;
+  }).length;
+
+  let centerIndex = 0;
+  const centerRadius = Math.max(150, centerCount * 60);
+  const randomSpread = 200 + centerCount * 40;
+
   const simNodes: SimNode[] = nodes.map((node) => {
     const depth =
       node.depth !== undefined && node.depth >= 0
@@ -75,13 +90,24 @@ function calculateForceLayout(
             : 2;
 
     const isCenter = depth === 0;
+
+    if (isCenter) {
+      if (centerCount === 1) {
+        // 단일 center — 기존대로 원점 고정
+        return { id: node.id, depth, x: 0, y: 0, fx: 0, fy: 0 };
+      }
+      // 다중 center — 원형 균등 배치 후 고정
+      const angle = (2 * Math.PI / centerCount) * centerIndex++;
+      const cx = centerRadius * Math.cos(angle);
+      const cy = centerRadius * Math.sin(angle);
+      return { id: node.id, depth, x: cx, y: cy, fx: cx, fy: cy };
+    }
+
     return {
       id: node.id,
       depth,
-      // start 노드는 중앙 고정, 나머지는 랜덤 초기 위치
-      x: isCenter ? 0 : (Math.random() - 0.5) * 400,
-      y: isCenter ? 0 : (Math.random() - 0.5) * 400,
-      ...(isCenter ? { fx: 0, fy: 0 } : {}),
+      x: (Math.random() - 0.5) * randomSpread * 2,
+      y: (Math.random() - 0.5) * randomSpread * 2,
     };
   });
 
