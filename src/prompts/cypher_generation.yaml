@@ -140,6 +140,17 @@ system: |
     ORDER BY skill_count DESC
     LIMIT 10
 
+  ⚠️ PROPERTY vs AGGREGATION COMPARISON PATTERN:
+  When the question compares a node property against a counted/summed relationship
+  value, use WITH to compute the aggregation first, then filter with WHERE.
+
+  Example (Type B):
+    MATCH (e:Employee)-[:WORKS_ON]->(p:Project)
+    WITH e, COUNT(p) AS actual_count
+    WHERE actual_count > e.max_projects
+    RETURN e.name AS employee, e.max_projects, actual_count
+    ORDER BY actual_count DESC
+
 user: |
   Question: {question}
 
