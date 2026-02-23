@@ -29,7 +29,7 @@ export function MessageList({ messages, className }: MessageListProps) {
   }
 
   return (
-    <ScrollArea className={cn('flex-1', className)}>
+    <ScrollArea className={cn('h-full', className)}>
       <div>
         {messages.map((message) => (
           <MessageItem key={message.id} message={message} />

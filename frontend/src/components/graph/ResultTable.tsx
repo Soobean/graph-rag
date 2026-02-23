@@ -116,7 +116,10 @@ const CHART_COLORS = [
 
 const MAX_CHART_BARS = 15;
 
-function detectChartConfig(data: TabularData): ChartConfig | null {
+function detectChartConfig(
+  data: TabularData,
+  chartRows: Record<string, unknown>[],
+): ChartConfig | null {
   if (data.rows.length < 2) return null;
 
   const stringCols: string[] = [];
@@ -133,7 +136,29 @@ function detectChartConfig(data: TabularData): ChartConfig | null {
 
   if (numericCols.length === 0 || stringCols.length === 0) return null;
 
-  return { categoryKey: stringCols[0], valueKeys: numericCols };
+  // Filter out columns whose scale is vastly different from the dominant column
+  // within the rows actually displayed in the chart (not all rows).
+  // e.g. Gap Hours(±60) alongside Total Hours(12,780) → bars invisible, axis wastes space.
+  let valueKeys = numericCols;
+  if (numericCols.length > 1) {
+    const colMaxAbs = numericCols.map((col) => {
+      let maxAbs = 0;
+      for (const row of chartRows) {
+        const v = row[col];
+        if (typeof v === 'number') maxAbs = Math.max(maxAbs, Math.abs(v));
+      }
+      return maxAbs;
+    });
+
+    const dominantMax = Math.max(...colMaxAbs);
+    if (dominantMax > 0) {
+      const SCALE_THRESHOLD = 0.05;
+      const filtered = numericCols.filter((_, i) => colMaxAbs[i] >= dominantMax * SCALE_THRESHOLD);
+      if (filtered.length > 0) valueKeys = filtered;
+    }
+  }
+
+  return { categoryKey: stringCols[0], valueKeys };
 }
 
 // ── Custom chart tooltip ──────────────────────────────────────────────
@@ -179,7 +204,13 @@ export function ResultTable({ data, className }: ResultTableProps) {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
-  const chartConfig = useMemo(() => detectChartConfig(data), [data]);
+  // Chart uses only the first N rows (unsorted, original order)
+  const chartRows = useMemo(
+    () => data.rows.slice(0, MAX_CHART_BARS),
+    [data.rows]
+  );
+
+  const chartConfig = useMemo(() => detectChartConfig(data, chartRows), [data, chartRows]);
 
   const handleSort = (col: string) => {
     if (sortColumn !== col) {
@@ -199,12 +230,6 @@ export function ResultTable({ data, className }: ResultTableProps) {
       compareValues(a[sortColumn], b[sortColumn], sortDirection)
     );
   }, [data.rows, sortColumn, sortDirection]);
-
-  // Chart uses only the first N rows (unsorted, original order)
-  const chartRows = useMemo(
-    () => data.rows.slice(0, MAX_CHART_BARS),
-    [data.rows]
-  );
 
   const chartHeight = useMemo(() => {
     const barCount = Math.min(chartRows.length, MAX_CHART_BARS);
