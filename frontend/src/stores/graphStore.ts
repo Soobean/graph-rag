@@ -5,6 +5,8 @@ import {
   forceManyBody,
   forceCenter,
   forceCollide,
+  forceX,
+  forceY,
   type SimulationNodeDatum,
   type SimulationLinkDatum,
 } from 'd3-force';
@@ -64,50 +66,64 @@ function calculateForceLayout(
   const nodeIds = new Set(nodes.map((n) => n.id));
 
   // 시뮬레이션용 노드 생성
-  // 1) center(depth=0) 노드 수 미리 계산 — 다중 center일 때 원형 배치
-  const centerCount = nodes.filter((node) => {
-    const d =
-      node.depth !== undefined && node.depth >= 0
-        ? node.depth
-        : node.role === 'start'
-          ? 0
+  // 1) depth 계산 헬퍼
+  const getDepth = (node: GraphNode) =>
+    node.depth !== undefined && node.depth >= 0
+      ? node.depth
+      : node.role === 'start'
+        ? 0
+        : node.role === 'intermediate'
+          ? 1
           : 2;
-    return d === 0;
-  }).length;
 
-  let centerIndex = 0;
-  const centerRadius = Math.max(150, centerCount * 60);
-  const randomSpread = 200 + centerCount * 40;
+  // 2) center(depth=0) 노드를 원형 배치 — sqrt 스케일로 반지름 완만하게 증가
+  const centerNodes = nodes.filter((n) => getDepth(n) === 0);
+  const centerCount = centerNodes.length;
+  const centerRadius = Math.max(150, Math.sqrt(centerCount) * 100);
 
+  const centerPositions = new Map<string, { x: number; y: number }>();
+  if (centerCount === 1) {
+    centerPositions.set(centerNodes[0].id, { x: 0, y: 0 });
+  } else {
+    centerNodes.forEach((node, i) => {
+      const angle = (2 * Math.PI / centerCount) * i;
+      centerPositions.set(node.id, {
+        x: centerRadius * Math.cos(angle),
+        y: centerRadius * Math.sin(angle),
+      });
+    });
+  }
+
+  // 3) 비center 노드 → 연결된 center 노드 위치 매핑 (근처에서 초기화용)
+  const neighborCenter = new Map<string, { x: number; y: number }>();
+  for (const edge of edges) {
+    if (centerPositions.has(edge.source) && !centerPositions.has(edge.target)) {
+      neighborCenter.set(edge.target, centerPositions.get(edge.source)!);
+    }
+    if (centerPositions.has(edge.target) && !centerPositions.has(edge.source)) {
+      neighborCenter.set(edge.source, centerPositions.get(edge.target)!);
+    }
+  }
+
+  // 4) simNodes 생성
   const simNodes: SimNode[] = nodes.map((node) => {
-    const depth =
-      node.depth !== undefined && node.depth >= 0
-        ? node.depth
-        : node.role === 'start'
-          ? 0
-          : node.role === 'intermediate'
-            ? 1
-            : 2;
-
+    const depth = getDepth(node);
     const isCenter = depth === 0;
 
     if (isCenter) {
-      if (centerCount === 1) {
-        // 단일 center — 기존대로 원점 고정
-        return { id: node.id, depth, x: 0, y: 0, fx: 0, fy: 0 };
-      }
-      // 다중 center — 원형 균등 배치 후 고정
-      const angle = (2 * Math.PI / centerCount) * centerIndex++;
-      const cx = centerRadius * Math.cos(angle);
-      const cy = centerRadius * Math.sin(angle);
-      return { id: node.id, depth, x: cx, y: cy, fx: cx, fy: cy };
+      const pos = centerPositions.get(node.id)!;
+      return { id: node.id, depth, x: pos.x, y: pos.y, fx: pos.x, fy: pos.y };
     }
 
+    // 비center: 연결된 center 근처에서 시작 (없으면 원점 근처 랜덤)
+    const anchor = neighborCenter.get(node.id);
+    const ax = anchor?.x ?? 0;
+    const ay = anchor?.y ?? 0;
     return {
       id: node.id,
       depth,
-      x: (Math.random() - 0.5) * randomSpread * 2,
-      y: (Math.random() - 0.5) * randomSpread * 2,
+      x: ax + (Math.random() - 0.5) * 200,
+      y: ay + (Math.random() - 0.5) * 200,
     };
   });
 
@@ -134,6 +150,8 @@ function calculateForceLayout(
     .force('charge', forceManyBody<SimNode>().strength(chargeStrength))
     .force('center', forceCenter<SimNode>(0, 0).strength(0.1))
     .force('collide', forceCollide<SimNode>(collideRadius).strength(0.8))
+    .force('x', forceX<SimNode>(0).strength(centerCount > 1 ? 0.15 : 0))
+    .force('y', forceY<SimNode>(0).strength(centerCount > 1 ? 0.15 : 0))
     .stop();
 
   // 동기 실행: 300 tick으로 수렴
