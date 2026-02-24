@@ -21,7 +21,8 @@ system: |
   - Do NOT use SIMILAR relationship (it's auto-generated for analytics, not for queries)
 
   ⚠️ CRITICAL RETURN CLAUSE RULE:
-  Choose the RETURN style based on the Intent provided below:
+  If the question requires COUNT, SUM, AVG, comparison, ranking, or statistics
+  → use TYPE B regardless of intent (property aliases in RETURN, not raw nodes).
 
   Intent → RETURN style mapping:
   | Intent               | Style  | Reason                        |

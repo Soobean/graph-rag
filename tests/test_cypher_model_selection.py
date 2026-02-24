@@ -959,3 +959,117 @@ class TestFixNotInSyntax:
         # NOT IN이 올바른 문법으로 변환되었는지 확인
         assert "NOT toLower(candidate.name) IN" in result["cypher_query"]
         assert "candidate.name) NOT IN" not in result["cypher_query"]
+
+
+class TestFixAggregationTypeAReturn:
+    """집계 후 TYPE A 반환 안티패턴 보정 테스트"""
+
+    def _make_node(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> CypherGeneratorNode:
+        return CypherGeneratorNode(
+            mock_llm_repository,
+            mock_neo4j_repository,
+        )
+
+    def test_fix_count_with_re_match(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """COUNT 집계 후 re-MATCH + TYPE A RETURN → TYPE B로 변환"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\n"
+            "WITH e, COUNT(DISTINCT p) AS allocated_projects, e.max_projects AS max_projects\n"
+            "WHERE allocated_projects > max_projects\n"
+            "MATCH (e)-[w2:WORKS_ON]->(p2:Project)\n"
+            "RETURN e, w2, p2\n"
+            "LIMIT 200"
+        )
+        result = node._fix_aggregation_type_a_return(cypher)
+
+        # TYPE B 스타일: e.name AS name + aliases
+        assert "e.name AS name" in result
+        assert "allocated_projects" in result
+        assert "max_projects" in result
+        assert "ORDER BY" in result
+        # re-MATCH 제거됨
+        assert "MATCH (e)-[w2" not in result
+        assert "RETURN e, w2, p2" not in result
+
+    def test_no_change_when_already_type_b(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """이미 TYPE B인 경우 변경 안 함"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee)-[:WORKS_ON]->(p:Project)\n"
+            "WITH e, COUNT(p) AS actual_count\n"
+            "WHERE actual_count > e.max_projects\n"
+            "RETURN e.name AS employee, actual_count\n"
+            "ORDER BY actual_count DESC"
+        )
+        result = node._fix_aggregation_type_a_return(cypher)
+        assert result == cypher
+
+    def test_no_change_without_aggregation(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """집계 함수가 없는 일반 쿼리는 변경 안 함"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\n"
+            "WHERE toLower(s.name) = toLower($skillName)\n"
+            "RETURN e, r, s\n"
+            "LIMIT 200"
+        )
+        result = node._fix_aggregation_type_a_return(cypher)
+        assert result == cypher
+
+    def test_no_change_without_re_match(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """집계 WITH 후 re-MATCH 없이 바로 RETURN하면 변경 안 함"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee)-[:WORKS_ON]->(p:Project)\n"
+            "WITH e.name AS name, COUNT(p) AS skill_count\n"
+            "RETURN name, skill_count\n"
+            "ORDER BY skill_count DESC"
+        )
+        result = node._fix_aggregation_type_a_return(cypher)
+        assert result == cypher
+
+    def test_fix_sum_aggregation(
+        self,
+        mock_llm_repository: MagicMock,
+        mock_neo4j_repository: MagicMock,
+    ) -> None:
+        """SUM 집계도 동일하게 처리"""
+        node = self._make_node(mock_llm_repository, mock_neo4j_repository)
+
+        cypher = (
+            "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\n"
+            "WITH e, SUM(w.hours) AS total_hours\n"
+            "WHERE total_hours > 100\n"
+            "MATCH (e)-[w2:WORKS_ON]->(p2:Project)\n"
+            "RETURN e, w2, p2"
+        )
+        result = node._fix_aggregation_type_a_return(cypher)
+
+        assert "e.name AS name" in result
+        assert "total_hours" in result
+        assert "MATCH (e)-[w2" not in result
