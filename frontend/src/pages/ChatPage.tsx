@@ -72,7 +72,7 @@ export function ChatPage() {
             <Link to="/admin">
               <Button variant="ghost" size="sm">
                 {/* <Settings className="mr-1 h-4 w-4" /> */}
-                <img src={SETTING} alt="Settings" className="mr-1 h-4 w-4" />
+                <img src={SETTING} alt="Settings" className="h-4 w-4" />
               </Button>
             </Link>
           </div>
