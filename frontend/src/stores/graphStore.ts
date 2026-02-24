@@ -79,7 +79,7 @@ function calculateForceLayout(
   // 2) center(depth=0) 노드를 원형 배치 — sqrt 스케일로 반지름 완만하게 증가
   const centerNodes = nodes.filter((n) => getDepth(n) === 0);
   const centerCount = centerNodes.length;
-  const centerRadius = Math.max(150, Math.sqrt(centerCount) * 100);
+  const centerRadius = Math.max(80, Math.sqrt(centerCount) * 60);
 
   const centerPositions = new Map<string, { x: number; y: number }>();
   if (centerCount === 1) {
@@ -134,9 +134,9 @@ function calculateForceLayout(
 
   // 노드 수에 따른 동적 파라미터
   const n = nodes.length;
-  const chargeStrength = n > 50 ? -300 : n > 20 ? -500 : -700;
-  const linkDistance = n > 50 ? 120 : n > 20 ? 160 : 200;
-  const collideRadius = n > 50 ? 60 : 80;
+  const chargeStrength = n > 50 ? -200 : n > 20 ? -350 : -500;
+  const linkDistance = n > 50 ? 100 : n > 20 ? 130 : 160;
+  const collideRadius = n > 50 ? 50 : 70;
 
   // 시뮬레이션 구성
   const simulation = forceSimulation<SimNode>(simNodes)
@@ -150,8 +150,8 @@ function calculateForceLayout(
     .force('charge', forceManyBody<SimNode>().strength(chargeStrength))
     .force('center', forceCenter<SimNode>(0, 0).strength(0.1))
     .force('collide', forceCollide<SimNode>(collideRadius).strength(0.8))
-    .force('x', forceX<SimNode>(0).strength(centerCount > 1 ? 0.15 : 0))
-    .force('y', forceY<SimNode>(0).strength(centerCount > 1 ? 0.15 : 0))
+    .force('x', forceX<SimNode>(0).strength(centerCount > 1 ? 0.25 : 0.05))
+    .force('y', forceY<SimNode>(0).strength(centerCount > 1 ? 0.25 : 0.05))
     .stop();
 
   // 동기 실행: 300 tick으로 수렴
