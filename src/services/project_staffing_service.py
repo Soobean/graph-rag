@@ -355,18 +355,37 @@ class ProjectStaffingService:
     # 공통: 카테고리 목록
     # =========================================================================
 
-    async def get_categories(self) -> list[SkillCategory]:
-        """Skill 노드의 category 속성 기반 카테고리 목록 조회"""
-        query = """
-        MATCH (s:Skill)
-        WHERE s.category IS NOT NULL
-        WITH s.category AS cat, collect(DISTINCT s.name) AS skills
-        RETURN cat AS category, skills
-        ORDER BY cat
+    async def get_categories(
+        self, project_name: str | None = None
+    ) -> list[SkillCategory]:
+        """Skill 노드의 category 속성 기반 카테고리 목록 조회
+
+        Args:
+            project_name: 지정 시 해당 프로젝트가 REQUIRES하는 스킬만 반환
         """
+        params: dict[str, Any] = {}
+
+        if project_name:
+            query = f"""
+            MATCH (p:Project)-[:REQUIRES]->(s:Skill)
+            WHERE {tolower_match("p.name", "project_name")}
+              AND s.category IS NOT NULL
+            WITH s.category AS cat, collect(DISTINCT s.name) AS skills
+            RETURN cat AS category, skills
+            ORDER BY cat
+            """
+            params["project_name"] = project_name
+        else:
+            query = """
+            MATCH (s:Skill)
+            WHERE s.category IS NOT NULL
+            WITH s.category AS cat, collect(DISTINCT s.name) AS skills
+            RETURN cat AS category, skills
+            ORDER BY cat
+            """
 
         try:
-            results = await self._neo4j.execute_cypher(query)
+            results = await self._neo4j.execute_cypher(query, params)
             return [
                 SkillCategory(
                     name=row["category"],

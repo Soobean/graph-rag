@@ -11,7 +11,7 @@ GDS 기반 분석 API 엔드포인트
 import logging
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.api.schemas.analytics import (
     CommunityDetectRequest,
@@ -488,14 +488,18 @@ async def analyze_budget(
 @router.get("/staffing/categories", response_model=SkillCategoryListResponse)
 async def get_skill_categories(
     service: Annotated["ProjectStaffingService", Depends(get_staffing_service)],
+    project_name: str | None = Query(
+        None, description="프로젝트 이름 (지정 시 해당 프로젝트 필요 스킬만 반환)"
+    ),
 ) -> SkillCategoryListResponse:
     """
     스킬 카테고리 목록 조회
 
     Skill 노드의 category 속성 기반 카테고리와 소속 스킬 목록을 반환합니다.
+    project_name이 지정되면 해당 프로젝트의 REQUIRES 스킬만 필터링합니다.
     """
     try:
-        categories = await service.get_categories()
+        categories = await service.get_categories(project_name=project_name)
         return SkillCategoryListResponse(categories=categories)
 
     except Exception as e:
