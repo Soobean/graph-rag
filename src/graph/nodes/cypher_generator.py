@@ -222,57 +222,6 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
             self._logger.info("Fixed NOT IN syntax in Cypher query")
         return fixed
 
-    def _fix_aggregation_type_a_return(self, cypher: str) -> str:
-        """WITH + 집계 후 re-MATCH + TYPE A RETURN 안티패턴을 TYPE B로 변환."""
-        lines = [line.strip() for line in cypher.strip().split("\n") if line.strip()]
-
-        agg_with_idx = -1
-        agg_funcs = ("COUNT(", "SUM(", "AVG(", "COLLECT(")
-        for i, line in enumerate(lines):
-            upper = line.upper()
-            if upper.startswith("WITH") and any(f in upper for f in agg_funcs):
-                agg_with_idx = i
-                break
-
-        if agg_with_idx < 0:
-            return cypher
-
-        re_match_idx = -1
-        for i in range(agg_with_idx + 1, len(lines)):
-            if lines[i].upper().startswith("MATCH"):
-                re_match_idx = i
-                break
-
-        if re_match_idx < 0:
-            return cypher
-
-        return_idx = -1
-        for i in range(re_match_idx, len(lines)):
-            if lines[i].upper().startswith("RETURN"):
-                return_idx = i
-                break
-
-        if return_idx < 0 or " AS " in lines[return_idx].upper():
-            return cypher
-
-        with_line = lines[agg_with_idx]
-        main_var_match = re.match(r"WITH\s+(\w+)\s*,", with_line, re.IGNORECASE)
-        if not main_var_match:
-            return cypher
-        main_var = main_var_match.group(1)
-
-        aliases = re.findall(r"\bAS\s+(\w+)", with_line, re.IGNORECASE)
-        if not aliases:
-            return cypher
-
-        return_parts = [f"{main_var}.name AS name"] + aliases
-        new_return = "RETURN " + ", ".join(return_parts)
-        result_lines = lines[:re_match_idx] + [new_return, f"ORDER BY {aliases[0]} DESC"]
-        fixed = "\n".join(result_lines)
-
-        self._logger.info("Fixed aggregation + TYPE A return → TYPE B")
-        return fixed
-
     def _coerce_tolower_params(
         self,
         cypher: str,
@@ -394,9 +343,6 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
             # Cypher 문법 보정 (SQL-style NOT IN → Cypher NOT ... IN)
             cypher = self._fix_not_in_syntax(cypher)
-
-            # 집계 후 TYPE A 반환 안티패턴 보정
-            cypher = self._fix_aggregation_type_a_return(cypher)
 
             # 파라미터를 엔티티 값으로 보정 (LLM 접미사 추가 방지)
             parameters = self._correct_parameters(parameters, raw_entities)
