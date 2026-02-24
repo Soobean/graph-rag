@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { Loader2, AlertCircle, ChevronRight, CheckCircle } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { cn } from '@/lib/utils';
-import { stepTypeConfig } from '@/components/thinking/stepTypeConfig';
-import type { ChatMessage } from '@/types/chat';
-import type { ThoughtProcessVisualization } from '@/types/api';
+import { useState } from "react";
+import { Loader2, AlertCircle, ChevronRight, CheckCircle } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { cn } from "@/lib/utils";
+import { stepTypeConfig } from "@/components/thinking/stepTypeConfig";
+import type { ChatMessage } from "@/types/chat";
+import type { ThoughtProcessVisualization } from "@/types/api";
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -16,11 +16,7 @@ interface MessageItemProps {
 function UserAvatar() {
   return (
     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        className="h-4 w-4 text-gray-500"
-      >
+      <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 text-gray-500">
         <circle cx="12" cy="8" r="4" fill="currentColor" />
         <path
           d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"
@@ -53,7 +49,10 @@ function AIAvatar() {
 }
 
 /** 인라인 파이프라인 단계 표시 — 로딩 중 스텝 순차 등장, 완료 후 접기 전환 */
-function InlineThinking({ thoughtProcess, isLoading }: {
+function InlineThinking({
+  thoughtProcess,
+  isLoading,
+}: {
   thoughtProcess: ThoughtProcessVisualization;
   isLoading: boolean;
 }) {
@@ -104,7 +103,10 @@ function InlineThinking({ thoughtProcess, isLoading }: {
       {/* 스텝 목록 — 순차 등장 애니메이션 */}
       <div className="ml-2 border-l-2 border-border pl-3 space-y-1">
         {steps.map((step, idx) => {
-          const config = stepTypeConfig[step.step_type] || { icon: CheckCircle, color: 'text-gray-500' };
+          const config = stepTypeConfig[step.step_type] || {
+            icon: CheckCircle,
+            color: "text-gray-500",
+          };
           const Icon = config.icon;
           const isLastStep = idx === steps.length - 1;
           const isRunning = isLoading && isLastStep;
@@ -113,9 +115,9 @@ function InlineThinking({ thoughtProcess, isLoading }: {
             <div
               key={step.step_number}
               className="flex items-center gap-2 text-xs animate-in fade-in-0 slide-in-from-left-2"
-              style={{ animationDuration: '200ms' }}
+              style={{ animationDuration: "200ms" }}
             >
-              <Icon className={cn('h-3.5 w-3.5 shrink-0', config.color)} />
+              <Icon className={cn("h-3.5 w-3.5 shrink-0", config.color)} />
               <span className="text-muted-foreground">{step.description}</span>
               {isRunning && (
                 <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
@@ -141,16 +143,16 @@ function LoadingDots() {
 }
 
 export function MessageItem({ message, className }: MessageItemProps) {
-  const isUser = message.role === 'user';
+  const isUser = message.role === "user";
   const thoughtProcess = !isUser ? message.thoughtProcess : undefined;
   const hasThoughtProcess = !!thoughtProcess && thoughtProcess.steps.length > 0;
 
   return (
     <div
       className={cn(
-        'px-4 py-5',
-        isUser ? 'bg-transparent' : 'bg-gray-50/80',
-        className
+        "px-4 py-5",
+        isUser ? "bg-background" : "bg-background-light-blue",
+        className,
       )}
     >
       <div className="mx-auto flex max-w-3xl gap-3">
@@ -161,11 +163,13 @@ export function MessageItem({ message, className }: MessageItemProps) {
         <div className="flex-1 space-y-1.5 overflow-hidden pt-0.5">
           {/* 발화자 + 시간 */}
           <div className="flex items-center gap-1.5">
-            <span className={cn(
-              'text-xs font-medium',
-              isUser ? 'text-gray-500' : 'text-blue-600/80'
-            )}>
-              {isUser ? '나' : 'Graph RAG'}
+            <span
+              className={cn(
+                "text-xs font-medium",
+                isUser ? "text-gray-500" : "text-blue-600/80",
+              )}
+            >
+              <strong>{isUser ? "나" : "Graph RAG"}</strong>
             </span>
             <span className="text-[10px] text-gray-300">
               {formatTime(message.timestamp)}
@@ -192,7 +196,9 @@ export function MessageItem({ message, className }: MessageItemProps) {
           ) : message.content ? (
             <div className="prose prose-sm max-w-none text-foreground leading-relaxed prose-p:my-1.5 prose-p:leading-relaxed prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:leading-relaxed prose-pre:my-2 prose-pre:bg-muted prose-pre:text-foreground prose-code:text-foreground prose-code:before:content-none prose-code:after:content-none">
               {isUser ? (
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                <p className="whitespace-pre-wrap bg-white">
+                  {message.content}
+                </p>
               ) : (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {message.content}
@@ -219,9 +225,9 @@ export function MessageItem({ message, className }: MessageItemProps) {
 }
 
 function formatTime(date: Date): string {
-  return new Date(date).toLocaleTimeString('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
+  return new Date(date).toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
