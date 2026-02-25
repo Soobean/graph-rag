@@ -55,7 +55,7 @@ export function ChatInput({
     <form
       onSubmit={handleSubmit}
       className={cn(
-        `relative flex items-center gap-2 p-4 ${!isLanding && "bg-background-light-blue"}`,
+        `relative flex items-center gap-2 p-4 ${!isLanding && "bg-gray-50/80"}`,
         className,
       )}
     >
@@ -66,7 +66,7 @@ export function ChatInput({
         onKeyDown={handleKeyDown}
         placeholder={isLanding ? placeholder : "답글"}
         disabled={isLoading || disabled}
-        className="flex-1 h-[56px] pl-11 pr-20 rounded-[14px] shadow-[0_2px_16px_0_rgba(0,0,0,0.08)]"
+        className="flex-1 h-[56px] pl-11 pr-20 rounded-[14px] shadow-[0_2px_16px_0_rgba(174, 110, 222, 0.08)]"
       />
       <Button
         type="submit"

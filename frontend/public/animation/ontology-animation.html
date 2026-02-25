@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ontology Animation</title>
+<!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  BXG Ontology — Animated Graph Component                    ║
+  ║                                                              ║
+  ║  Usage:                                                      ║
+  ║    <iframe src="ontology-animation.html"                     ║
+  ║            width="520" height="260"                          ║
+  ║            frameborder="0" style="background:transparent">   ║
+  ║    </iframe>                                                  ║
+  ║                                                              ║
+  ║  Or inline the <svg> + <script> block directly.             ║
+  ║                                                              ║
+  ║  Customisation vars (edit below):                            ║
+  ║    --c-accent   primary node / edge color                    ║
+  ║    --c-deep     secondary node / edge color                  ║
+  ║    --c-light    tertiary / dashed edge color                 ║
+  ║    --node-fill  node background fill (use 'transparent'      ║
+  ║                 or a solid color)                            ║
+  ╚══════════════════════════════════════════════════════════════╝
+-->
+<style>
+  :root {
+    --c-accent:    #AE6EDE;
+    --c-deep:      #7c3cbf;
+    --c-light:     #c990f0;
+    --node-fill:   transparent;   /* set to e.g. #ffffff for opaque bg */
+    --node-stroke-w: 1.8px;
+    --edge-opacity:  0.52;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;   /* transparent so it embeds cleanly */
+    overflow: hidden;
+  }
+
+  svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+</style>
+</head>
+<body>
+
+<svg id="oSvg" viewBox="0 0 520 260" xmlns="http://www.w3.org/2000/svg"
+     preserveAspectRatio="xMidYMid meet">
+  <defs>
+
+    <!-- Glow filters -->
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Arrow markers -->
+    <marker id="arA" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L0,7 L7,3.5z" fill="rgba(174,110,222,0.55)"/>
+    </marker>
+    <marker id="arB" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L0,7 L7,3.5z" fill="rgba(124,60,191,0.5)"/>
+    </marker>
+    <marker id="arC" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L0,7 L7,3.5z" fill="rgba(201,144,240,0.5)"/>
+    </marker>
+
+  </defs>
+
+  <!-- ──────────────────────────────────────────
+       EDGES
+       ────────────────────────────────────────── -->
+
+  <!-- Solid edges -->
+  <line x1="122" y1="88"  x2="248" y2="50"  stroke="#AE6EDE" stroke-width="1.5" opacity="0.52" marker-end="url(#arA)" stroke-linecap="round"/>
+  <line x1="112" y1="108" x2="106" y2="182" stroke="#AE6EDE" stroke-width="1.5" opacity="0.52" marker-end="url(#arA)" stroke-linecap="round"/>
+  <line x1="278" y1="52"  x2="372" y2="88"  stroke="#7c3cbf" stroke-width="1.5" opacity="0.48" marker-end="url(#arB)" stroke-linecap="round"/>
+  <line x1="392" y1="112" x2="396" y2="182" stroke="#7c3cbf" stroke-width="1.5" opacity="0.48" marker-end="url(#arB)" stroke-linecap="round"/>
+  <line x1="132" y1="198" x2="370" y2="200" stroke="#AE6EDE" stroke-width="1.5" opacity="0.42" marker-end="url(#arA)" stroke-linecap="round"/>
+
+  <!-- Dashed edges -->
+  <line x1="248" y1="68"  x2="120" y2="182" stroke="#c990f0" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.45" marker-end="url(#arC)"/>
+  <line x1="148" y1="85"  x2="368" y2="95"  stroke="#c990f0" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.38" marker-end="url(#arC)"/>
+
+  <!-- Hub spokes (very subtle) -->
+  <line x1="263" y1="142" x2="374" y2="105" stroke="#AE6EDE" stroke-width="0.9" stroke-dasharray="3 5" opacity="0.18"/>
+  <line x1="237" y1="142" x2="122" y2="102" stroke="#AE6EDE" stroke-width="0.9" stroke-dasharray="3 5" opacity="0.18"/>
+  <line x1="258" y1="158" x2="374" y2="188" stroke="#7c3cbf" stroke-width="0.9" stroke-dasharray="3 5" opacity="0.18"/>
+  <line x1="237" y1="158" x2="116" y2="188" stroke="#c990f0" stroke-width="0.9" stroke-dasharray="3 5" opacity="0.18"/>
+
+
+  <!-- ──────────────────────────────────────────
+       PULSE RINGS  (opacity driven by JS)
+       ────────────────────────────────────────── -->
+  <circle id="pr1" cx="120" cy="95"  r="26" fill="none" stroke="#AE6EDE" stroke-width="1.2" opacity="0"/>
+  <circle id="pr2" cx="262" cy="55"  r="28" fill="none" stroke="#7c3cbf" stroke-width="1.2" opacity="0"/>
+  <circle id="pr3" cx="390" cy="98"  r="26" fill="none" stroke="#AE6EDE" stroke-width="1.2" opacity="0"/>
+  <circle id="pr4" cx="112" cy="198" r="26" fill="none" stroke="#c990f0" stroke-width="1.2" opacity="0"/>
+  <circle id="pr5" cx="390" cy="200" r="26" fill="none" stroke="#7c3cbf" stroke-width="1.2" opacity="0"/>
+  <circle id="pr6" cx="250" cy="150" r="24" fill="none" stroke="#AE6EDE" stroke-width="1.2" opacity="0"/>
+
+
+  <!-- ──────────────────────────────────────────
+       NODES  (abstract geometric icons)
+       ────────────────────────────────────────── -->
+
+  <!--
+    Node A — Concentric circles  (universal entity)
+    pos: 120, 95
+  -->
+  <g id="n-A" transform="translate(120,95)">
+    <circle r="26" fill="transparent" stroke="#AE6EDE" stroke-width="1.8" filter="url(#softGlow)"/>
+    <circle r="18" fill="none" stroke="#AE6EDE" stroke-width="0.7" stroke-dasharray="2 3" opacity="0.35"/>
+    <circle r="10" fill="none" stroke="#AE6EDE" stroke-width="1.5" opacity="0.7"/>
+    <circle r="3.5" fill="#AE6EDE" opacity="0.9"/>
+  </g>
+
+  <!--
+    Node B — Diamond  (relational connector)
+    pos: 262, 55
+  -->
+  <g id="n-B" transform="translate(262,55)">
+    <circle r="28" fill="transparent" stroke="#7c3cbf" stroke-width="1.8" filter="url(#softGlow)"/>
+    <rect x="-10" y="-10" width="20" height="20" rx="2"
+          fill="none" stroke="#7c3cbf" stroke-width="1.8" transform="rotate(45)" opacity="0.85"/>
+    <rect x="-4" y="-4" width="8" height="8"
+          fill="#7c3cbf" transform="rotate(45)" opacity="0.7"/>
+  </g>
+
+  <!--
+    Node C — Hexagon  (data / structure)
+    pos: 390, 98
+  -->
+  <g id="n-C" transform="translate(390,98)">
+    <circle r="26" fill="transparent" stroke="#AE6EDE" stroke-width="1.8" filter="url(#softGlow)"/>
+    <polygon points="0,-13 11.3,-6.5 11.3,6.5 0,13 -11.3,6.5 -11.3,-6.5"
+             fill="none" stroke="#AE6EDE" stroke-width="1.6" stroke-linejoin="round" opacity="0.85"/>
+    <circle r="3.5" fill="#AE6EDE" opacity="0.7"/>
+  </g>
+
+  <!--
+    Node D — Triangle  (concept / idea)
+    pos: 112, 198
+  -->
+  <g id="n-D" transform="translate(112,198)">
+    <circle r="26" fill="transparent" stroke="#c990f0" stroke-width="1.8" filter="url(#softGlow)"/>
+    <polygon points="0,-13 12,8 -12,8"
+             fill="none" stroke="#c990f0" stroke-width="1.7" stroke-linejoin="round" opacity="0.85"/>
+    <circle r="3" fill="#c990f0" opacity="0.7"/>
+  </g>
+
+  <!--
+    Node E — Cross / plus  (integration point)
+    pos: 390, 200
+  -->
+  <g id="n-E" transform="translate(390,200)">
+    <circle r="26" fill="transparent" stroke="#7c3cbf" stroke-width="1.8" filter="url(#softGlow)"/>
+    <line x1="0" y1="-12" x2="0" y2="12" stroke="#7c3cbf" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
+    <line x1="-12" y1="0" x2="12" y2="0" stroke="#7c3cbf" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
+    <circle r="3.5" fill="#7c3cbf" opacity="0.6"/>
+  </g>
+
+  <!--
+    Node F — Hub rings  (central relation node)
+    pos: 250, 150
+  -->
+  <g id="n-F" transform="translate(250,150)">
+    <circle r="24" fill="transparent" stroke="#AE6EDE" stroke-width="1.5"
+            stroke-dasharray="4 3" filter="url(#softGlow)"/>
+    <circle r="14" fill="none" stroke="#AE6EDE" stroke-width="1.2" opacity="0.5"/>
+    <circle r="7"  fill="none" stroke="#AE6EDE" stroke-width="1.5" opacity="0.7"/>
+    <circle r="2.5" fill="#AE6EDE" opacity="0.9"/>
+  </g>
+
+
+  <!-- ──────────────────────────────────────────
+       TRAVELING PARTICLES
+       ────────────────────────────────────────── -->
+  <circle id="tp1" r="3.5" fill="#AE6EDE" opacity="0" filter="url(#glow)"/>
+  <circle id="tp2" r="3.5" fill="#7c3cbf" opacity="0" filter="url(#glow)"/>
+  <circle id="tp3" r="3"   fill="#c990f0" opacity="0" filter="url(#glow)"/>
+  <circle id="tp4" r="3"   fill="#AE6EDE" opacity="0" filter="url(#glow)"/>
+  <circle id="tp5" r="3.5" fill="#7c3cbf" opacity="0" filter="url(#glow)"/>
+
+</svg>
+
+<script>
+// ─────────────────────────────────────────────────
+//  Ontology Animation Engine
+//  Three independent loops:
+//    1. float  — gentle sinusoidal node movement
+//    2. pulse  — expanding ring per node, sequential
+//    3. travel — particle moves along an edge path
+// ─────────────────────────────────────────────────
+
+// Base positions (must match SVG translate values above)
+const BASE = {
+  A: {x:120, y:95},
+  B: {x:262, y:55},
+  C: {x:390, y:98},
+  D: {x:112, y:198},
+  E: {x:390, y:200},
+  F: {x:250, y:150}
+};
+
+// ── 1. FLOAT ──────────────────────────────────────
+const FLOAT_CFG = [
+  {key:'A', amp:3.2, period:2700, phase:0.00},
+  {key:'B', amp:2.8, period:3100, phase:1.05},
+  {key:'C', amp:3.5, period:2900, phase:2.09},
+  {key:'D', amp:2.6, period:3300, phase:3.14},
+  {key:'E', amp:3.0, period:2600, phase:4.19},
+  {key:'F', amp:2.4, period:3500, phase:5.24}
+];
+
+FLOAT_CFG.forEach(cfg => {
+  const el = document.getElementById('n-' + cfg.key);
+  const {x: bx, y: by} = BASE[cfg.key];
+  let t0 = null;
+  function step(ts) {
+    if (!t0) t0 = ts;
+    const e   = ts - t0;
+    const ang = (e / cfg.period) * Math.PI * 2 + cfg.phase;
+    const dy  = Math.sin(ang) * cfg.amp;
+    const dx  = Math.cos(ang) * cfg.amp * 0.42;
+    el.setAttribute('transform', `translate(${bx + dx},${by + dy})`);
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+});
+
+
+// ── 2. PULSE RINGS ────────────────────────────────
+const PULSE_META = [
+  {ringId:'pr1', nodeKey:'A'},
+  {ringId:'pr2', nodeKey:'B'},
+  {ringId:'pr3', nodeKey:'C'},
+  {ringId:'pr4', nodeKey:'D'},
+  {ringId:'pr5', nodeKey:'E'},
+  {ringId:'pr6', nodeKey:'F'}
+];
+const PULSE_DUR      = 1100;   // ms per pulse
+const PULSE_INTERVAL = 870;    // ms between pulses
+const PULSE_EXPAND   = 22;     // px radius expansion
+let pulseIdx = 0;
+
+function doPulse() {
+  const meta  = PULSE_META[pulseIdx % PULSE_META.length]; pulseIdx++;
+  const ring  = document.getElementById(meta.ringId);
+  const baseR = parseFloat(ring.getAttribute('r'));
+  let start   = null;
+
+  (function step(ts) {
+    if (!start) start = ts;
+    const t    = Math.min((ts - start) / PULSE_DUR, 1);
+    const ease = 1 - Math.pow(1 - t, 2);           // ease-out quad
+    ring.setAttribute('r',       baseR + ease * PULSE_EXPAND);
+    ring.setAttribute('opacity', 0.5 * (1 - ease));
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      ring.setAttribute('r',       baseR);
+      ring.setAttribute('opacity', 0);
+    }
+  })(performance.now());
+
+  setTimeout(doPulse, PULSE_INTERVAL);
+}
+
+
+// ── 3. TRAVELING PARTICLES ────────────────────────
+const TRIPS = [
+  {pid:'tp1', from:'A', to:'B', dur:1350},
+  {pid:'tp2', from:'B', to:'C', dur:1200},
+  {pid:'tp3', from:'C', to:'E', dur:1500},
+  {pid:'tp4', from:'D', to:'E', dur:1700},
+  {pid:'tp5', from:'A', to:'D', dur:1550}
+];
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ease-in-out cubic
+function easeIO(t) { return t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t; }
+
+// Read live (floating) position from transform attribute
+function livePos(key) {
+  const m = document.getElementById('n-' + key)
+              .getAttribute('transform')
+              .match(/translate\(([^,]+),([^)]+)\)/);
+  return {x: parseFloat(m[1]), y: parseFloat(m[2])};
+}
+
+function travel(trip, initialDelay) {
+  setTimeout(function go() {
+    const el   = document.getElementById(trip.pid);
+    const from = livePos(trip.from);
+    const to   = livePos(trip.to);
+    let start  = null;
+
+    (function step(ts) {
+      if (!start) start = ts;
+      const t  = Math.min((ts - start) / trip.dur, 1);
+      const et = easeIO(t);
+      el.setAttribute('cx', lerp(from.x, to.x, et));
+      el.setAttribute('cy', lerp(from.y, to.y, et));
+      // fade in first 10%, fade out last 12%
+      el.setAttribute('opacity',
+        t < 0.10 ? t * 10 :
+        t > 0.88 ? (1 - t) / 0.12 : 1
+      );
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        el.setAttribute('opacity', 0);
+        setTimeout(go, 500 + Math.random() * 700);   // loop with jitter
+      }
+    })(performance.now());
+  }, initialDelay);
+}
+
+
+// ── BOOT ──────────────────────────────────────────
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    doPulse();
+    TRIPS.forEach((tr, i) => travel(tr, 300 + i * 300));
+  }, 400);
+});
+</script>
+</body>
+</html>

@@ -32,7 +32,7 @@ function UserAvatar() {
 /** AI 브랜드 아이콘 — 그라데이션 원형 + 그래프 심볼 */
 function AIAvatar() {
   return (
-    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500">
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient">
       <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 text-white">
         <circle cx="12" cy="7" r="2" fill="currentColor" />
         <circle cx="6" cy="17" r="2" fill="currentColor" />
@@ -151,7 +151,7 @@ export function MessageItem({ message, className }: MessageItemProps) {
     <div
       className={cn(
         "px-4 py-5",
-        isUser ? "bg-background" : "bg-background-light-blue",
+        isUser ? "bg-background" : "bg-gray-50/80",
         className,
       )}
     >
@@ -166,10 +166,10 @@ export function MessageItem({ message, className }: MessageItemProps) {
             <span
               className={cn(
                 "text-xs font-medium",
-                isUser ? "text-gray-500" : "text-blue-600/80",
+                isUser ? "text-gray-500" : "text-[#AE6EDE]",
               )}
             >
-              <strong>{isUser ? "나" : "Graph RAG"}</strong>
+              <strong>{isUser ? "나" : "BXG Ontology"}</strong>
             </span>
             <span className="text-[10px] text-gray-300">
               {formatTime(message.timestamp)}

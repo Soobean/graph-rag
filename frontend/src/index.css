@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Syne:wght@400..800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Syne:wght@400..800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,29 +12,29 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 274 63% 65%;
+    --primary-foreground: 275 63% 90%;
     --primary-black: 226 13% 40%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
+    --accent: 261 64% 96%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 0 0% 86%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 275 63% 90%;
+    --input: 275 63% 90%;
+    --ring: 274 63% 65%;
     --radius: 0.5rem;
-    --c1: hsl(217 89% 59%); /* #3b7ef4 */
-    --c2: hsl(258 90% 61%); /* #6c42f5 */
+    --c1: hsl(274, 63%, 65%); /* #AE6EDE */
+    --c2: hsl(269, 52%, 49%); /* #7C3CBF */
     --b1: hsl(225, 21%, 7%);
     --b2: hsl(226, 13%, 40%);
     --gradient: linear-gradient(135deg, var(--c1) 0%, var(--c2) 100%);
     --success-green: 154 75% 37%;
     --grey-gradient: linear-gradient(135deg, var(--b1) 30%, var(--b2) 100%);
-    --background-light-blue: 210 20% 98%;
+    --background-light-blue: 255 100% 98%;
   }
 
   .dark {
@@ -43,8 +44,8 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 220 13% 40%;
+    --primary: 274 63% 65%;
+    --primary-foreground: 275 63% 90%;
     --primary-black: 226 13% 40%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -55,10 +56,12 @@
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --c1: hsl(217 89% 59%); /* #3b7ef4 */
-    --c2: hsl(258 90% 61%); /* #6c42f5 */
+    --input: 275 63% 90%;
+    --ring: 274 63% 65%;
+    --c1: hsl(274, 63%, 65%); /* #AE6EDE */
+    --c2: hsl(269, 52%, 49%); /* #7C3CBF */
+    --b1: hsl(225, 21%, 7%);
+    --b2: hsl(226, 13%, 40%);
     --gradient: linear-gradient(135deg, var(--c1) 0%, var(--c2) 100%);
     --success-green: 154 75% 37%;
     --grey-gradient: linear-gradient(135deg, var(--b1) 30%, var(--b2) 100%);
@@ -79,7 +82,8 @@
       "Segoe UI",
       Roboto,
       sans-serif,
-      "Syne";
+      "Syne",
+      "Fraunces";
   }
 }
 

@@ -267,11 +267,22 @@ export function ChatPanel({ className }: ChatPanelProps) {
             className="flex flex-1 flex-col items-center justify-center"
             exit={{ opacity: 0, y: -30, transition: { duration: 0.2 } }}
           >
-            <h2 className="font-syne mb-[40px] text-center text-[52px] leading-[1] font-extrabold ">
-              <p className="text-grey-gradient">Explore your</p>
-              <p className="text-color-gradient">knowledge</p>
-              <p className="text-color-gradient">graph</p>
+            <h2 className="font-fraunces py-1 mb-[32px] text-center text-[50px] leading-[42px] font-extrabold">
+              <span className="block text-[#1A0F2E]">Ask about</span>
+              <span className="block text-[#1A0F2E] mb-6">relationships.</span>
+              <span className="block text-color-gradient">Get connected</span>
+              <span className="block text-color-gradient leading-[62px]">
+                intelligence.
+              </span>
             </h2>
+
+            <div className="w-full max-w-[580px] aspect-[2/1]">
+              <iframe
+                src="/animation/ontology-animation.html"
+                title="Ontology Animation"
+                className="w-full h-full border-0 bg-transparent"
+              />
+            </div>
             {/* <p className="mb-8 text-center text-sm text-muted-foreground">
               질문을 입력하여 그래프 데이터를 검색하세요.
             </p> */}

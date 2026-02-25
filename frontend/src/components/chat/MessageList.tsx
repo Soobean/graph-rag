@@ -33,7 +33,7 @@ export function MessageList({ messages, className }: MessageListProps) {
   }
 
   return (
-    <ScrollArea className={cn("h-full bg-background-light-blue", className)}>
+    <ScrollArea className={cn("h-full bg-gray-50/80", className)}>
       <div>
         {messages.map((message) => (
           <MessageItem key={message.id} message={message} />

@@ -29,7 +29,7 @@ export function ChatPage() {
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Header */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-border pl-4 pr-2">
-        <img src={LOGO} alt="Logo" className="h-6 w-auto" />
+        <img src={LOGO} alt="Logo" className="h-11 w-auto" />
         <div className="flex items-center gap-3">
           {isError ? (
             <div className="flex items-center gap-2 bg-red-50 text-destructive border border-red-300 px-3 py-1 rounded-md">

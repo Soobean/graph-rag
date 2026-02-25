@@ -6,6 +6,7 @@ export default {
     extend: {
       fontFamily: {
         syne: ["Syne", "ui-sans-serif", "system-ui"],
+        fraunces: ["Fraunces", "ui-serif", "Georgia"],
       },
       borderRadius: {
         lg: "var(--radius)",
