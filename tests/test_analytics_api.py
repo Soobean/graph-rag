@@ -422,3 +422,27 @@ class TestStaffingCategoriesAPI:
         data = resp.json()
         assert len(data["categories"]) == 1
         assert data["categories"][0]["name"] == "Programming"
+
+    def test_categories_with_project_name(self, client, mock_staffing):
+        """project_name query parameter가 서비스로 전달되는지 확인"""
+        mock_staffing.get_categories = AsyncMock(
+            return_value=[
+                {"name": "AI/ML", "color": "#8B5CF6", "skills": ["PyTorch"]},
+            ]
+        )
+        resp = client.get(
+            "/api/v1/analytics/staffing/categories",
+            params={"project_name": "챗봇 리뉴얼"},
+        )
+        assert resp.status_code == 200
+        mock_staffing.get_categories.assert_called_once_with(
+            project_name="챗봇 리뉴얼"
+        )
+        data = resp.json()
+        assert data["categories"][0]["name"] == "AI/ML"
+
+    def test_categories_without_project_name_passes_none(self, client, mock_staffing):
+        """project_name 미전달 시 None으로 서비스 호출"""
+        resp = client.get("/api/v1/analytics/staffing/categories")
+        assert resp.status_code == 200
+        mock_staffing.get_categories.assert_called_once_with(project_name=None)

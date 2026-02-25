@@ -802,7 +802,7 @@ export function ProjectStaffing() {
   const [selectedProject, setSelectedProject] = useState<string>('');
   const { data: projectsData, isLoading: projectsLoading } =
     useStaffingProjects();
-  const { data: categoriesData } = useStaffingCategories();
+  const { data: categoriesData } = useStaffingCategories(selectedProject || undefined);
 
   const projects = projectsData?.projects ?? [];
   const categories = categoriesData?.categories ?? [];

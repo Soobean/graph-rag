@@ -1050,6 +1050,53 @@ class TestGetCategories:
         assert "Python" in result[0].skills
         assert result[0].color == "#10B981"  # Backend 색상
 
+    async def test_get_categories_with_project_name(self, service, mock_neo4j):
+        """project_name 전달 시 REQUIRES 스킬만 반환"""
+        mock_neo4j.execute_cypher = AsyncMock(
+            return_value=[
+                {"category": "AI/ML", "skills": ["PyTorch", "TensorFlow"]},
+            ]
+        )
+
+        result = await service.get_categories(project_name="챗봇 리뉴얼")
+
+        assert len(result) == 1
+        assert result[0].name == "AI/ML"
+        assert result[0].skills == ["PyTorch", "TensorFlow"]
+        # Cypher에 project_name 파라미터가 바인딩되었는지 확인
+        call_args = mock_neo4j.execute_cypher.call_args
+        query = call_args[0][0]
+        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("params", {})
+        assert "REQUIRES" in query
+        assert params["project_name"] == "챗봇 리뉴얼"
+
+    async def test_get_categories_with_project_no_requires(self, service, mock_neo4j):
+        """프로젝트에 REQUIRES 관계가 없으면 빈 리스트"""
+        mock_neo4j.execute_cypher = AsyncMock(return_value=[])
+
+        result = await service.get_categories(project_name="빈 프로젝트")
+
+        assert result == []
+
+    async def test_get_categories_with_project_error(self, service, mock_neo4j):
+        """project_name 전달 상태에서 DB 에러 시 빈 리스트"""
+        mock_neo4j.execute_cypher = AsyncMock(side_effect=Exception("DB Error"))
+
+        result = await service.get_categories(project_name="에러 프로젝트")
+
+        assert result == []
+
+    async def test_get_categories_without_project_no_requires_in_query(
+        self, service, mock_neo4j
+    ):
+        """project_name 미전달 시 REQUIRES 없는 전체 조회 쿼리 사용"""
+        mock_neo4j.execute_cypher = AsyncMock(return_value=[])
+
+        await service.get_categories()
+
+        query = mock_neo4j.execute_cypher.call_args[0][0]
+        assert "REQUIRES" not in query
+
     async def test_get_categories_handles_error(self, service, mock_neo4j):
         """DB 에러 시 빈 리스트"""
         mock_neo4j.execute_cypher = AsyncMock(side_effect=Exception("DB Error"))

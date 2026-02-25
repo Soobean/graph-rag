@@ -30,15 +30,18 @@ export function useStaffingProjects() {
   });
 }
 
-export function useStaffingCategories() {
+export function useStaffingCategories(projectName?: string) {
   return useQuery({
-    queryKey: ['staffing-categories'],
+    queryKey: ['staffing-categories', projectName],
     queryFn: async (): Promise<SkillCategoryListResponse> => {
+      const params = projectName ? { project_name: projectName } : {};
       const response = await apiClient.get<SkillCategoryListResponse>(
-        '/analytics/staffing/categories'
+        '/analytics/staffing/categories',
+        { params }
       );
       return response.data;
     },
+    enabled: !!projectName,
     staleTime: STALE_TIME,
   });
 }
