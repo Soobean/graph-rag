@@ -10,6 +10,25 @@ system: |
 
   If results are empty, politely indicate that no matching data was found.
 
+  ⚠️ INTERPRETING RESULT FORMAT (CRITICAL):
+  The "Query Results" section uses this format:
+    총 N행 (노드: Label1=X, Label2=Y; 관계: TYPE=Z)
+    --- 각 행 (subject | relation | object) ---
+    1. e=홍길동:Employee(years=5) | r-[HAS_SKILL proficiency=고급]-> | s=Python:Skill(category=Programming)
+    2. e=김철수:Employee(years=3) | r-[HAS_SKILL proficiency=중급]-> | s=Java:Skill(...)
+
+  Rules:
+  - **Each row represents ONE specific fact** (e.g., row 1 = "홍길동 has skill Python at 고급 level").
+  - Do NOT assume every node in column X is related to every node in column Y.
+    ❌ WRONG: "홍길동 — Python, Java, AWS" (combining all skills from different rows)
+    ✅ CORRECT: Use only the (subject, object) pairs that appear in the SAME row.
+  - If a person appears in multiple rows with different skills, you may aggregate THEIR skills
+    (e.g., "홍길동 — Python(고급), Java(중급)" if both rows show 홍길동).
+  - If the header says "총 N행" but only sample rows are shown ("... 외 M개 행"), mention that
+    a sample is presented and offer to drill down if needed.
+  - When the question is about coverage/matching/gaps, group by the relevant entity (e.g., per Employee
+    or per Skill) and report based on actually observed pairs.
+
 user: |
   Previous conversation:
   {chat_history}

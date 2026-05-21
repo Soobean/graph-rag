@@ -891,82 +891,135 @@ class LLMRepository:
         return "\n".join(lines)
 
     def _format_results(self, results: list[dict[str, Any]]) -> str:
-        """쿼리 결과를 문자열로 포맷팅 (엔티티 기준 그룹핑 + 스칼라 결과 지원)"""
+        """
+        쿼리 결과를 문자열로 포맷팅.
+
+        핵심 원칙: 각 row의 (노드, 관계, 노드) 페어 정보를 보존한다.
+        이전 구현은 노드를 라벨별로 그룹화하여 어떤 노드가 어떤 노드와 관계되는지 잃었음.
+        """
         if not results:
             return "No results found"
 
-        # 엔티티(노드) 기준으로 결과 그룹핑
-        entities: dict[str, dict[str, Any]] = {}
-        relationships: list[str] = []
+        MAX_PAIR_ROWS = 60  # row 단위로 직접 보여줄 최대 개수
+        MAX_PROP_DISPLAY = 6  # 한 노드의 표시 속성 수
+        SKIP_PROPS = {"embedding", "vector", "id"}
+
+        def _is_node(value: Any) -> bool:
+            return (
+                isinstance(value, dict)
+                and "labels" in value
+                and isinstance(value.get("labels"), list)
+            )
+
+        def _is_rel(value: Any) -> bool:
+            return (
+                isinstance(value, dict)
+                and "type" in value
+                and ("startNodeId" in value or "start" in value)
+            )
+
+        def _fmt_node(value: dict[str, Any]) -> str:
+            """노드를 '이름:라벨(주요속성)' 형태로 직렬화"""
+            labels = value.get("labels", [])
+            label = labels[0] if labels else "Node"
+            props = value.get("properties", {}) or {}
+            name = props.get("name", "?")
+            prop_strs = []
+            for k, v in props.items():
+                if k in SKIP_PROPS or k == "name" or v is None:
+                    continue
+                prop_strs.append(f"{k}={v}")
+            extras = ", ".join(prop_strs[:MAX_PROP_DISPLAY])
+            return f"{name}:{label}" + (f"({extras})" if extras else "")
+
+        def _fmt_rel(value: dict[str, Any]) -> str:
+            """관계를 '-[TYPE props]->' 형태로 직렬화"""
+            rel_type = value.get("type", "RELATED")
+            props = value.get("properties", {}) or {}
+            prop_strs = [
+                f"{k}={v}"
+                for k, v in props.items()
+                if k not in SKIP_PROPS and v is not None
+            ]
+            extras = " ".join(prop_strs[:4])
+            return f"-[{rel_type}{(' ' + extras) if extras else ''}]->"
+
+        # 라벨/관계 통계 수집 + row별 표현 생성
+        node_count_by_label: dict[str, int] = {}
+        seen_node_ids: set[str] = set()
+        rel_counts: dict[str, int] = {}
+        formatted_rows: list[str] = []
         scalar_rows: list[dict[str, Any]] = []
 
         for row in results:
-            has_node_or_rel = False
-            for _key, value in row.items():
-                if isinstance(value, dict):
-                    # 노드 형식 감지 (labels 속성이 있는 경우)
-                    if "labels" in value and isinstance(value.get("labels"), list):
-                        has_node_or_rel = True
-                        node_id = value.get("id", value.get("elementId", ""))
-                        if node_id and node_id not in entities:
-                            props = value.get("properties", {})
-                            name = props.get("name", "Unknown")
-                            label = value["labels"][0] if value["labels"] else "Node"
-                            entities[node_id] = {
-                                "label": label,
-                                "name": name,
-                                "properties": props,
-                            }
-                    # 관계 형식 감지
-                    elif "type" in value and (
-                        "startNodeId" in value or "start" in value
-                    ):
-                        has_node_or_rel = True
-                        rel_type = value.get("type", "RELATED")
-                        relationships.append(rel_type)
+            has_struct = False
+            parts: list[str] = []
+            for key, value in row.items():
+                if _is_node(value):
+                    has_struct = True
+                    # id가 빈 문자열인 경우에도 elementId로 fallback
+                    node_id = value.get("id") or value.get("elementId") or ""
+                    if node_id and node_id not in seen_node_ids:
+                        seen_node_ids.add(node_id)
+                        labels = value.get("labels", [])
+                        if labels:
+                            node_count_by_label[labels[0]] = (
+                                node_count_by_label.get(labels[0], 0) + 1
+                            )
+                    parts.append(f"{key}={_fmt_node(value)}")
+                elif _is_rel(value):
+                    has_struct = True
+                    rel_type = value.get("type", "RELATED")
+                    rel_counts[rel_type] = rel_counts.get(rel_type, 0) + 1
+                    parts.append(f"{key}{_fmt_rel(value)}")
+                elif value is not None:
+                    parts.append(f"{key}={value}")
 
-            # 노드/관계가 없는 행은 스칼라(집계) 결과
-            if not has_node_or_rel:
+            if has_struct:
+                formatted_rows.append(" | ".join(parts))
+            else:
                 scalar_rows.append(row)
 
         lines: list[str] = []
 
-        # 노드 기반 결과 포맷팅
-        if entities:
-            by_label: dict[str, list[dict[str, Any]]] = {}
-            for _node_id, entity in entities.items():
-                label = entity["label"]
-                if label not in by_label:
-                    by_label[label] = []
-                by_label[label].append(entity)
-
+        # 1) 헤더: 전체 통계 (LLM에게 데이터 규모 안내)
+        if formatted_rows:
+            stats_parts = []
+            if node_count_by_label:
+                stats_parts.append(
+                    "노드: "
+                    + ", ".join(
+                        f"{lbl}={cnt}" for lbl, cnt in node_count_by_label.items()
+                    )
+                )
+            if rel_counts:
+                stats_parts.append(
+                    "관계: " + ", ".join(f"{r}={c}" for r, c in rel_counts.items())
+                )
             lines.append(
-                f"총 {len(entities)}개의 고유 엔티티, {len(results)}개의 관계 결과:"
+                f"총 {len(results)}행 ({'; '.join(stats_parts) if stats_parts else ''})"
             )
+            lines.append("")
+            lines.append("--- 각 행 (subject | relation | object) ---")
 
-            for label, ents in by_label.items():
-                lines.append(f"\n[{label}] ({len(ents)}개):")
-                for i, ent in enumerate(ents[:15], 1):
-                    props = ent.get("properties", {})
-                    prop_strs = []
-                    for k, v in props.items():
-                        if k not in ("embedding", "vector") and v is not None:
-                            prop_strs.append(f"{k}={v}")
-                    props_display = ", ".join(prop_strs[:5])
-                    lines.append(f"  {i}. {ent['name']} ({props_display})")
-                if len(ents) > 15:
-                    lines.append(f"  ... 외 {len(ents) - 15}개")
+            # 2) row 단위 페어 데이터 (페어 정보 보존)
+            for i, row_str in enumerate(formatted_rows[:MAX_PAIR_ROWS], 1):
+                lines.append(f"{i}. {row_str}")
+            if len(formatted_rows) > MAX_PAIR_ROWS:
+                lines.append(
+                    f"... 외 {len(formatted_rows) - MAX_PAIR_ROWS}개 행 (LLM은 위 샘플로 답변)"
+                )
 
-        # 스칼라(집계) 결과 포맷팅
+        # 3) 스칼라/집계 결과 (그대로 표시)
         if scalar_rows:
             if lines:
                 lines.append("")
             lines.append(f"집계 결과 ({len(scalar_rows)}행):")
-            for i, row in enumerate(scalar_rows[:20], 1):
+            for i, row in enumerate(scalar_rows[:30], 1):
                 parts = [f"{k}={v}" for k, v in row.items() if v is not None]
                 lines.append(f"  {i}. {', '.join(parts)}")
-            if len(scalar_rows) > 20:
-                lines.append(f"  ... 외 {len(scalar_rows) - 20}개")
+            if len(scalar_rows) > 30:
+                lines.append(f"  ... 외 {len(scalar_rows) - 30}개")
 
         if not lines:
             return "No results found"
