@@ -25,8 +25,6 @@ def mock_settings():
     settings.ontology_mode = "yaml"  # Multi-hop 테스트용
     settings.adaptive_ontology = MagicMock()
     settings.adaptive_ontology.enabled = False
-    # Latency Optimization 설정
-    settings.cypher_light_model_enabled = True
     # 채팅 자동 승인 설정
     settings.chat_auto_approve_enabled = True
     settings.chat_auto_approve_threshold = 0.9

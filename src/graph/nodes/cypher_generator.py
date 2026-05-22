@@ -4,17 +4,20 @@ Cypher Generator Node
 사용자 질문과 엔티티 정보를 바탕으로 Cypher 쿼리를 생성합니다.
 캐시 히트 시에는 생성을 스킵합니다. (캐시 저장은 GraphExecutor에서 실행 성공 후 수행)
 
-Latency Optimization:
-- 단순 쿼리(single-hop, 기본 의도, 적은 엔티티)에는 LIGHT 모델 사용
-- 복잡한 쿼리(multi-hop, 복잡한 의도)에는 HEAVY 모델 사용
+모델 선택 정책:
+- HEAVY 우선, 실패 시 LIGHT로 fallback (LLMRepository._generate_json_with_fallback)
+- 이전의 정적 휴리스틱 기반 LIGHT 분기는 false negative가 잦아 제거됨
+  (시나리오: entity 1개라 'SIMPLE'로 분류됐지만 실제 쿼리는 복잡한 조건 다수)
+- 미래에 모델 비용/지연 분리가 다시 필요해지면, 휴리스틱이 아닌 실측 메트릭
+  (Eval 점수, 응답 시간)에 근거해 재도입
 """
 
 import re
-from enum import Enum
 from typing import Any
 
 from src.auth.access_policy import AccessPolicy
 from src.config import Settings
+from src.domain.exceptions import LLMContentFilterError
 from src.domain.types import CypherGeneratorUpdate, GraphSchema
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
@@ -22,30 +25,8 @@ from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 
 
-class QueryComplexity(str, Enum):
-    """쿼리 복잡도 구분"""
-
-    SIMPLE = "simple"  # LIGHT 모델 사용
-    COMPLEX = "complex"  # HEAVY 모델 사용 (fallback 포함)
-
-
 class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
-    """
-    Cypher 쿼리 생성 노드
-
-    Latency Optimization:
-    - 단순 쿼리 판별 기준:
-      1. Single-hop 쿼리 (is_multi_hop=False)
-      2. 단순 Intent (personnel_search, certificate_search)
-      3. 낮은 엔티티 수 (≤ 2개)
-    - 모든 조건 충족 시 LIGHT 모델 사용으로 ~400ms 절감
-    """
-
-    # 단순 Intent 목록 (LIGHT 모델로 처리 가능)
-    SIMPLE_INTENTS = ["personnel_search", "certificate_search"]
-
-    # 단순 쿼리의 최대 엔티티 수
-    MAX_ENTITIES_FOR_SIMPLE = 2
+    """Cypher 쿼리 생성 노드. HEAVY 모델 우선, LIGHT로 fallback."""
 
     def __init__(
         self,
@@ -56,6 +37,9 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
         super().__init__()
         self._llm = llm_repository
         self._neo4j = neo4j_repository
+        # settings는 현재 사용되지 않지만, Phase 4 (Query 컨텍스트 마이그레이션) 시
+        # temperature/max_tokens override 등으로 재사용 가능성 있어 시그니처 유지.
+        # 호출자(pipeline.py)는 이미 settings=settings로 전달 중.
         self._settings = settings
         self._schema_cache: GraphSchema | None = None
 
@@ -81,48 +65,6 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 constraints=schema_dict.get("constraints", []),
             )
         return self._schema_cache
-
-    def _analyze_complexity(self, state: GraphRAGState) -> QueryComplexity:
-        """
-        쿼리 복잡도 분석
-
-        다음 조건을 모두 만족하면 SIMPLE로 판정:
-        1. Single-hop 쿼리 (is_multi_hop=False 또는 query_plan 없음)
-        2. 단순 Intent (SIMPLE_INTENTS에 포함)
-        3. 낮은 엔티티 수 (MAX_ENTITIES_FOR_SIMPLE 이하)
-
-        Args:
-            state: 현재 파이프라인 상태
-
-        Returns:
-            QueryComplexity: SIMPLE 또는 COMPLEX
-        """
-        query_plan = state.get("query_plan")
-        intent = state.get("intent", "unknown")
-        entities = state.get("entities", {})
-
-        # Multi-hop 쿼리면 COMPLEX
-        if query_plan and query_plan.get("is_multi_hop"):
-            self._logger.debug(
-                f"Complex query: multi-hop detected (hops={query_plan.get('hop_count')})"
-            )
-            return QueryComplexity.COMPLEX
-
-        # 복잡한 Intent면 COMPLEX
-        if intent not in self.SIMPLE_INTENTS:
-            self._logger.debug(f"Complex query: complex intent ({intent})")
-            return QueryComplexity.COMPLEX
-
-        # 엔티티 수 계산
-        total_entities = sum(len(v) for v in entities.values())
-        if total_entities > self.MAX_ENTITIES_FOR_SIMPLE:
-            self._logger.debug(
-                f"Complex query: too many entities ({total_entities} > {self.MAX_ENTITIES_FOR_SIMPLE})"
-            )
-            return QueryComplexity.COMPLEX
-
-        self._logger.debug(f"Simple query: intent={intent}, entities={total_entities}")
-        return QueryComplexity.SIMPLE
 
     def _correct_single_value(
         self,
@@ -222,6 +164,52 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
             self._logger.info("Fixed NOT IN syntax in Cypher query")
         return fixed
 
+    # `WHERE x.name IN $param` 또는 `WHERE x.<prop> IN $param` 패턴 감지
+    # — `toLower(x.name)` 또는 `toLower(...)` 등 함수 호출은 제외 (이미 처리됨)
+    _IN_CLAUSE_PATTERN = re.compile(
+        r"\b(WHERE|AND|OR)\s+"
+        r"(?!toLower\b|toUpper\b)"  # toLower/toUpper 시작이면 제외 (이미 처리됨)
+        r"(\w+\.\w+)\s+"  # variable.property (e.g., s.name)
+        r"IN\s+\$(\w+)\b",  # IN $paramName
+        re.IGNORECASE,
+    )
+
+    def _fix_in_clause_to_tolower(self, cypher: str) -> str:
+        """
+        `WHERE x.name IN $list` 패턴을 case-insensitive 비교로 변환.
+
+        Why: DB에 'Python'/'python' 같은 케이싱 차이가 있어 IN 비교가 silently 실패.
+        프롬프트가 강제하지만 LLM이 가끔 빠뜨림 → 후처리로 안전망.
+
+        변환: WHERE s.name IN $skillNames
+           →  WHERE ANY(item IN $skillNames WHERE toLower(s.name) = toLower(item))
+
+        알려진 한계: `WHERE NOT x.name IN $list` (negation) 패턴은 변환하지 않음.
+        Phase 4 (Query 컨텍스트 마이그레이션)에서 Cypher 도메인 모델로 근본 해결 예정.
+        """
+
+        def replace(match: re.Match[str]) -> str:
+            keyword = match.group(1)
+            prop_path = match.group(2)  # e.g., s.name
+            param_name = match.group(3)  # e.g., skillNames
+
+            # 단순 휴리스틱: name/title 류 속성만 case-insensitive (id/status/타입 enum 제외)
+            prop_name = prop_path.split(".", 1)[1].lower()
+            if prop_name not in ("name", "title", "label", "alias"):
+                return match.group(0)  # 변환하지 않음
+
+            return (
+                f"{keyword} ANY(_item IN ${param_name} "
+                f"WHERE toLower({prop_path}) = toLower(_item))"
+            )
+
+        fixed = self._IN_CLAUSE_PATTERN.sub(replace, cypher)
+        if fixed != cypher:
+            self._logger.info(
+                "Auto-applied toLower() to IN clause for case-insensitive matching"
+            )
+        return fixed
+
     def _fix_aggregation_type_a_return(self, cypher: str) -> str:
         """WITH + 집계 후 re-MATCH + TYPE A RETURN 안티패턴을 TYPE B로 변환."""
         lines = [line.strip() for line in cypher.strip().split("\n") if line.strip()]
@@ -267,7 +255,10 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
         return_parts = [f"{main_var}.name AS name"] + aliases
         new_return = "RETURN " + ", ".join(return_parts)
-        result_lines = lines[:re_match_idx] + [new_return, f"ORDER BY {aliases[0]} DESC"]
+        result_lines = lines[:re_match_idx] + [
+            new_return,
+            f"ORDER BY {aliases[0]} DESC",
+        ]
         fixed = "\n".join(result_lines)
 
         self._logger.info("Fixed aggregation + TYPE A return → TYPE B")
@@ -367,16 +358,7 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 policy = user_context.get_access_policy()
                 schema = self._filter_schema_for_policy(schema, policy)
 
-            # 복잡도 분석 및 모델 선택
-            use_light_model = False
-            if self._settings and self._settings.cypher_light_model_enabled:
-                complexity = self._analyze_complexity(state)
-                use_light_model = complexity == QueryComplexity.SIMPLE
-                self._logger.info(
-                    f"Query complexity: {complexity.value}, use_light_model={use_light_model}"
-                )
-
-            # LLM을 통한 Cypher 생성
+            # LLM을 통한 Cypher 생성 (HEAVY 우선 + LIGHT fallback)
             intent = state.get("intent", "unknown")
             result = await self._llm.generate_cypher(
                 question=question,
@@ -385,7 +367,6 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 query_plan=dict(query_plan)
                 if query_plan
                 else None,  # Multi-hop 쿼리 계획 전달
-                use_light_model=use_light_model,
                 intent=intent,
             )
 
@@ -394,6 +375,9 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
             # Cypher 문법 보정 (SQL-style NOT IN → Cypher NOT ... IN)
             cypher = self._fix_not_in_syntax(cypher)
+
+            # IN 절 case-insensitive 보정 (s.name IN $list → ANY ... toLower)
+            cypher = self._fix_in_clause_to_tolower(cypher)
 
             # 집계 후 TYPE A 반환 안티패턴 보정
             cypher = self._fix_aggregation_type_a_return(cypher)
@@ -416,6 +400,18 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 execution_path=[self.name],
             )
 
+        except LLMContentFilterError as e:
+            # Content Filter는 raw 메시지 노출 금지 — 친화적 메시지만 전달
+            self._logger.warning(
+                f"Cypher generation blocked by content filter: "
+                f"param={e.param}, categories={e.categories}"
+            )
+            return CypherGeneratorUpdate(
+                cypher_query="",
+                cypher_parameters={},
+                error=e.message,
+                execution_path=[f"{self.name}_content_filter"],
+            )
         except Exception as e:
             self._logger.error(f"Cypher generation failed: {e}")
             return CypherGeneratorUpdate(

@@ -19,6 +19,7 @@ from openai import APIConnectionError, APIStatusError, AsyncAzureOpenAI, RateLim
 from src.config import Settings
 from src.domain.exceptions import (
     LLMConnectionError,
+    LLMContentFilterError,
     LLMRateLimitError,
     LLMResponseError,
 )
@@ -46,6 +47,42 @@ FALLBACK_EXCEPTIONS = (
     LLMConnectionError,  # 네트워크/연결 실패 시
     LLMResponseError,  # 응답 처리/파싱 실패 시
 )
+# LLMContentFilterError는 fallback 대상이 아님 — LIGHT/HEAVY 같은 정책 통과해야 하므로
+# 재시도해도 막힘. 즉시 사용자에게 친화적 메시지로 전달.
+#
+# 현재 ContentFilter를 명시적으로 catch하는 노드는 cypher_generator만임.
+# intent_entity_extractor, response_generator 등 다른 노드는 generic Exception으로
+# 처리되어 사용자에게 "처리할 수 없습니다" 정도의 일반 에러로 전달됨.
+# Phase 4 (Query 컨텍스트 마이그레이션) 시 BaseNode 또는 도메인 모델 레벨에서
+# 일괄 처리 예정.
+
+
+def _classify_api_status_error(e: APIStatusError) -> Exception:
+    """
+    Azure OpenAI APIStatusError를 도메인 예외로 분류.
+
+    content_filter는 별도 예외로 분리 (fallback 불필요 + raw 메시지 노출 차단).
+    그 외 400/4xx/5xx는 일반 LLMResponseError.
+    """
+    message = str(e.message) if e.message else str(e)
+    if e.status_code == 400 and "content_filter" in message.lower():
+        # Azure 응답에서 categories/param 추출 시도 (best effort)
+        categories: dict[str, str] = {}
+        param: str | None = None
+        try:
+            body = getattr(e, "body", None) or {}
+            err = body.get("error", {}) if isinstance(body, dict) else {}
+            param = err.get("param")
+            inner = err.get("innererror", {}) or {}
+            cfr = inner.get("content_filter_result", {}) or {}
+            for k, v in cfr.items():
+                if isinstance(v, dict) and v.get("filtered"):
+                    categories[k] = v.get("severity", "unknown")
+        except Exception:
+            pass
+        return LLMContentFilterError(categories=categories, param=param)
+    # raw Azure 메시지를 노출하지 않도록 status_code만 전달
+    return LLMResponseError(f"LLM API error (status={e.status_code})")
 
 
 class LLMRepository:
@@ -163,8 +200,16 @@ class LLMRepository:
             logger.error(f"API connection error: {e}")
             raise LLMConnectionError(str(e)) from e
         except APIStatusError as e:
-            logger.error(f"API status error: {e}")
-            raise LLMResponseError(f"API error: {e.status_code} - {e.message}") from e
+            # content_filter 등 raw Azure 메시지는 사용자에게 노출하지 않음
+            mapped = _classify_api_status_error(e)
+            if isinstance(mapped, LLMContentFilterError):
+                logger.warning(
+                    f"Content filter triggered: param={mapped.param}, "
+                    f"categories={mapped.categories}"
+                )
+            else:
+                logger.error(f"API status error (status={e.status_code})")
+            raise mapped from e
         except Exception as e:
             # 예상치 못한 에러
             logger.error(f"LLM generation failed: {e}")
@@ -225,8 +270,15 @@ class LLMRepository:
             logger.error(f"API connection error: {e}")
             raise LLMConnectionError(str(e)) from e
         except APIStatusError as e:
-            logger.error(f"API status error: {e}")
-            raise LLMResponseError(f"API error: {e.status_code} - {e.message}") from e
+            mapped = _classify_api_status_error(e)
+            if isinstance(mapped, LLMContentFilterError):
+                logger.warning(
+                    f"Content filter triggered (JSON): param={mapped.param}, "
+                    f"categories={mapped.categories}"
+                )
+            else:
+                logger.error(f"API status error (JSON, status={e.status_code})")
+            raise mapped from e
         except Exception as e:
             logger.error(f"LLM JSON generation failed: {e}")
             raise LLMResponseError(f"Failed to generate JSON response: {e}") from e
@@ -449,21 +501,16 @@ class LLMRepository:
         schema: dict[str, Any],
         entities: list[dict[str, Any]],
         query_plan: dict[str, Any] | None = None,
-        use_light_model: bool = False,
         intent: str = "",
     ) -> CypherGenerationResult:
         """
-        Cypher 쿼리 생성 (복잡도에 따른 모델 선택 지원)
-
-        기본적으로 HEAVY 티어를 우선 사용하고, 실패 시 LIGHT 티어로 fallback합니다.
-        use_light_model=True인 경우 처음부터 LIGHT 모델만 사용합니다 (단순 쿼리 최적화).
+        Cypher 쿼리 생성. HEAVY 우선, 실패 시 LIGHT fallback.
 
         Args:
             question: 사용자 질문
             schema: 그래프 스키마
             entities: 추출된 엔티티 목록
             query_plan: Multi-hop 쿼리 계획 (선택적)
-            use_light_model: True면 LIGHT 모델만 사용 (단순 쿼리 최적화)
             intent: 질문 의도 (TYPE A/B 매핑에 사용)
 
         Returns:
@@ -486,20 +533,10 @@ class LLMRepository:
             intent=intent or "unknown",
         )
 
-        if use_light_model:
-            # 단순 쿼리: LIGHT 모델 직접 사용 (fallback 없음)
-            logger.info("Using LIGHT model for simple Cypher generation")
-            result = await self.generate_json(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                model_tier=ModelTier.LIGHT,
-            )
-        else:
-            # 복잡한 쿼리: Fallback 적용 (HEAVY → LIGHT → Error)
-            result = await self._generate_json_with_fallback(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-            )
+        result = await self._generate_json_with_fallback(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
         return cast(CypherGenerationResult, result)
 
     async def generate_response(
@@ -611,8 +648,17 @@ class LLMRepository:
             logger.error(f"API connection error during streaming: {e}")
             raise LLMConnectionError(str(e)) from e
         except APIStatusError as e:
-            logger.error(f"API status error during streaming: {e}")
-            raise LLMResponseError(f"API error: {e.status_code} - {e.message}") from e
+            mapped = _classify_api_status_error(e)
+            if isinstance(mapped, LLMContentFilterError):
+                logger.warning(
+                    f"Content filter triggered (stream): param={mapped.param}, "
+                    f"categories={mapped.categories}"
+                )
+            else:
+                logger.error(
+                    f"API status error during streaming (status={e.status_code})"
+                )
+            raise mapped from e
         except Exception as e:
             logger.error(f"Response streaming failed: {e}")
             raise LLMResponseError(f"Failed to stream response: {e}") from e

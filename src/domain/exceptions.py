@@ -95,6 +95,25 @@ class LLMResponseError(LLMError):
         super().__init__(message, code="LLM_RESPONSE_ERROR")
 
 
+class LLMContentFilterError(LLMError):
+    """
+    Azure OpenAI Content Filter에 의한 차단
+
+    Why: HEAVY → LIGHT fallback이 무의미 (같은 정책 통과해야 함).
+    raw Azure 메시지를 사용자에게 노출하면 보안/UX 문제 발생.
+    """
+
+    def __init__(
+        self,
+        message: str = "질문을 다시 표현해 주시겠어요? 일부 표현이 콘텐츠 정책에 걸렸습니다.",
+        categories: dict[str, str] | None = None,
+        param: str | None = None,
+    ):
+        self.categories = categories or {}
+        self.param = param  # "prompt" or "completion"
+        super().__init__(message, code="LLM_CONTENT_FILTER")
+
+
 # ============================================
 # 파이프라인 관련 예외
 # ============================================

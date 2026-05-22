@@ -11,10 +11,15 @@ import pytest
 
 from src.domain.exceptions import (
     LLMConnectionError,
+    LLMContentFilterError,
     LLMRateLimitError,
     LLMResponseError,
 )
-from src.repositories.llm_repository import LLMRepository, ModelTier
+from src.repositories.llm_repository import (
+    LLMRepository,
+    ModelTier,
+    _classify_api_status_error,
+)
 
 
 class TestModelTier:
@@ -414,6 +419,85 @@ class TestFormatHelpers:
         assert "embedding" not in result
         assert "0.1" not in result
         assert "vector" not in result
+
+
+class TestClassifyAPIStatusError:
+    """_classify_api_status_error 헬퍼 테스트 (Phase 0 — Content Filter 분리)"""
+
+    def _make_error(
+        self,
+        status_code: int,
+        message: str,
+        body: dict | None = None,
+    ):
+        """APIStatusError 모킹 (openai SDK의 실제 클래스 시그니처가 까다로워서 mock 사용)"""
+        err = MagicMock()
+        err.status_code = status_code
+        err.message = message
+        err.body = body
+        return err
+
+    def test_content_filter_400_returns_content_filter_error(self):
+        """status=400 + 'content_filter' 메시지 → LLMContentFilterError"""
+        e = self._make_error(
+            status_code=400,
+            message="The response was filtered due to content_filter",
+        )
+        mapped = _classify_api_status_error(e)
+        assert isinstance(mapped, LLMContentFilterError)
+
+    def test_content_filter_extracts_categories_from_body(self):
+        """Azure 응답 body에서 categories/param 정확히 추출"""
+        body = {
+            "error": {
+                "param": "prompt",
+                "code": "content_filter",
+                "innererror": {
+                    "code": "ResponsibleAIPolicyViolation",
+                    "content_filter_result": {
+                        "self_harm": {"filtered": True, "severity": "medium"},
+                        "hate": {"filtered": False, "severity": "safe"},
+                    },
+                },
+            }
+        }
+        e = self._make_error(400, "content_filter triggered", body=body)
+        mapped = _classify_api_status_error(e)
+
+        assert isinstance(mapped, LLMContentFilterError)
+        assert mapped.param == "prompt"
+        # filtered=True인 카테고리만 수집
+        assert mapped.categories == {"self_harm": "medium"}
+
+    def test_content_filter_handles_missing_body(self):
+        """body가 None이어도 죽지 않음"""
+        e = self._make_error(400, "content_filter", body=None)
+        mapped = _classify_api_status_error(e)
+        assert isinstance(mapped, LLMContentFilterError)
+        assert mapped.categories == {}
+        assert mapped.param is None
+
+    def test_non_content_filter_400_returns_response_error(self):
+        """status=400이지만 content_filter 아니면 일반 LLMResponseError"""
+        e = self._make_error(400, "Invalid request: missing field")
+        mapped = _classify_api_status_error(e)
+        assert isinstance(mapped, LLMResponseError)
+        assert not isinstance(mapped, LLMContentFilterError)
+
+    def test_500_returns_response_error(self):
+        """5xx 에러는 LLMResponseError"""
+        e = self._make_error(500, "Internal server error")
+        mapped = _classify_api_status_error(e)
+        assert isinstance(mapped, LLMResponseError)
+
+    def test_raw_message_not_exposed(self):
+        """raw Azure 메시지는 사용자 노출되지 않음 (status code만)"""
+        secret_msg = "Internal Azure trace: pod-xxx 디버그 정보 leaked"
+        e = self._make_error(503, secret_msg)
+        mapped = _classify_api_status_error(e)
+        assert isinstance(mapped, LLMResponseError)
+        assert secret_msg not in mapped.message
+        assert "503" in mapped.message  # status code는 노출 OK
 
 
 class TestLLMGenerate:

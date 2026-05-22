@@ -103,6 +103,16 @@ system: |
     ❌ WRONG:  WHERE toLower(e.name) NOT IN $excludeNames
     ✅ CORRECT: WHERE NOT toLower(e.name) IN $excludeNames
 
+  ⚠️ CASE-INSENSITIVE MATCHING (ALWAYS REQUIRED for name comparisons):
+  - Equality:  use `toLower(x.name) = toLower($param)`
+    ❌ WRONG:  WHERE s.name = $skillName
+    ✅ CORRECT: WHERE toLower(s.name) = toLower($skillName)
+  - List membership: use `ANY(item IN $list WHERE toLower(x.name) = toLower(item))`
+    ❌ WRONG:  WHERE s.name IN $skillNames
+    ✅ CORRECT: WHERE ANY(skill IN $skillNames WHERE toLower(s.name) = toLower(skill))
+  - The DB has mixed casing (e.g., 'Python' vs 'python', 'RAG' all caps). Without toLower(),
+    queries silently return 0 results when the user input has different casing.
+
   ⚠️ PARAMETER VALUE RULE:
   - Parameter values MUST be copied EXACTLY from the Extracted Entities below.
   - NEVER add suffixes like "프로젝트", "팀", "부서", "그룹" to entity values.

@@ -180,6 +180,48 @@ class TestCypherGeneratorNode:
         assert result["cypher_query"] == ""
         assert "cypher_generator_error" in result["execution_path"]
 
+    @pytest.mark.asyncio
+    async def test_content_filter_uses_friendly_message(
+        self, node, mock_llm, base_state
+    ):
+        """Content Filter는 raw Azure 메시지 노출 금지, 친화적 메시지만 전달"""
+        from src.domain.exceptions import LLMContentFilterError
+
+        mock_llm.generate_cypher.side_effect = LLMContentFilterError(
+            categories={"self_harm": "medium"}, param="prompt"
+        )
+
+        result = await node(base_state)
+
+        # raw Azure 정보가 사용자 메시지에 누출되지 않음
+        assert "ResponsibleAI" not in result.get("error", "")
+        assert "self_harm" not in result.get("error", "")
+        # 친화적 한국어 메시지가 들어감
+        assert "콘텐츠 정책" in result.get("error", "")
+        assert "cypher_generator_content_filter" in result["execution_path"]
+
+    def test_fix_in_clause_converts_name_to_tolower(self, node):
+        """`WHERE x.name IN $list` → ANY(...toLower(x.name)=toLower(_item))"""
+        cypher = "MATCH (s:Skill) WHERE s.name IN $skillNames RETURN s"
+        fixed = node._fix_in_clause_to_tolower(cypher)
+
+        assert "ANY(_item IN $skillNames" in fixed
+        assert "toLower(s.name)" in fixed
+        assert "toLower(_item)" in fixed
+        # 원본의 단순 IN 패턴은 사라짐
+        assert "s.name IN $skillNames" not in fixed
+
+    def test_fix_in_clause_preserves_already_tolower(self, node):
+        """이미 toLower(x) IN $list 형태면 변환하지 않음"""
+        cypher = "WHERE toLower(s.name) IN $names"
+        assert node._fix_in_clause_to_tolower(cypher) == cypher
+
+    def test_fix_in_clause_skips_non_name_properties(self, node):
+        """status/id/type 같은 속성은 변환 대상 아님 (정확한 매칭 의도)"""
+        for prop in ("status", "id", "type", "category"):
+            cypher = f"WHERE s.{prop} IN $list"
+            assert node._fix_in_clause_to_tolower(cypher) == cypher
+
 
 class TestGraphExecutorNode:
     """GraphExecutorNode 테스트"""
