@@ -7,6 +7,7 @@ Latency Optimization: 2회 LLM 호출 → 1회로 통합 (~200ms 절감)
 
 from typing import cast
 
+from src.application.llm import LLMTaskService
 from src.domain.types import IntentEntityExtractorUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import (
@@ -16,7 +17,6 @@ from src.graph.state import (
     IntentType,
 )
 from src.graph.utils import format_chat_history
-from src.repositories.llm_repository import LLMRepository
 
 
 class IntentEntityExtractorNode(BaseNode[IntentEntityExtractorUpdate]):
@@ -28,11 +28,11 @@ class IntentEntityExtractorNode(BaseNode[IntentEntityExtractorUpdate]):
 
     def __init__(
         self,
-        llm_repository: LLMRepository,
+        llm_tasks: LLMTaskService,
         entity_types: list[str] | None = None,
     ):
         super().__init__()
-        self._llm = llm_repository
+        self._llm = llm_tasks
         self._entity_types = entity_types or DEFAULT_ENTITY_TYPES
 
     @property

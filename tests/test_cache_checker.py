@@ -10,6 +10,7 @@ import pytest
 
 from src.graph.nodes.cache_checker import CacheCheckerNode
 from src.graph.state import GraphRAGState
+from src.infrastructure.llm import AzureOpenAIGateway
 
 
 class TestCacheCheckerNode:
@@ -17,7 +18,7 @@ class TestCacheCheckerNode:
 
     @pytest.fixture
     def mock_llm(self):
-        llm = MagicMock()
+        llm = MagicMock(spec=AzureOpenAIGateway)
         llm.get_embedding = AsyncMock(return_value=[0.1, 0.2, 0.3])
         return llm
 

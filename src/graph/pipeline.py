@@ -25,6 +25,7 @@ from langgraph.graph.state import CompiledStateGraph
 if TYPE_CHECKING:
     from src.domain.ontology.registry import OntologyRegistry
 
+from src.application.llm import LLMTaskService
 from src.auth.models import UserContext
 from src.config import Settings
 from src.domain.ontology.hybrid_loader import HybridOntologyLoader
@@ -46,8 +47,8 @@ from src.graph.nodes import (
 from src.graph.nodes.ontology_learner import OntologyLearner
 from src.graph.state import AGGREGATE_INTENTS, GraphRAGState
 from src.graph.utils import format_chat_history
+from src.infrastructure.llm import AzureOpenAIGateway
 from src.infrastructure.neo4j_client import Neo4jClient
-from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.repositories.query_cache_repository import QueryCacheRepository
 from src.services.ontology_service import OntologyService
@@ -134,7 +135,8 @@ class GraphRAGPipeline:
         pipeline = GraphRAGPipeline(
             settings=settings,
             neo4j_repository=neo4j_repo,
-            llm_repository=llm_repo,
+            llm_tasks=llm_tasks,
+            llm_gateway=llm_gateway,
             graph_schema=schema,
         )
 
@@ -146,7 +148,8 @@ class GraphRAGPipeline:
         self,
         settings: Settings,
         neo4j_repository: Neo4jRepository,
-        llm_repository: LLMRepository,
+        llm_tasks: LLMTaskService,
+        llm_gateway: AzureOpenAIGateway,
         neo4j_client: Neo4jClient | None = None,
         graph_schema: GraphSchema | None = None,
         ontology_loader: OntologyLoader | HybridOntologyLoader | None = None,
@@ -156,7 +159,8 @@ class GraphRAGPipeline:
     ):
         self._settings = settings
         self._neo4j = neo4j_repository
-        self._llm = llm_repository
+        self._llm_tasks = llm_tasks
+        self._llm_gateway = llm_gateway
         self._graph_schema = graph_schema  # 초기화 시 주입된 스키마
 
         # Query Cache Repository 초기화 (Vector Search 활성화 시)
@@ -192,13 +196,13 @@ class GraphRAGPipeline:
 
         # 노드 초기화
         # 통합 Intent + Entity 노드 사용 (Latency Optimization: 2 LLM calls → 1)
-        self._intent_entity_extractor = IntentEntityExtractorNode(llm_repository)
-        self._query_decomposer = QueryDecomposerNode(llm_repository)
+        self._intent_entity_extractor = IntentEntityExtractorNode(llm_tasks)
+        self._query_decomposer = QueryDecomposerNode(llm_tasks)
         self._concept_expander = ConceptExpanderNode(self._ontology_loader)
         self._entity_resolver = EntityResolverNode(neo4j_repository)
-        self._clarification_handler = ClarificationHandlerNode(llm_repository)
+        self._clarification_handler = ClarificationHandlerNode(llm_tasks)
         self._cypher_generator = CypherGeneratorNode(
-            llm_repository,
+            llm_tasks,
             neo4j_repository,
             settings=settings,
         )
@@ -207,13 +211,13 @@ class GraphRAGPipeline:
             cache_repository=self._cache_repository,
             settings=settings,
         )
-        self._response_generator = ResponseGeneratorNode(llm_repository)
+        self._response_generator = ResponseGeneratorNode(llm_tasks)
 
         # Cache Checker 노드 (Vector Search 활성화 시)
         self._cache_checker: CacheCheckerNode | None = None
         if settings.vector_search_enabled and self._cache_repository:
             self._cache_checker = CacheCheckerNode(
-                llm_repository,
+                llm_gateway,
                 self._cache_repository,
                 settings,
             )
@@ -224,7 +228,7 @@ class GraphRAGPipeline:
         if settings.adaptive_ontology.enabled:
             self._ontology_learner = OntologyLearner(
                 settings=settings.adaptive_ontology,
-                llm_repository=llm_repository,
+                llm_gateway=llm_gateway,
                 neo4j_repository=neo4j_repository,
                 ontology_loader=self._ontology_loader,
                 ontology_registry=self._ontology_registry,
@@ -236,7 +240,7 @@ class GraphRAGPipeline:
         self._ontology_update_handler: OntologyUpdateHandlerNode | None = None
         if ontology_service is not None:
             self._ontology_update_handler = OntologyUpdateHandlerNode(
-                llm_repository=llm_repository,
+                llm_gateway=llm_gateway,
                 neo4j_repository=neo4j_repository,
                 ontology_service=ontology_service,
                 settings=settings,
@@ -806,7 +810,7 @@ class GraphRAGPipeline:
             chat_history = format_chat_history(messages)
 
             full_response = ""
-            async for chunk in self._llm.generate_response_stream(
+            async for chunk in self._llm_tasks.generate_response_stream(
                 question=question,
                 query_results=graph_results,
                 cypher_query=cypher_query,

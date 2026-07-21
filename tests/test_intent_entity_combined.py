@@ -8,15 +8,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.application.llm import LLMTaskService
 from src.graph.nodes.intent_entity_extractor import IntentEntityExtractorNode
 from src.graph.state import GraphRAGState
-from src.repositories.llm_repository import LLMRepository
 
 
 @pytest.fixture
 def mock_llm_repository() -> MagicMock:
     """LLM Repository 목"""
-    mock = MagicMock(spec=LLMRepository)
+    mock = MagicMock(spec=LLMTaskService)
     mock.classify_intent_and_extract_entities = AsyncMock(
         return_value={
             "intent": "personnel_search",
@@ -238,34 +238,5 @@ class TestIntentEntityExtractorNodeConfig:
         assert node._entity_types == custom_types
 
 
-class TestLLMRepositoryCombinedMethod:
-    """LLMRepository.classify_intent_and_extract_entities 테스트"""
-
-    @pytest.mark.asyncio
-    async def test_calls_generate_json_with_light_model(self) -> None:
-        """LIGHT 모델로 generate_json 호출"""
-        from src.config import Settings
-        from src.repositories.llm_repository import LLMRepository, ModelTier
-
-        settings = Settings()
-        repo = LLMRepository(settings)
-
-        # generate_json 목킹
-        repo.generate_json = AsyncMock(
-            return_value={
-                "intent": "personnel_search",
-                "confidence": 0.9,
-                "entities": [],
-            }
-        )
-
-        await repo.classify_intent_and_extract_entities(
-            question="테스트 질문",
-            available_intents=["personnel_search"],
-            entity_types=["Employee"],
-        )
-
-        # LIGHT 모델 사용 확인
-        repo.generate_json.assert_called_once()
-        call_kwargs = repo.generate_json.call_args.kwargs
-        assert call_kwargs["model_tier"] == ModelTier.LIGHT
+# NOTE: LLMTaskService.classify_intent_and_extract_entities의 게이트웨이 경계
+# 계약 테스트(LIGHT 티어 1회 호출)는 tests/application/test_llm_task_service.py로 이관됨

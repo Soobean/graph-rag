@@ -25,6 +25,7 @@ from src.api import (
     visualization_router,
 )
 from src.api.services.explainability import ExplainabilityService
+from src.application.llm import LLMTaskService
 from src.auth.jwt_handler import JWTHandler
 from src.auth.password import PasswordHandler
 from src.config import get_settings
@@ -39,8 +40,9 @@ from src.domain.exceptions import (
 from src.domain.ontology.registry import OntologyRegistry
 from src.graph import GraphRAGPipeline
 from src.graph.checkpointer import create_checkpointer
+from src.infrastructure.llm import AzureOpenAIGateway
 from src.infrastructure.neo4j_client import Neo4jClient
-from src.repositories import LLMRepository, Neo4jRepository
+from src.repositories import Neo4jRepository
 from src.repositories.user_repository import UserRepository
 from src.services.auth_service import AuthService
 from src.services.community_batch_service import CommunityBatchService
@@ -82,7 +84,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Repository 초기화
     neo4j_repo = Neo4jRepository(neo4j_client)
-    llm_repo = LLMRepository(settings)
+    llm_gateway = AzureOpenAIGateway(settings)
+    llm_tasks = LLMTaskService(llm_gateway)
 
     # 스키마 사전 로드 (파이프라인에 주입)
     try:
@@ -123,7 +126,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     pipeline = GraphRAGPipeline(
         settings=settings,
         neo4j_repository=neo4j_repo,
-        llm_repository=llm_repo,
+        llm_tasks=llm_tasks,
+        llm_gateway=llm_gateway,
         neo4j_client=neo4j_client,
         graph_schema=graph_schema,
         ontology_loader=ontology_registry.get_loader(),
@@ -181,7 +185,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # app.state에 저장 (멀티 워커 환경에서 각 워커가 자체 인스턴스 보유)
     app.state.neo4j_client = neo4j_client
     app.state.neo4j_repo = neo4j_repo
-    app.state.llm_repo = llm_repo
+    app.state.llm_gateway = llm_gateway
+    app.state.llm_tasks = llm_tasks
     app.state.pipeline = pipeline
     app.state.gds_service = gds_service
     app.state.community_batch_service = community_batch_service
@@ -201,8 +206,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.gds_service.close()
         logger.info("GDS service closed")
 
-    if hasattr(app.state, "llm_repo") and app.state.llm_repo:
-        await app.state.llm_repo.close()
+    if hasattr(app.state, "llm_gateway") and app.state.llm_gateway:
+        await app.state.llm_gateway.close()
         logger.info("LLM client closed")
 
     if hasattr(app.state, "neo4j_client") and app.state.neo4j_client:

@@ -8,10 +8,10 @@ Multi-hop 쿼리를 분해하여 단계별 실행 계획을 생성합니다.
     → hop3: Employee-[:HAS_SKILL]->Skill(AWS)
 """
 
+from src.application.llm import LLMTaskService
 from src.domain.types import QueryDecomposerUpdate, QueryPlan
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
-from src.repositories.llm_repository import LLMRepository
 
 
 class QueryDecomposerNode(BaseNode[QueryDecomposerUpdate]):
@@ -24,9 +24,9 @@ class QueryDecomposerNode(BaseNode[QueryDecomposerUpdate]):
         "mentoring_network",
     ]
 
-    def __init__(self, llm_repository: LLMRepository):
+    def __init__(self, llm_tasks: LLMTaskService):
         super().__init__()
-        self._llm = llm_repository
+        self._llm = llm_tasks
 
     @property
     def name(self) -> str:

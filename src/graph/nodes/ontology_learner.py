@@ -30,7 +30,7 @@ from src.domain.adaptive.models import (
     ProposalType,
 )
 from src.domain.types import UnresolvedEntity
-from src.repositories.llm_repository import LLMRepository, ModelTier
+from src.infrastructure.llm import AzureOpenAIGateway, ModelTier
 from src.utils.ontology_utils import safe_refresh_ontology_cache
 from src.utils.prompt_manager import PromptManager
 
@@ -53,7 +53,7 @@ class OntologyLearner:
     Usage:
         learner = OntologyLearner(
             settings=settings.adaptive_ontology,
-            llm_repository=llm_repo,
+            llm_gateway=llm_gateway,
             neo4j_repository=neo4j_repo,
             ontology_loader=ontology_loader,
         )
@@ -67,7 +67,7 @@ class OntologyLearner:
     def __init__(
         self,
         settings: AdaptiveOntologySettings,
-        llm_repository: LLMRepository,
+        llm_gateway: AzureOpenAIGateway,
         neo4j_repository: Neo4jRepository,
         ontology_loader: OntologyLoader | HybridOntologyLoader | None = None,
         ontology_registry: OntologyRegistry | None = None,
@@ -75,13 +75,13 @@ class OntologyLearner:
         """
         Args:
             settings: Adaptive Ontology 설정
-            llm_repository: LLM API 접근 레포지토리
+            llm_gateway: LLM 전송 게이트웨이
             neo4j_repository: Neo4j 접근 레포지토리
             ontology_loader: 현재 온톨로지 로더 (컨텍스트 제공용)
             ontology_registry: 온톨로지 레지스트리 (auto-approve 후 캐시 갱신용)
         """
         self._settings = settings
-        self._llm = llm_repository
+        self._llm = llm_gateway
         self._neo4j = neo4j_repository
         self._ontology = ontology_loader
         self._registry = ontology_registry

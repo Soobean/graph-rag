@@ -296,7 +296,7 @@ class TestOntologyUpdateRouting:
 
     @pytest.mark.asyncio
     async def test_ontology_update_routes_to_handler(
-        self, pipeline_with_ontology, mock_llm, mock_neo4j
+        self, pipeline_with_ontology, mock_llm, mock_llm_gateway, mock_neo4j
     ):
         """ontology_update intent 시 ontology_update_handler로 라우팅"""
         # Intent를 ontology_update로 설정
@@ -306,7 +306,7 @@ class TestOntologyUpdateRouting:
             "entities": [],
         }
         # LLM 파싱 결과 설정
-        mock_llm.generate_json.return_value = {
+        mock_llm_gateway.generate_json.return_value = {
             "action": "add_concept",
             "term": "LangGraph",
             "category": "Skill",
@@ -331,7 +331,12 @@ class TestOntologyUpdateRouting:
 
     @pytest.mark.asyncio
     async def test_ontology_update_add_synonym(
-        self, pipeline_with_ontology, mock_llm, mock_neo4j, mock_ontology_service
+        self,
+        pipeline_with_ontology,
+        mock_llm,
+        mock_llm_gateway,
+        mock_neo4j,
+        mock_ontology_service,
     ):
         """동의어 추가 요청 처리"""
         mock_llm.classify_intent_and_extract_entities.return_value = {
@@ -339,7 +344,7 @@ class TestOntologyUpdateRouting:
             "confidence": 0.92,
             "entities": [],
         }
-        mock_llm.generate_json.return_value = {
+        mock_llm_gateway.generate_json.return_value = {
             "action": "add_synonym",
             "term": "ReactJS",
             "category": "Skill",
@@ -407,7 +412,7 @@ class TestOntologyUpdateRouting:
 
     @pytest.mark.asyncio
     async def test_ontology_update_low_confidence_response(
-        self, pipeline_with_ontology, mock_llm
+        self, pipeline_with_ontology, mock_llm, mock_llm_gateway
     ):
         """낮은 신뢰도 파싱 시 명확화 요청"""
         mock_llm.classify_intent_and_extract_entities.return_value = {
@@ -415,7 +420,7 @@ class TestOntologyUpdateRouting:
             "confidence": 0.85,
             "entities": [],
         }
-        mock_llm.generate_json.return_value = {
+        mock_llm_gateway.generate_json.return_value = {
             "action": "add_concept",
             "term": "??",
             "category": "Skill",

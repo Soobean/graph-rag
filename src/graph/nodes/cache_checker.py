@@ -9,7 +9,7 @@ from src.config import Settings
 from src.domain.types import CacheCheckerUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
-from src.repositories.llm_repository import LLMRepository
+from src.infrastructure.llm import AzureOpenAIGateway
 from src.repositories.query_cache_repository import QueryCacheRepository
 
 
@@ -18,12 +18,12 @@ class CacheCheckerNode(BaseNode[CacheCheckerUpdate]):
 
     def __init__(
         self,
-        llm_repository: LLMRepository,
+        llm_gateway: AzureOpenAIGateway,
         cache_repository: QueryCacheRepository,
         settings: Settings,
     ):
         super().__init__()
-        self._llm = llm_repository
+        self._llm = llm_gateway
         self._cache = cache_repository
         self._settings = settings
 

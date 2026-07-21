@@ -10,17 +10,18 @@ FastAPI의 Depends 패턴을 활용한 의존성 주입을 관리합니다.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from fastapi import Request
 
+from src.application.llm import LLMTaskService
 from src.auth.models import UserContext
 from src.config import get_settings
 from src.domain.exceptions import AuthenticationError
 from src.domain.ontology.registry import OntologyRegistry
 from src.graph.pipeline import GraphRAGPipeline
+from src.infrastructure.llm import AzureOpenAIGateway
 from src.infrastructure.neo4j_client import Neo4jClient
-from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.gds_service import GDSService
 from src.services.graph_edit_service import GraphEditService
@@ -64,12 +65,20 @@ def get_neo4j_repository(request: Request) -> Neo4jRepository:
     return request.app.state.neo4j_repo
 
 
-def get_llm_repository(request: Request) -> LLMRepository:
+def get_llm_gateway(request: Request) -> AzureOpenAIGateway:
     """
-    LLM Repository 의존성 주입
+    LLM 게이트웨이(전송 계층) 의존성 주입
     app.state에서 초기화된 인스턴스를 가져옵니다.
     """
-    return request.app.state.llm_repo
+    return cast("AzureOpenAIGateway", request.app.state.llm_gateway)
+
+
+def get_llm_task_service(request: Request) -> LLMTaskService:
+    """
+    LLM Task Service(use-case 계층) 의존성 주입
+    app.state에서 초기화된 인스턴스를 가져옵니다.
+    """
+    return cast("LLMTaskService", request.app.state.llm_tasks)
 
 
 # ============================================

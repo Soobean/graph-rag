@@ -16,7 +16,7 @@ from src.domain.adaptive.models import (
 )
 from src.graph.nodes.ontology_update_handler import OntologyUpdateHandlerNode
 from src.graph.state import GraphRAGState
-from src.repositories.llm_repository import LLMRepository
+from src.infrastructure.llm import AzureOpenAIGateway
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.ontology_service import OntologyService
 
@@ -28,7 +28,7 @@ from src.services.ontology_service import OntologyService
 @pytest.fixture
 def mock_llm():
     """Mock LLM Repository"""
-    llm = MagicMock(spec=LLMRepository)
+    llm = MagicMock(spec=AzureOpenAIGateway)
     llm.generate_json = AsyncMock(
         return_value={
             "action": "add_concept",
@@ -89,7 +89,7 @@ def mock_ontology_service():
 def handler(mock_llm, mock_neo4j, mock_ontology_service):
     """기본 OntologyUpdateHandler 인스턴스"""
     return OntologyUpdateHandlerNode(
-        llm_repository=mock_llm,
+        llm_gateway=mock_llm,
         neo4j_repository=mock_neo4j,
         ontology_service=mock_ontology_service,
     )

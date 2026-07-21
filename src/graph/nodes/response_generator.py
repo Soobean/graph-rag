@@ -8,20 +8,20 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
+from src.application.llm import LLMTaskService
 from src.domain.constants import INTENT_DESCRIPTIONS as INTENT_RELATION_DESCRIPTIONS
 from src.domain.types import ResolvedEntity, ResponseGeneratorUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState, IntentType
 from src.graph.utils import format_chat_history
-from src.repositories.llm_repository import LLMRepository
 
 
 class ResponseGeneratorNode(BaseNode[ResponseGeneratorUpdate]):
     """응답 생성 노드"""
 
-    def __init__(self, llm_repository: LLMRepository):
+    def __init__(self, llm_tasks: LLMTaskService):
         super().__init__()
-        self._llm = llm_repository
+        self._llm = llm_tasks
 
     @property
     def name(self) -> str:

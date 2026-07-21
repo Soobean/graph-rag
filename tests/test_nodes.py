@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.application.llm import LLMTaskService
 from src.graph.nodes.cypher_generator import CypherGeneratorNode
 from src.graph.nodes.entity_resolver import EntityResolverNode
 from src.graph.nodes.graph_executor import GraphExecutorNode
@@ -102,7 +103,7 @@ class TestCypherGeneratorNode:
 
     @pytest.fixture
     def mock_llm(self):
-        llm = MagicMock()
+        llm = MagicMock(spec=LLMTaskService)
         llm.generate_cypher = AsyncMock()
         return llm
 
@@ -272,7 +273,7 @@ class TestResponseGeneratorNode:
 
     @pytest.fixture
     def mock_llm(self):
-        llm = MagicMock()
+        llm = MagicMock(spec=LLMTaskService)
         llm.generate_response = AsyncMock()
         return llm
 

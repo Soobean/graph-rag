@@ -5,7 +5,7 @@ Cypher Generator Node
 캐시 히트 시에는 생성을 스킵합니다. (캐시 저장은 GraphExecutor에서 실행 성공 후 수행)
 
 모델 선택 정책:
-- HEAVY 우선, 실패 시 LIGHT로 fallback (LLMRepository._generate_json_with_fallback)
+- HEAVY 우선, 실패 시 LIGHT로 fallback (AzureOpenAIGateway.generate_json_with_fallback)
 - 이전의 정적 휴리스틱 기반 LIGHT 분기는 false negative가 잦아 제거됨
   (시나리오: entity 1개라 'SIMPLE'로 분류됐지만 실제 쿼리는 복잡한 조건 다수)
 - 미래에 모델 비용/지연 분리가 다시 필요해지면, 휴리스틱이 아닌 실측 메트릭
@@ -15,13 +15,13 @@ Cypher Generator Node
 import re
 from typing import Any
 
+from src.application.llm import LLMTaskService
 from src.auth.access_policy import AccessPolicy
 from src.config import Settings
 from src.domain.exceptions import LLMContentFilterError
 from src.domain.types import CypherGeneratorUpdate, GraphSchema
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
-from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 
 
@@ -30,12 +30,12 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
 
     def __init__(
         self,
-        llm_repository: LLMRepository,
+        llm_tasks: LLMTaskService,
         neo4j_repository: Neo4jRepository,
         settings: Settings | None = None,
     ):
         super().__init__()
-        self._llm = llm_repository
+        self._llm = llm_tasks
         self._neo4j = neo4j_repository
         # settings는 현재 사용되지 않지만, Phase 4 (Query 컨텍스트 마이그레이션) 시
         # temperature/max_tokens override 등으로 재사용 가능성 있어 시그니처 유지.
@@ -330,7 +330,7 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
             )
 
         # entities는 dict[str, list[str]] 구조임 (e.g. {'skills': ['Python']})
-        # LLMRepository.generate_cypher는 list[dict]를 기대함.
+        # LLMTaskService.generate_cypher는 list[dict]를 기대함.
         raw_entities = state.get("entities", {})
         formatted_entities: list[dict[str, str]] = []
         for entity_type, values in raw_entities.items():

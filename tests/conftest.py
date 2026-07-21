@@ -9,10 +9,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.application.llm import LLMTaskService
 from src.config import Settings
 from src.domain.adaptive.models import OntologyProposal, ProposalStatus, ProposalType
 from src.graph.pipeline import GraphRAGPipeline
-from src.repositories.llm_repository import LLMRepository
+from src.infrastructure.llm import AzureOpenAIGateway
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.services.ontology_service import OntologyService
 
@@ -33,8 +34,8 @@ def mock_settings():
 
 @pytest.fixture
 def mock_llm():
-    """Mock LLM Repository"""
-    llm = MagicMock(spec=LLMRepository)
+    """Mock LLM Task Service (파이프라인 task 계층)"""
+    llm = MagicMock(spec=LLMTaskService)
     # 통합 Intent + Entity 추출 (Latency Optimization)
     llm.classify_intent_and_extract_entities = AsyncMock(
         return_value={
@@ -54,6 +55,16 @@ def mock_llm():
         }
     )
     return llm
+
+
+@pytest.fixture
+def mock_llm_gateway():
+    """Mock LLM Gateway (전송 계층 — generate_json/get_embedding 소비 노드용)"""
+    gateway = MagicMock(spec=AzureOpenAIGateway)
+    gateway.generate = AsyncMock()
+    gateway.generate_json = AsyncMock()
+    gateway.get_embedding = AsyncMock()
+    return gateway
 
 
 @pytest.fixture
@@ -90,12 +101,13 @@ def graph_schema():
 
 
 @pytest.fixture
-def pipeline(mock_settings, mock_neo4j, mock_llm, graph_schema):
+def pipeline(mock_settings, mock_neo4j, mock_llm, mock_llm_gateway, graph_schema):
     """테스트용 파이프라인 (스키마 주입)"""
     return GraphRAGPipeline(
         settings=mock_settings,
         neo4j_repository=mock_neo4j,
-        llm_repository=mock_llm,
+        llm_tasks=mock_llm,
+        llm_gateway=mock_llm_gateway,
         graph_schema=graph_schema,
     )
 
@@ -129,7 +141,12 @@ def mock_ontology_service(mock_neo4j):
 
 @pytest.fixture
 def pipeline_with_ontology(
-    mock_settings, mock_neo4j, mock_llm, graph_schema, mock_ontology_service
+    mock_settings,
+    mock_neo4j,
+    mock_llm,
+    mock_llm_gateway,
+    graph_schema,
+    mock_ontology_service,
 ):
     """테스트용 파이프라인 (OntologyService 포함)"""
     # Neo4j에 proposal 저장 mock 추가
@@ -138,7 +155,8 @@ def pipeline_with_ontology(
     return GraphRAGPipeline(
         settings=mock_settings,
         neo4j_repository=mock_neo4j,
-        llm_repository=mock_llm,
+        llm_tasks=mock_llm,
+        llm_gateway=mock_llm_gateway,
         graph_schema=graph_schema,
         ontology_service=mock_ontology_service,
     )

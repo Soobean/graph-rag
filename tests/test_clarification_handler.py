@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.application.llm import LLMTaskService
 from src.graph.nodes.clarification_handler import ClarificationHandlerNode
 
 
@@ -15,7 +16,7 @@ class TestClarificationHandlerNode:
     @pytest.fixture
     def mock_llm_repository(self):
         """LLM Repository 목업"""
-        repo = MagicMock()
+        repo = MagicMock(spec=LLMTaskService)
         repo.generate_clarification = AsyncMock()
         return repo
 
@@ -143,7 +144,7 @@ class TestExtractUnresolvedEntities:
     @pytest.fixture
     def node(self):
         """테스트용 노드 인스턴스"""
-        mock_llm = MagicMock()
+        mock_llm = MagicMock(spec=LLMTaskService)
         return ClarificationHandlerNode(mock_llm)
 
     def test_extract_from_resolved_entities(self, node):
@@ -202,7 +203,7 @@ class TestPipelineRouting:
     @pytest.fixture
     def mock_repos(self):
         """Repository 목업들"""
-        llm = MagicMock()
+        llm = MagicMock(spec=LLMTaskService)
         llm.classify_intent_and_extract_entities = AsyncMock(
             return_value={
                 "intent": "personnel_search",

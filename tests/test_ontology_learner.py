@@ -17,7 +17,7 @@ from src.domain.adaptive.models import (
 )
 from src.domain.types import UnresolvedEntity
 from src.graph.nodes.ontology_learner import OntologyLearner
-from src.repositories.llm_repository import LLMRepository
+from src.infrastructure.llm import AzureOpenAIGateway
 from src.repositories.neo4j_repository import Neo4jRepository
 
 # =============================================================================
@@ -49,7 +49,7 @@ def disabled_settings():
 @pytest.fixture
 def mock_llm():
     """Mock LLM Repository"""
-    llm = MagicMock(spec=LLMRepository)
+    llm = MagicMock(spec=AzureOpenAIGateway)
     llm.generate_json = AsyncMock(
         return_value={
             "type": "NEW_CONCEPT",
@@ -113,7 +113,7 @@ def learner(default_settings, mock_llm, mock_neo4j, mock_ontology):
     """기본 OntologyLearner 인스턴스"""
     return OntologyLearner(
         settings=default_settings,
-        llm_repository=mock_llm,
+        llm_gateway=mock_llm,
         neo4j_repository=mock_neo4j,
         ontology_loader=mock_ontology,
     )
@@ -163,7 +163,7 @@ class TestOntologyLearnerBasic:
         """비활성화 시 아무것도 처리하지 않음"""
         learner = OntologyLearner(
             settings=disabled_settings,
-            llm_repository=mock_llm,
+            llm_gateway=mock_llm,
             neo4j_repository=mock_neo4j,
         )
 
@@ -305,7 +305,7 @@ class TestAutoApproval:
 
         learner = OntologyLearner(
             settings=default_settings,
-            llm_repository=mock_llm,
+            llm_gateway=mock_llm,
             neo4j_repository=mock_neo4j,
             ontology_loader=mock_ontology,
         )
@@ -342,7 +342,7 @@ class TestAutoApproval:
 
         learner = OntologyLearner(
             settings=default_settings,
-            llm_repository=mock_llm,
+            llm_gateway=mock_llm,
             neo4j_repository=mock_neo4j,
             ontology_loader=mock_ontology,
         )
@@ -383,7 +383,7 @@ class TestAutoApproval:
 
         learner = OntologyLearner(
             settings=default_settings,
-            llm_repository=mock_llm,
+            llm_gateway=mock_llm,
             neo4j_repository=mock_neo4j,
             ontology_loader=mock_ontology,
         )
@@ -434,7 +434,7 @@ class TestLLMAnalysis:
 
         learner = OntologyLearner(
             settings=settings,
-            llm_repository=mock_llm,
+            llm_gateway=mock_llm,
             neo4j_repository=mock_neo4j,
         )
 
@@ -457,7 +457,7 @@ class TestLLMAnalysis:
 
         learner = OntologyLearner(
             settings=default_settings,
-            llm_repository=mock_llm,
+            llm_gateway=mock_llm,
             neo4j_repository=mock_neo4j,
         )
 

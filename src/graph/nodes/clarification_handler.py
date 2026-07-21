@@ -6,18 +6,18 @@ Clarification Handler Node
 
 from langchain_core.messages import AIMessage
 
+from src.application.llm import LLMTaskService
 from src.domain.types import ResolvedEntity, ResponseGeneratorUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
-from src.repositories.llm_repository import LLMRepository
 
 
 class ClarificationHandlerNode(BaseNode[ResponseGeneratorUpdate]):
     """명확화 요청 노드"""
 
-    def __init__(self, llm_repository: LLMRepository):
+    def __init__(self, llm_tasks: LLMTaskService):
         super().__init__()
-        self._llm = llm_repository
+        self._llm = llm_tasks
 
     @property
     def name(self) -> str:

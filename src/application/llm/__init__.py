@@ -11,8 +11,10 @@ from src.application.llm.formatters import (
     format_results,
     format_schema,
 )
+from src.application.llm.task_service import LLMTaskService
 
 __all__ = [
+    "LLMTaskService",
     "format_chat_history_for_prompt",
     "format_entities",
     "format_query_plan",

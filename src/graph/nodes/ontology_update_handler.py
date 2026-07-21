@@ -23,7 +23,7 @@ from src.domain.constants import ALLOWED_LABELS, LABEL_DESCRIPTIONS
 from src.domain.types import OntologyUpdateHandlerUpdate
 from src.graph.nodes.base import BaseNode
 from src.graph.state import GraphRAGState
-from src.repositories.llm_repository import LLMRepository, ModelTier
+from src.infrastructure.llm import AzureOpenAIGateway, ModelTier
 from src.utils.prompt_manager import PromptManager
 
 if TYPE_CHECKING:
@@ -47,13 +47,13 @@ class OntologyUpdateHandlerNode(BaseNode[OntologyUpdateHandlerUpdate]):
 
     def __init__(
         self,
-        llm_repository: LLMRepository,
+        llm_gateway: AzureOpenAIGateway,
         neo4j_repository: Neo4jRepository,
         ontology_service: OntologyService,
         settings: Settings | None = None,
     ):
         super().__init__()
-        self._llm = llm_repository
+        self._llm = llm_gateway
         self._neo4j = neo4j_repository
         self._ontology_service = ontology_service
         self._prompt_manager = PromptManager()
