@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from src.config import Settings
 from src.graph.pipeline import GraphRAGPipeline
-from src.repositories.llm_repository import LLMRepository
+from src.application.llm import LLMTaskService
+from src.infrastructure.llm import AzureOpenAIGateway
 from src.repositories.neo4j_repository import Neo4jRepository
 
 # 로깅 설정
@@ -19,7 +20,7 @@ async def run_verification():
     settings = Settings()
 
     # Mock LLM
-    mock_llm = MagicMock(spec=LLMRepository)
+    mock_llm = MagicMock(spec=LLMTaskService)
     mock_llm.classify_intent_and_extract_entities = AsyncMock()
     mock_llm.generate_cypher = AsyncMock()
     mock_llm.generate_response = AsyncMock()
@@ -35,7 +36,8 @@ async def run_verification():
     pipeline = GraphRAGPipeline(
         settings=settings,
         neo4j_repository=mock_neo4j,
-        llm_repository=mock_llm,
+        llm_tasks=mock_llm,
+        llm_gateway=MagicMock(spec=AzureOpenAIGateway),
         graph_schema=graph_schema,
     )
 

@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from src.bootstrap.models import ExtractionResult, SchemaProposal, Triple
-from src.repositories.llm_repository import LLMRepository, ModelTier
+from src.infrastructure.llm import AzureOpenAIGateway, ModelTier
 from src.utils.prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
@@ -39,17 +39,17 @@ class OpenExtractor:
 
     def __init__(
         self,
-        llm_repository: LLMRepository,
+        llm_gateway: AzureOpenAIGateway,
         prompt_manager: PromptManager | None = None,
     ):
         """
         Initialize the OpenExtractor.
 
         Args:
-            llm_repository: Repository for LLM API calls
+            llm_gateway: LLM transport gateway
             prompt_manager: Optional custom prompt manager (for testing)
         """
-        self._llm = llm_repository
+        self._llm = llm_gateway
         self._prompt_manager = prompt_manager or PromptManager()
 
     async def extract_triples(

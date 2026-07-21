@@ -28,7 +28,7 @@ from src.bootstrap.models import SchemaProposal
 from src.bootstrap.open_extractor import OpenExtractor
 from src.bootstrap.utils import load_schema_from_file, save_triples_to_file
 from src.config import Settings
-from src.repositories.llm_repository import LLMRepository
+from src.infrastructure.llm import AzureOpenAIGateway
 
 logging.basicConfig(
     level=logging.INFO,
@@ -163,7 +163,7 @@ async def main():
     # LLM Repository 초기화
     logger.info("\n[3/4] LLM 연결 중...")
     settings = Settings()
-    llm_repo = LLMRepository(settings)
+    llm_repo = AzureOpenAIGateway(settings)
 
     try:
         extractor = OpenExtractor(llm_repo)

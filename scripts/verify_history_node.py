@@ -10,7 +10,6 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from src.config import get_settings
 from src.graph.pipeline import GraphRAGPipeline
-from src.repositories.llm_repository import LLMRepository
 from src.repositories.neo4j_repository import Neo4jRepository
 
 # 로깅 설정
@@ -37,7 +36,7 @@ async def verify_history_native():
     neo4j_repo = MockNeo4jRepo()
     llm_repo = MockLLMRepo()
 
-    pipeline = GraphRAGPipeline(settings, neo4j_repo, llm_repo)
+    pipeline = GraphRAGPipeline(settings, neo4j_repo, llm_repo, MockLLMRepo())
 
     # 1. First Turn
     session_id = "native-sess-1"

@@ -15,13 +15,13 @@ from src.bootstrap.models import (
     Triple,
 )
 from src.bootstrap.relation_normalizer import RelationNormalizer
-from src.repositories.llm_repository import LLMRepository
+from src.infrastructure.llm import AzureOpenAIGateway
 
 
 @pytest.fixture
 def mock_llm():
     """Mock LLM Repository"""
-    llm = MagicMock(spec=LLMRepository)
+    llm = MagicMock(spec=AzureOpenAIGateway)
     llm.generate_json = AsyncMock()
     llm.generate = AsyncMock()
     llm.close = AsyncMock()
@@ -43,7 +43,7 @@ def mock_prompt_manager():
 def normalizer(mock_llm, mock_prompt_manager):
     """RelationNormalizer with mocks"""
     return RelationNormalizer(
-        llm_repository=mock_llm,
+        llm_gateway=mock_llm,
         prompt_manager=mock_prompt_manager,
     )
 

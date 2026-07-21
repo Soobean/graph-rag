@@ -10,13 +10,13 @@ import pytest
 
 from src.bootstrap.models import ExtractionResult, SchemaProposal, Triple
 from src.bootstrap.open_extractor import OpenExtractor
-from src.repositories.llm_repository import LLMRepository
+from src.infrastructure.llm import AzureOpenAIGateway
 
 
 @pytest.fixture
 def mock_llm():
     """Mock LLM Repository"""
-    llm = MagicMock(spec=LLMRepository)
+    llm = MagicMock(spec=AzureOpenAIGateway)
     llm.generate_json = AsyncMock()
     llm.close = AsyncMock()
     return llm
@@ -37,7 +37,7 @@ def mock_prompt_manager():
 def extractor(mock_llm, mock_prompt_manager):
     """OpenExtractor with mocks"""
     return OpenExtractor(
-        llm_repository=mock_llm,
+        llm_gateway=mock_llm,
         prompt_manager=mock_prompt_manager,
     )
 

@@ -12,13 +12,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config import get_settings
-from src.repositories.llm_repository import LLMRepository
+from src.application.llm import LLMTaskService
+from src.infrastructure.llm import AzureOpenAIGateway
 
 
 async def test_query_decomposition():
     """쿼리 분해 테스트"""
     settings = get_settings()
-    llm = LLMRepository(settings)
+    llm = LLMTaskService(AzureOpenAIGateway(settings))
 
     print("=" * 70)
     print("🔬 Multi-hop 쿼리 분해 테스트")
@@ -118,7 +119,8 @@ async def test_full_pipeline():
         database=settings.neo4j_database,
     ) as neo4j_client:
         neo4j_repo = Neo4jRepository(neo4j_client)
-        llm_repo = LLMRepository(settings)
+        llm_gateway = AzureOpenAIGateway(settings)
+        llm_tasks = LLMTaskService(llm_gateway)
 
         # 스키마 로드
         schema = await neo4j_repo.get_schema()
@@ -126,7 +128,8 @@ async def test_full_pipeline():
         pipeline = GraphRAGPipeline(
             settings=settings,
             neo4j_repository=neo4j_repo,
-            llm_repository=llm_repo,
+            llm_tasks=llm_tasks,
+            llm_gateway=llm_gateway,
             neo4j_client=neo4j_client,
             graph_schema=schema,
         )
@@ -158,7 +161,7 @@ async def test_full_pipeline():
             else:
                 print(f"   ❌ 에러: {result.get('error', 'Unknown error')}")
 
-        await llm_repo.close()
+        await llm_gateway.close()
 
     print("\n" + "=" * 70)
 

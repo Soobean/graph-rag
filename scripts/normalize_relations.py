@@ -34,7 +34,7 @@ from src.bootstrap.utils import (
     save_triples_to_file,
 )
 from src.config import Settings
-from src.repositories.llm_repository import LLMRepository
+from src.infrastructure.llm import AzureOpenAIGateway
 
 logging.basicConfig(
     level=logging.INFO,
@@ -157,7 +157,7 @@ async def main():
     # LLM Repository 초기화
     logger.info("\n[3/4] LLM으로 관계 그룹화 중...")
     settings = Settings()
-    llm_repo = LLMRepository(settings)
+    llm_repo = AzureOpenAIGateway(settings)
 
     try:
         normalizer = RelationNormalizer(llm_repo)
