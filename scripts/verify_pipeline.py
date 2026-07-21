@@ -20,8 +20,7 @@ async def run_verification():
 
     # Mock LLM
     mock_llm = MagicMock(spec=LLMRepository)
-    mock_llm.classify_intent = AsyncMock()
-    mock_llm.extract_entities = AsyncMock()
+    mock_llm.classify_intent_and_extract_entities = AsyncMock()
     mock_llm.generate_cypher = AsyncMock()
     mock_llm.generate_response = AsyncMock()
 
@@ -41,7 +40,11 @@ async def run_verification():
     )
 
     print("\n=== Test 1: Unknown Intent (Skip to End) ===")
-    mock_llm.classify_intent.return_value = {"intent": "unknown", "confidence": 0.0}
+    mock_llm.classify_intent_and_extract_entities.return_value = {
+        "intent": "unknown",
+        "confidence": 0.0,
+        "entities": [],
+    }
 
     result = await pipeline.run("알 수 없는 질문", session_id="test-1")
     print(f"Path: {result['metadata']['execution_path']}")
@@ -51,11 +54,11 @@ async def run_verification():
     print("✅ Passed: Unknown intent skipped directly to response_generator")
 
     print("\n=== Test 2: Cypher Generation Error (Skip Execution) ===")
-    mock_llm.classify_intent.return_value = {
+    mock_llm.classify_intent_and_extract_entities.return_value = {
         "intent": "personnel_search",
         "confidence": 0.9,
+        "entities": [],
     }
-    mock_llm.extract_entities.return_value = {"entities": []}
     mock_llm.generate_cypher.side_effect = Exception("Cypher Error")  # 에러 발생
     mock_llm.generate_response.return_value = "오류가 발생했습니다."
 
@@ -67,12 +70,10 @@ async def run_verification():
     print("✅ Passed: Cypher error skipped graph_executor")
 
     print("\n=== Test 3: Normal Flow ===")
-    mock_llm.classify_intent.return_value = {
+    mock_llm.classify_intent_and_extract_entities.return_value = {
         "intent": "personnel_search",
         "confidence": 0.9,
-    }
-    mock_llm.extract_entities.return_value = {
-        "entities": [{"type": "Employee", "value": "Kim"}]
+        "entities": [{"type": "Employee", "value": "Kim"}],
     }
     mock_llm.generate_cypher.side_effect = None
     mock_llm.generate_cypher.return_value = {

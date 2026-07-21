@@ -18,11 +18,11 @@ class TestPipelineWithExplainability:
         self, pipeline, mock_llm, mock_neo4j
     ):
         """return_full_state=False일 때 _full_state 미포함"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
+            "entities": [],
         }
-        mock_llm.extract_entities.return_value = {"entities": []}
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (n) RETURN n",
             "parameters": {},
@@ -44,12 +44,10 @@ class TestPipelineWithExplainability:
         self, pipeline, mock_llm, mock_neo4j
     ):
         """return_full_state=True일 때 _full_state 포함"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
-        }
-        mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Skill", "value": "Python"}]
+            "entities": [{"type": "Skill", "value": "Python"}],
         }
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill) RETURN e",
@@ -76,12 +74,10 @@ class TestPipelineWithExplainability:
         self, pipeline, mock_llm, mock_neo4j
     ):
         """full_state에 개념 확장 정보 포함"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
-        }
-        mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Skill", "value": "파이썬"}]
+            "entities": [{"type": "Skill", "value": "파이썬"}],
         }
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (n) RETURN n",
@@ -106,11 +102,11 @@ class TestPipelineWithExplainability:
         self, pipeline, mock_llm, mock_neo4j
     ):
         """full_state에 그래프 결과 포함"""
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
+            "entities": [],
         }
-        mock_llm.extract_entities.return_value = {"entities": []}
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (e:Employee) RETURN e LIMIT 5",
             "parameters": {},
@@ -141,12 +137,10 @@ class TestExplainabilityServiceIntegration:
         """파이프라인 결과에서 추론 과정 구축"""
         from src.api.services.explainability import ExplainabilityService
 
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.92,
-        }
-        mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Skill", "value": "Python"}]
+            "entities": [{"type": "Skill", "value": "Python"}],
         }
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill {name: 'Python'}) RETURN e",
@@ -186,12 +180,10 @@ class TestExplainabilityServiceIntegration:
         """파이프라인 결과에서 그래프 데이터 구축"""
         from src.api.services.explainability import ExplainabilityService
 
-        mock_llm.classify_intent.return_value = {
+        mock_llm.classify_intent_and_extract_entities.return_value = {
             "intent": "personnel_search",
             "confidence": 0.9,
-        }
-        mock_llm.extract_entities.return_value = {
-            "entities": [{"type": "Skill", "value": "Python"}]
+            "entities": [{"type": "Skill", "value": "Python"}],
         }
         mock_llm.generate_cypher.return_value = {
             "cypher": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill) RETURN e, r, s",
@@ -253,7 +245,7 @@ class TestQueryRequestWithExplainability:
 
         assert request.include_explanation is False
         assert request.include_graph is False
-        assert request.graph_limit == 50
+        assert request.graph_limit == 200
 
     def test_explainability_options_enabled(self):
         """Explainability 옵션 활성화"""
@@ -282,13 +274,13 @@ class TestQueryRequestWithExplainability:
 
         # 최대값 초과
         with pytest.raises(ValidationError):
-            QueryRequest(question="test", graph_limit=201)
+            QueryRequest(question="test", graph_limit=501)
 
         # 경계값 (유효)
         req_min = QueryRequest(question="test", graph_limit=1)
-        req_max = QueryRequest(question="test", graph_limit=200)
+        req_max = QueryRequest(question="test", graph_limit=500)
         assert req_min.graph_limit == 1
-        assert req_max.graph_limit == 200
+        assert req_max.graph_limit == 500
 
 
 class TestQueryResponseWithExplainability:

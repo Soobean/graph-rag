@@ -43,7 +43,7 @@ class PromptManager:
         프롬프트 로드
 
         Args:
-            prompt_name: 프롬프트 파일 이름 (확장자 제외, 예: "intent_classification")
+            prompt_name: 프롬프트 파일 이름 (확장자 제외, 예: "intent_entity_combined")
             use_cache: 캐시 사용 여부
 
         Returns:

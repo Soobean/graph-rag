@@ -748,7 +748,7 @@ class TestLLMErrorHandling:
 
 
 class TestHighLevelMethods:
-    """고수준 메서드 테스트 (classify_intent, extract_entities 등)"""
+    """고수준 메서드 테스트 (generate_cypher, generate_response 등)"""
 
     @pytest.fixture
     def mock_settings(self):
@@ -761,52 +761,6 @@ class TestHighLevelMethods:
         settings.llm_temperature = 0.0
         settings.llm_max_tokens = 2000
         return settings
-
-    @pytest.mark.asyncio
-    async def test_classify_intent(self, mock_settings):
-        """의도 분류"""
-        repo = LLMRepository(mock_settings)
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[
-            0
-        ].message.content = '{"intent": "search", "confidence": 0.9}'
-
-        mock_client = AsyncMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-        repo._client = mock_client
-
-        result = await repo.classify_intent(
-            question="홍길동 찾아줘",
-            available_intents=["search", "create", "update"],
-        )
-
-        assert result["intent"] == "search"
-        assert result["confidence"] == 0.9
-
-    @pytest.mark.asyncio
-    async def test_extract_entities(self, mock_settings):
-        """엔티티 추출"""
-        repo = LLMRepository(mock_settings)
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[
-            0
-        ].message.content = '{"entities": [{"type": "Employee", "value": "홍길동", "normalized": "홍길동"}]}'
-
-        mock_client = AsyncMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-        repo._client = mock_client
-
-        result = await repo.extract_entities(
-            question="홍길동이 근무하는 회사는?",
-            entity_types=["Employee", "Company"],
-        )
-
-        assert len(result["entities"]) == 1
-        assert result["entities"][0]["type"] == "Employee"
 
     @pytest.mark.asyncio
     async def test_generate_cypher(self, mock_settings):

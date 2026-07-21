@@ -25,8 +25,6 @@ from src.domain.exceptions import (
 )
 from src.domain.types import (
     CypherGenerationResult,
-    EntityExtractionResult,
-    IntentClassificationResult,
     IntentEntityExtractionResult,
     QueryDecompositionResult,
 )
@@ -397,65 +395,6 @@ class LLMRepository:
             logger.error(f"LIGHT tier also failed (JSON): {type(e).__name__}: {e}")
             raise LLMResponseError(f"All model tiers failed. Last error: {e}") from e
 
-    async def classify_intent(
-        self,
-        question: str,
-        available_intents: list[str],
-        chat_history: str = "",
-    ) -> IntentClassificationResult:
-        """
-        질문 의도 분류
-
-        Returns:
-            IntentClassificationResult: Intent classification result
-        """
-        prompt = self._prompt_manager.load_prompt("intent_classification")
-
-        system_prompt = prompt["system"].format(
-            available_intents=", ".join(available_intents)
-        )
-        user_prompt = prompt["user"].format(
-            question=question,
-            chat_history=self._format_chat_history_for_prompt(chat_history),
-        )
-
-        result = await self.generate_json(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model_tier=ModelTier.LIGHT,
-        )
-        # Type safety: Cast result to TypedDict
-        # In a strict environment, we might want to use Pydantic to validate here.
-        # But for now we trust the LLM/JSON structure or let it fail downstream if missing keys.
-        return cast(IntentClassificationResult, result)
-
-    async def extract_entities(
-        self,
-        question: str,
-        entity_types: list[str],
-        chat_history: str = "",
-    ) -> EntityExtractionResult:
-        """
-        질문에서 엔티티 추출
-
-        Returns:
-            EntityExtractionResult: Extracted entities
-        """
-        prompt = self._prompt_manager.load_prompt("entity_extraction")
-
-        system_prompt = prompt["system"].format(entity_types=", ".join(entity_types))
-        user_prompt = prompt["user"].format(
-            question=question,
-            chat_history=self._format_chat_history_for_prompt(chat_history),
-        )
-
-        result = await self.generate_json(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model_tier=ModelTier.LIGHT,
-        )
-        return cast(EntityExtractionResult, result)
-
     async def classify_intent_and_extract_entities(
         self,
         question: str,
@@ -776,64 +715,6 @@ class LLMRepository:
         except Exception as e:
             logger.error(f"Embedding generation failed: {e}")
             raise LLMResponseError(f"Failed to generate embedding: {e}") from e
-
-    async def get_embeddings_batch(
-        self,
-        texts: list[str],
-        batch_size: int = 100,
-    ) -> list[list[float]]:
-        """
-        여러 텍스트 일괄 임베딩 생성 (배치 처리)
-
-        Args:
-            texts: 임베딩할 텍스트 리스트 (최대 2048개)
-            batch_size: 배치 크기 (API 제한에 맞게 조절)
-
-        Returns:
-            임베딩 벡터 리스트
-
-        Raises:
-            LLMResponseError: 임베딩 생성 실패 시
-        """
-        if not texts:
-            return []
-
-        client = self._get_client()
-        all_embeddings: list[list[float]] = []
-        deployment = self._settings.embedding_model_deployment
-
-        try:
-            # 배치 단위로 처리
-            for i in range(0, len(texts), batch_size):
-                batch = texts[i : i + batch_size]
-
-                response = await client.embeddings.create(
-                    model=deployment,
-                    input=batch,
-                    dimensions=self._settings.embedding_dimensions,
-                )
-
-                # 순서대로 결과 추가
-                batch_embeddings = [item.embedding for item in response.data]
-                all_embeddings.extend(batch_embeddings)
-
-            logger.info(f"Generated {len(all_embeddings)} embeddings in batch")
-            return all_embeddings
-
-        except RateLimitError as e:
-            logger.warning(f"Batch embedding rate limit exceeded: {e}")
-            raise LLMRateLimitError(str(e)) from e
-        except APIConnectionError as e:
-            logger.error(f"Batch embedding API connection error: {e}")
-            raise LLMConnectionError(str(e)) from e
-        except APIStatusError as e:
-            logger.error(f"Batch embedding API status error: {e}")
-            raise LLMResponseError(
-                f"Embedding API error: {e.status_code} - {e.message}"
-            ) from e
-        except Exception as e:
-            logger.error(f"Batch embedding generation failed: {e}")
-            raise LLMResponseError(f"Failed to generate batch embeddings: {e}") from e
 
     def _format_schema(self, schema: dict[str, Any]) -> str:
         """스키마를 문자열로 포맷팅 (속성 정보 + enum 값 포함)"""

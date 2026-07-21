@@ -203,11 +203,12 @@ class TestPipelineRouting:
     def mock_repos(self):
         """Repository 목업들"""
         llm = MagicMock()
-        llm.classify_intent = AsyncMock(
-            return_value={"intent": "personnel_search", "confidence": 0.9}
-        )
-        llm.extract_entities = AsyncMock(
-            return_value={"entities": [{"type": "Employee", "value": "홍길동"}]}
+        llm.classify_intent_and_extract_entities = AsyncMock(
+            return_value={
+                "intent": "personnel_search",
+                "confidence": 0.9,
+                "entities": [{"type": "Employee", "value": "홍길동"}],
+            }
         )
         llm.generate_clarification = AsyncMock(
             return_value="홍길동이라는 이름이 여러 명 있습니다."

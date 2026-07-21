@@ -13,13 +13,11 @@ from src.domain.exceptions import (
 from src.domain.types import (
     CypherGenerationResult,
     CypherGeneratorUpdate,
-    EntityExtractionResult,
     EntityExtractorUpdate,
     EntityResolverUpdate,
     ExtractedEntity,
     GraphExecutorUpdate,
     GraphSchema,
-    IntentClassificationResult,
     IntentClassifierUpdate,
     PipelineMetadata,
     PipelineResult,
@@ -39,8 +37,6 @@ __all__ = [
     "ExtractedEntity",
     "ResolvedEntity",
     # LLM Response Types
-    "IntentClassificationResult",
-    "EntityExtractionResult",
     "CypherGenerationResult",
     # Pipeline Types
     "PipelineMetadata",

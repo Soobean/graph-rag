@@ -110,19 +110,6 @@ class UnresolvedEntity(TypedDict):
 # =============================================================================
 
 
-class IntentClassificationResult(TypedDict):
-    """Intent 분류 결과"""
-
-    intent: str
-    confidence: float
-
-
-class EntityExtractionResult(TypedDict):
-    """엔티티 추출 결과"""
-
-    entities: list[ExtractedEntity]
-
-
 class IntentEntityExtractionResult(TypedDict):
     """통합 Intent 분류 + 엔티티 추출 결과 (Latency Optimization)"""
 

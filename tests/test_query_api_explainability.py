@@ -357,7 +357,7 @@ class TestQueryEndpointValidation:
             "/api/v1/query",
             json={
                 "question": "테스트",
-                "graph_limit": 201,
+                "graph_limit": 501,
             },
         )
 

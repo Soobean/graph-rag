@@ -28,8 +28,8 @@ async def verify_history_native():
         pass
 
     class MockLLMRepo:
-        async def classify_intent(self, *args, **kwargs):
-            return {"intent": "unknown", "confidence": 1.0}
+        async def classify_intent_and_extract_entities(self, *args, **kwargs):
+            return {"intent": "unknown", "confidence": 1.0, "entities": []}
 
         async def generate_response(self, *args, **kwargs):
             return "Mock AI Response"
