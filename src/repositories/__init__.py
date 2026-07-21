@@ -4,7 +4,6 @@ Repositories Package
 데이터 접근 계층을 제공합니다.
 """
 
-from src.repositories.llm_repository import LLMRepository, ModelTier
 from src.repositories.neo4j_entity_repository import Neo4jEntityRepository
 from src.repositories.neo4j_graph_crud_repository import Neo4jGraphCrudRepository
 from src.repositories.neo4j_ontology_concept_repository import (
@@ -31,7 +30,4 @@ __all__ = [
     "Neo4jOntologyProposalRepository",
     "Neo4jOntologyConceptRepository",
     "Neo4jGraphCrudRepository",
-    # LLM
-    "LLMRepository",
-    "ModelTier",
 ]
