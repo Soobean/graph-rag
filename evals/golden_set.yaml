@@ -27,6 +27,15 @@ cases:
     question: "부서별 평균 시간 단가(hourly_rate)는 얼마이며, 가장 높은 부서는?"
     category: org_analysis
     expected_intent: [org_analysis, global_analysis]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[:BELONGS_TO]->(d:Department)
+        WITH DISTINCT d.name AS dept, e.name AS emp, e.hourly_rate AS rate
+        WITH dept, avg(rate) AS avg_rate
+        RETURN dept, avg_rate ORDER BY avg_rate DESC
+      checks:
+        - {type: answer_contains_top, column: dept}
 
   - id: q02_career_vs_guideline
     question: "경력 연수별 직급(position) 분포가 실제 기준표(min_years~max_years)와 얼마나 일치하는가?"
@@ -41,16 +50,44 @@ cases:
     question: "입사 연도별 신규 입사자 수 추이는 어떻게 되는가?"
     category: org_analysis
     expected_intent: [org_analysis, global_analysis]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)
+        WITH DISTINCT e.name AS emp, substring(e.hire_date, 0, 4) AS year
+        WITH year, count(*) AS hires
+        RETURN year, hires ORDER BY year
+      checks:
+        - {type: key_set, column: year, mode: subset}
 
   - id: q04_over_max_projects
     question: "최대 동시 프로젝트 수(max_projects)를 초과해서 배정된 직원은 누구인가?"
     category: global_analysis
     expected_intent: [global_analysis, org_analysis, personnel_search]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[:WORKS_ON]->(p:Project)
+        WITH e.name AS name, max(e.max_projects) AS mx,
+             count(DISTINCT p.name) AS cnt
+        WHERE cnt > mx
+        RETURN name, mx, cnt ORDER BY cnt DESC
+      checks:
+        - {type: key_set, column: name, mode: subset}
 
   - id: q05_top10_skills
     question: "사내에서 가장 많은 직원이 보유한 스킬 TOP 10은?"
     category: global_analysis
     expected_intent: [global_analysis, org_analysis, personnel_search]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)
+        WITH s.name AS skill, count(DISTINCT e.name) AS holders
+        RETURN skill, holders ORDER BY holders DESC LIMIT 10
+      checks:
+        - {type: answer_contains_top, column: skill}
+        - {type: key_set, column: skill, mode: jaccard, jaccard_min: 0.6}
 
   - id: q06_shortage_high_demand
     question: "시장 수요(market_demand=high)인 스킬 중 사내 보유 인력이 가장 부족한 스킬은?"
@@ -73,6 +110,16 @@ cases:
     question: "직무 유형별 평균 스킬 보유 개수와 평균 effective_rate는?"
     category: org_analysis
     expected_intent: [org_analysis, global_analysis]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
+        WITH e.job_type AS job, e.name AS emp,
+             count(DISTINCT s.name) AS skill_cnt, avg(r.effective_rate) AS eff
+        WITH job, avg(skill_cnt) AS avg_skills, avg(eff) AS avg_eff
+        RETURN job, avg_skills, avg_eff ORDER BY job
+      checks:
+        - {type: key_set, column: job, mode: subset}
 
   - id: q09_budget_execution_by_status
     question: "프로젝트 상태별 예산 집행률(budget_spent/budget_allocated)은?"
@@ -86,21 +133,61 @@ cases:
     question: "필요 인원(required_headcount) 대비 실제 배정 인원이 부족한 프로젝트는?"
     category: project_matching
     expected_intent: [project_matching, global_analysis, org_analysis]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (p:Project)
+        OPTIONAL MATCH (e:Employee)-[:WORKS_ON]->(p)
+        WITH p.name AS project, p.required_headcount AS req,
+             count(DISTINCT e.name) AS assigned
+        WHERE assigned < req
+        RETURN project, req, assigned ORDER BY req - assigned DESC
+      checks:
+        - {type: key_set, column: project, mode: jaccard, jaccard_min: 0.5}
 
   - id: q11_top5_projects_contribution
     question: "가장 많은 직원이 참여한 프로젝트 TOP 5와 평균 기여도(contribution_percent)는?"
     category: project_matching
     expected_intent: [project_matching, global_analysis, org_analysis]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)
+        WITH p.name AS project, count(DISTINCT e.name) AS members,
+             avg(w.contribution_percent) AS avg_contrib
+        RETURN project, members, avg_contrib ORDER BY members DESC LIMIT 5
+      checks:
+        - {type: answer_contains_top, column: project}
+        - {type: key_set, column: project, mode: jaccard, jaccard_min: 0.6}
 
   - id: q12_project_type_budget_duration
     question: "프로젝트 타입별 평균 예산과 평균 기간(duration_months)은?"
     category: org_analysis
     expected_intent: [org_analysis, global_analysis, project_matching]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (p:Project)
+        WITH p.type AS type, avg(p.budget_million) AS avg_budget,
+             avg(p.duration_months) AS avg_months
+        RETURN type, avg_budget, avg_months ORDER BY type
+      checks:
+        - {type: key_set, column: type, mode: subset}
 
   - id: q13_required_skill_qualified_by_dept
     question: "프로젝트 필수 스킬(고급 이상)을 충족하는 직원은 부서별로 몇 명인가?"
     category: org_analysis
     expected_intent: [org_analysis, global_analysis, project_matching, personnel_search]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (p:Project)-[:REQUIRES]->(s:Skill)<-[r:HAS_SKILL]-(e:Employee)
+        MATCH (e)-[:BELONGS_TO]->(d:Department)
+        WHERE r.proficiency IN ['고급', '전문가']
+        WITH d.name AS dept, count(DISTINCT e.name) AS qualified
+        RETURN dept, qualified ORDER BY qualified DESC
+      checks:
+        - {type: key_set, column: dept, mode: jaccard, jaccard_min: 0.5}
 
   - id: q14_pm_position_distribution
     question: "진행 중인 프로젝트에 PM 역할로 참여하는 직원의 직급(position) 분포는?"
@@ -115,6 +202,17 @@ cases:
     question: "자격증 보유 수 TOP 10 직원과 그들이 참여 중인 프로젝트 수는?"
     category: certificate_search
     expected_intent: [certificate_search, global_analysis, personnel_search]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)
+        WITH e.name AS name, count(DISTINCT c.name) AS certs
+        ORDER BY certs DESC LIMIT 10
+        OPTIONAL MATCH (e2:Employee {name: name})-[:WORKS_ON]->(p:Project)
+        WITH name, certs, count(DISTINCT p.name) AS projects
+        RETURN name, certs, projects ORDER BY certs DESC
+      checks:
+        - {type: key_set, column: name, mode: jaccard, jaccard_min: 0.5}
 
   - id: q16_mentor_stats
     question: "멘토 1인당 평균 멘티 수는? 멘토는 어떤 직급·부서에 집중되어 있는가?"
@@ -129,21 +227,55 @@ cases:
     question: "agreed_rate가 hourly_rate보다 낮게 책정된 프로젝트 배정 건은 얼마나 되는가?"
     category: global_analysis
     expected_intent: [global_analysis, org_analysis, project_matching]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)
+        WHERE w.agreed_rate < e.hourly_rate
+        RETURN count(*) AS cnt
+      checks:
+        - {type: numeric_close, column: cnt, rel_tol: 0.02}
 
   - id: q18_hours_gap_employees
     question: "프로젝트별 실제 투입 공수(actual_hours) vs 배정 공수(allocated_hours) 갭이 큰 직원은?"
     category: project_matching
     expected_intent: [project_matching, global_analysis, org_analysis]
+    # reference 제외: '갭'의 해석(절대값 vs 초과분)이 갈려 oracle 부적합 → judge로 커버
+    tier1:
+      count_range: {min: 1}
+    judge: true
 
   - id: q19_dept_budget_vs_project_budget
     question: "부서 예산(budget_billion) 대비 해당 부서 주관 프로젝트 예산 합계 비율은?"
     category: org_analysis
     expected_intent: [org_analysis, global_analysis]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (d:Department)
+        OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(d)
+        WITH d.name AS dept, d.budget_billion AS dept_budget,
+             sum(p.budget_million) AS proj_budget_million
+        RETURN dept, dept_budget, proj_budget_million ORDER BY dept
+      checks:
+        - {type: key_set, column: dept, mode: subset}
 
   - id: q20_office_dept_stats
     question: "오피스별 소속 부서 수, 총 인원, 총 부서 예산 합계는?"
     category: org_analysis
     expected_intent: [org_analysis, global_analysis]
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (d:Department)-[:LOCATED_AT]->(o:Office)
+        OPTIONAL MATCH (e:Employee)-[:BELONGS_TO]->(d)
+        WITH o.name AS office, d.name AS dept, d.budget_billion AS budget,
+             count(DISTINCT e.name) AS emp
+        WITH office, count(dept) AS dept_count, sum(emp) AS total_emp,
+             sum(budget) AS total_budget
+        RETURN office, dept_count, total_emp, total_budget ORDER BY office
+      checks:
+        - {type: key_set, column: office, mode: subset}
 
   # ============================================
   # 검증 시나리오 4건 (PROGRESS.md 2026-05)
@@ -192,6 +324,15 @@ cases:
     expected_intent: [personnel_search]
     tier1:
       count_range: {min: 1}
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)
+        WHERE e.department = 'AI연구소'
+          AND NOT toLower(s.name) IN ['python', 'java']
+        RETURN DISTINCT e.name AS name
+      checks:
+        - {type: key_set, column: name, mode: jaccard, jaccard_min: 0.5}
 
   - id: n02_exclude_cert_holders
     question: "정보처리기사를 제외한 자격증을 보유한 직원은 누구야?"
@@ -199,3 +340,11 @@ cases:
     expected_intent: [certificate_search, personnel_search]
     tier1:
       count_range: {min: 1}
+    reference:
+      verified: "2026-07-22"
+      cypher: |
+        MATCH (e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)
+        WHERE toLower(c.name) <> '정보처리기사'
+        RETURN DISTINCT e.name AS name
+      checks:
+        - {type: key_set, column: name, mode: jaccard, jaccard_min: 0.5}
