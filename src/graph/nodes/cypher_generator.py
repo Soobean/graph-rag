@@ -12,7 +12,6 @@ Cypher Generator Node
   (Eval 점수, 응답 시간)에 근거해 재도입
 """
 
-from typing import Any
 
 from src.application.llm import LLMTaskService
 from src.auth.access_policy import AccessPolicy
@@ -66,39 +65,6 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
             )
         return self._schema_cache
 
-    # ------------------------------------------------------------------
-    # Cypher 교정 규칙은 src/domain/cypher/corrections.py로 이전됨.
-    # 아래 위임 메서드들은 과도기용 — 다음 커밋에서 apply_corrections() 직접
-    # 호출로 교체 후 제거된다.
-    # ------------------------------------------------------------------
-
-    def _correct_parameters(
-        self,
-        parameters: dict[str, Any],
-        entities: dict[str, list[str]],
-    ) -> dict[str, Any]:
-        """파라미터 값 보정 (도메인 모델 위임)"""
-        return corrections.correct_parameters(parameters, entities)
-
-    def _fix_not_in_syntax(self, cypher: str) -> str:
-        """SQL식 NOT IN 문법 교정 (도메인 모델 위임)"""
-        return corrections.fix_not_in_syntax(cypher)
-
-    def _fix_in_clause_to_tolower(self, cypher: str) -> str:
-        """IN 절 case-insensitive 변환 (도메인 모델 위임)"""
-        return corrections.fix_in_clause_to_tolower(cypher)
-
-    def _fix_aggregation_type_a_return(self, cypher: str) -> str:
-        """집계 후 TYPE A RETURN 안티패턴 교정 (도메인 모델 위임)"""
-        return corrections.fix_aggregation_type_a_return(cypher)
-
-    def _coerce_tolower_params(
-        self,
-        cypher: str,
-        parameters: dict[str, Any],
-    ) -> dict[str, Any]:
-        """toLower 파라미터 타입 강제 (도메인 모델 위임)"""
-        return corrections.coerce_tolower_params(cypher, parameters)
 
     async def _process(self, state: GraphRAGState) -> CypherGeneratorUpdate:
         """
@@ -164,21 +130,13 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 intent=intent,
             )
 
-            cypher = result.get("cypher", "")
-            parameters = result.get("parameters", {})
-
-            # Cypher 문법 보정 (SQL-style NOT IN → Cypher NOT ... IN)
-            cypher = self._fix_not_in_syntax(cypher)
-
-            # IN 절 case-insensitive 보정 (s.name IN $list → ANY ... toLower)
-            cypher = self._fix_in_clause_to_tolower(cypher)
-
-            # 집계 후 TYPE A 반환 안티패턴 보정
-            cypher = self._fix_aggregation_type_a_return(cypher)
-
-            # 파라미터를 엔티티 값으로 보정 (LLM 접미사 추가 방지)
-            parameters = self._correct_parameters(parameters, raw_entities)
-            parameters = self._coerce_tolower_params(cypher, parameters)
+            # Cypher/파라미터 교정 (도메인 규칙 일괄 적용 — 순서 불변식은
+            # src/domain/cypher/corrections.py docstring 참고)
+            cypher, parameters = corrections.apply_corrections(
+                cypher=result.get("cypher", ""),
+                parameters=result.get("parameters", {}),
+                entities=raw_entities,
+            )
 
             # 기본적인 쿼리 검증
             if not cypher or not cypher.strip():
