@@ -165,6 +165,131 @@ class TestPipelineMetadata:
         assert result["metadata"]["cypher_parameters"] == {"name": "테스트"}
 
 
+class TestSelfCorrectingCypher:
+    """Self-Correction 루프: SyntaxError → 에러 피드백 재생성 (사이클 라우팅)"""
+
+    def _syntax_error(self, msg: str = "Invalid input 'OVER'"):
+        from src.domain.exceptions import QueryExecutionError
+
+        return QueryExecutionError(
+            f"Neo.ClientError.Statement.SyntaxError: {msg}", query="BAD"
+        )
+
+    def _setup_llm(self, mock_llm, cyphers: list[str]):
+        """generate_cypher가 호출마다 다른 Cypher를 반환하도록 세팅"""
+        mock_llm.classify_intent_and_extract_entities.return_value = {
+            "intent": "personnel_search",
+            "confidence": 0.9,
+            "entities": [{"type": "Employee", "value": "홍길동"}],
+        }
+        mock_llm.generate_cypher.side_effect = [
+            {"cypher": c, "parameters": {}} for c in cyphers
+        ]
+        mock_llm.generate_response.return_value = "응답"
+
+    @pytest.mark.asyncio
+    async def test_syntax_error_retries_and_succeeds(
+        self, pipeline, mock_llm, mock_neo4j
+    ):
+        """SyntaxError → 재생성 → 성공: 노드 2회 방문 + 최종 결과 정상"""
+        self._setup_llm(
+            mock_llm,
+            ["RETURN max(x) OVER ()", "MATCH (n) RETURN n"],
+        )
+        mock_neo4j.execute_cypher.side_effect = [
+            self._syntax_error(),
+            [{"n": {"labels": ["Employee"], "properties": {"name": "홍길동"}}}],
+        ]
+
+        result = await pipeline.run("홍길동 찾아줘")
+        path = result["metadata"]["execution_path"]
+
+        assert path.count("cypher_generator") == 2  # 최초 + 재생성
+        assert "graph_executor_error" in path  # 1차 실패 기록
+        assert path.count("graph_executor") == 1  # 2차 성공
+        assert mock_llm.generate_cypher.call_count == 2
+        # 재생성 호출에 에러 피드백 포함
+        second_call = mock_llm.generate_cypher.call_args_list[1]
+        assert "SyntaxError" in second_call.kwargs["error_feedback"]
+        assert result["metadata"]["result_count"] == 1
+        assert result["metadata"].get("error") is None
+
+    @pytest.mark.asyncio
+    async def test_retry_limit_exhausted_goes_to_response(
+        self, pipeline, mock_llm, mock_neo4j
+    ):
+        """연속 SyntaxError → 한도(1회) 소진 후 response_generator로 종료"""
+        self._setup_llm(mock_llm, ["BAD 1", "BAD 2", "BAD 3"])
+        mock_neo4j.execute_cypher.side_effect = [
+            self._syntax_error("attempt 1"),
+            self._syntax_error("attempt 2"),
+        ]
+
+        result = await pipeline.run("홍길동 찾아줘")
+        path = result["metadata"]["execution_path"]
+
+        # 최초 1회 + 재시도 1회 = generate 2회에서 멈춤 (무한루프 없음)
+        assert mock_llm.generate_cypher.call_count == 2
+        assert path.count("graph_executor_error") == 2
+        assert result["metadata"]["error"] is not None
+
+    @pytest.mark.asyncio
+    async def test_non_syntax_error_does_not_retry(
+        self, pipeline, mock_llm, mock_neo4j
+    ):
+        """연결 실패 등 비-신텍스 에러는 재시도 없이 종료 (재생성 무의미)"""
+        self._setup_llm(mock_llm, ["MATCH (n) RETURN n"])
+        mock_neo4j.execute_cypher.side_effect = Exception("Connection refused")
+
+        result = await pipeline.run("홍길동 찾아줘")
+        path = result["metadata"]["execution_path"]
+
+        assert mock_llm.generate_cypher.call_count == 1
+        assert path.count("cypher_generator") == 1
+        assert "graph_executor_error" in path
+
+    @pytest.mark.asyncio
+    async def test_disabled_flag_skips_retry(
+        self, mock_settings, mock_neo4j, mock_llm, mock_llm_gateway, graph_schema
+    ):
+        """cypher_self_correction_enabled=False면 SyntaxError여도 재시도 없음"""
+        from src.graph.pipeline import GraphRAGPipeline
+
+        mock_settings.cypher_self_correction_enabled = False
+        pipeline = GraphRAGPipeline(
+            settings=mock_settings,
+            neo4j_repository=mock_neo4j,
+            llm_tasks=mock_llm,
+            llm_gateway=mock_llm_gateway,
+            graph_schema=graph_schema,
+        )
+
+        self._setup_llm(mock_llm, ["BAD"])
+        mock_neo4j.execute_cypher.side_effect = self._syntax_error()
+
+        result = await pipeline.run("홍길동 찾아줘")
+
+        assert mock_llm.generate_cypher.call_count == 1
+        assert result["metadata"]["error"] is not None
+
+    @pytest.mark.asyncio
+    async def test_retry_metadata_records_retry_path(
+        self, pipeline, mock_llm, mock_neo4j
+    ):
+        """재시도 후 성공 시 최종 metadata가 깨끗함 (stale error/힌트 없음)"""
+        self._setup_llm(mock_llm, ["BAD", "MATCH (n) RETURN n"])
+        mock_neo4j.execute_cypher.side_effect = [
+            self._syntax_error(),
+            [{"n": "data"}],
+        ]
+
+        result = await pipeline.run("질문")
+
+        assert result["success"] is True
+        assert result["metadata"].get("error") is None
+        assert result["metadata"]["result_count"] == 1
+
+
 class TestPipelineErrorHandling:
     """파이프라인 에러 처리 테스트"""
 

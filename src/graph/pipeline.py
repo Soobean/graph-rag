@@ -94,6 +94,9 @@ def _build_step_description(
         return "그래프에서 엔티티 매칭"
 
     if node_name == "cypher_generator":
+        retry_count = state.get("cypher_retry_count", 0)
+        if retry_count > 0:
+            return f"Cypher 재생성 (재시도 {retry_count}회)"
         return "Cypher 쿼리 생성"
 
     if node_name == "graph_executor":
@@ -451,9 +454,39 @@ class GraphRAGPipeline:
             },
         )
 
-        # 5. Graph Executor -> Response Generator
-        # (ResponseGenerator 내부에서 empty results나 error를 처리하므로 바로 연결)
-        workflow.add_edge("graph_executor", "response_generator")
+        # 5. Graph Executor -> (Self-Correction 분기)
+        # SyntaxError 실패 + 재시도 여유가 있으면 cypher_generator로 되돌아가
+        # 에러 피드백 재생성 (사이클). 그 외에는 response_generator로.
+        # 종료 보장: state 카운터(cypher_retry_count)가 라우터에서 상한 판정
+        # + GraphExecutor가 skip_generation=False로 캐시 재사용 차단.
+        settings_ref = self._settings
+
+        def route_after_executor(
+            state: GraphRAGState,
+        ) -> Literal["cypher_generator", "response_generator"]:
+            """실행 결과에 따라 재생성 루프 or 응답 생성으로 라우팅"""
+            if (
+                settings_ref.cypher_self_correction_enabled
+                and state.get("cypher_error")
+                and state.get("cypher_retry_count", 0)
+                <= settings_ref.cypher_max_retries
+            ):
+                logger.info(
+                    f"Cypher SyntaxError — regenerating "
+                    f"(retry {state.get('cypher_retry_count')}/"
+                    f"{settings_ref.cypher_max_retries})"
+                )
+                return "cypher_generator"
+            return "response_generator"
+
+        workflow.add_conditional_edges(
+            "graph_executor",
+            route_after_executor,
+            {
+                "cypher_generator": "cypher_generator",
+                "response_generator": "response_generator",
+            },
+        )
 
         # 6. Clarification Handler -> END (명확화 요청 후 종료)
         workflow.add_edge("clarification_handler", END)
