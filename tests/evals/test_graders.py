@@ -360,3 +360,51 @@ class TestGoldenSetFile:
         cases = {c.id: c for c in load_golden_set(GOLDEN_SET_PATH)}
         for case_id in ("q02_career_vs_guideline", "s03_pinecone_gap_candidates"):
             assert cases[case_id].judge
+
+
+class TestResultExcludes:
+    """negation 회귀 감지 — 제외 값이 결과에 등장하면 실패"""
+
+    def test_excluded_value_absent_passes(self):
+        from evals.models import RefCheck
+
+        checks = (RefCheck(type="result_excludes", values=("Python", "Java")),)
+        results = grade_reference(
+            [{"name": "x"}],
+            checks,
+            graph_results=[
+                {"s": {"labels": ["Skill"], "properties": {"name": "Docker"}}}
+            ],
+            response="",
+            result_count=1,
+        )
+        assert results[0].passed
+
+    def test_excluded_value_present_fails(self):
+        from evals.models import RefCheck
+
+        checks = (RefCheck(type="result_excludes", values=("Python",)),)
+        results = grade_reference(
+            [{"name": "x"}],
+            checks,
+            graph_results=[
+                {"s": {"labels": ["Skill"], "properties": {"name": "python"}}}
+            ],
+            response="",
+            result_count=1,
+        )
+        assert not results[0].passed
+        assert "python" in results[0].detail
+
+    def test_case_insensitive_matching(self):
+        from evals.models import RefCheck
+
+        checks = (RefCheck(type="result_excludes", values=("JAVA",)),)
+        results = grade_reference(
+            [{"name": "x"}],
+            checks,
+            graph_results=[{"skill": "Java"}],
+            response="",
+            result_count=1,
+        )
+        assert not results[0].passed

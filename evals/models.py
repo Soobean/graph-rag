@@ -25,8 +25,9 @@ GOLDEN_SET_PATH = Path(__file__).parent / "golden_set.yaml"
 class RefCheck:
     """reference oracle 결과와 파이프라인 결과의 대조 규칙 1건"""
 
-    type: str  # key_set | answer_contains_top | count_match | numeric_close
+    type: str  # key_set | answer_contains_top | count_match | numeric_close | result_excludes
     column: str | None = None  # key_set/answer_contains_top/numeric_close 대상 컬럼
+    values: tuple[str, ...] = ()  # result_excludes: 결과에 등장하면 안 되는 값들
     mode: str = "subset"  # key_set: exact | subset | jaccard
     tolerance: int = 0  # count_match 허용 오차
     rel_tol: float = 0.05  # numeric_close 상대 오차
@@ -160,6 +161,7 @@ def _parse_reference(raw: dict[str, Any] | None) -> Reference | None:
             type=c["type"],
             column=c.get("column"),
             mode=c.get("mode", "subset"),
+            values=tuple(c.get("values", ())),
             tolerance=c.get("tolerance", 0),
             rel_tol=c.get("rel_tol", 0.05),
             jaccard_min=c.get("jaccard_min", 0.8),

@@ -275,6 +275,24 @@ def grade_reference(
                 )
             )
 
+        elif check.type == "result_excludes":
+            # negation 회귀 감지: 제외 조건이 실제로 걸렸다면 해당 값들이
+            # graph_results에 등장할 수 없다 (LIMIT 절단과 무관하게 유효한 검사)
+            found = sorted(
+                v
+                for v in (normalize_text(t) for t in check.values)
+                if v in pipeline_values
+            )
+            results.append(
+                CheckResult(
+                    name="result_excludes",
+                    passed=not found,
+                    detail=""
+                    if not found
+                    else f"excluded values present in results: {found}",
+                )
+            )
+
         else:
             results.append(
                 CheckResult(

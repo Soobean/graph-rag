@@ -332,7 +332,9 @@ cases:
           AND NOT toLower(s.name) IN ['python', 'java']
         RETURN DISTINCT e.name AS name
       checks:
-        - {type: key_set, column: name, mode: jaccard, jaccard_min: 0.5}
+        # key_set은 LIMIT 절단(200행 트리플)으로 부적합 — negation이 실제로
+        # 걸렸는지를 직접 검증: 제외 스킬이 결과에 등장하면 실패
+        - {type: result_excludes, values: [Python, Java]}
 
   - id: n02_exclude_cert_holders
     question: "정보처리기사를 제외한 자격증을 보유한 직원은 누구야?"
@@ -348,3 +350,4 @@ cases:
         RETURN DISTINCT e.name AS name
       checks:
         - {type: key_set, column: name, mode: jaccard, jaccard_min: 0.5}
+        - {type: result_excludes, values: [정보처리기사]}
