@@ -202,6 +202,47 @@ class TestCypherGeneratorNode:
         assert "cypher_generator_content_filter" in result["execution_path"]
 
     @pytest.mark.asyncio
+    async def test_retry_passes_error_feedback(self, node, mock_llm, mock_neo4j):
+        """재시도 상태(cypher_error 존재)면 피드백을 generate_cypher에 전달 +
+        재생성 성공 시 stale error/힌트 클리어"""
+        mock_llm.generate_cypher.return_value = {
+            "cypher": "MATCH (n) RETURN n",
+            "parameters": {},
+        }
+
+        state = GraphRAGState(
+            question="질문",
+            entities={"Employee": ["홍길동"]},
+            cypher_retry_count=1,
+            cypher_error="SyntaxError: Invalid input 'OVER'",
+            failed_cypher="RETURN max(x) OVER ()",
+            error="Query execution failed: ...",  # 이전 실행이 남긴 stale error
+        )
+
+        result = await node(state)
+
+        # 피드백에 에러와 실패 쿼리가 포함되어 전달됨
+        feedback = mock_llm.generate_cypher.call_args.kwargs["error_feedback"]
+        assert "SyntaxError: Invalid input 'OVER'" in feedback
+        assert "RETURN max(x) OVER ()" in feedback
+        # 재생성 성공 → stale error/힌트 클리어 (route_after_cypher 오염 방지)
+        assert result["error"] is None
+        assert result["cypher_error"] is None
+        assert result["failed_cypher"] is None
+
+    @pytest.mark.asyncio
+    async def test_first_attempt_empty_feedback(self, node, mock_llm, base_state):
+        """최초 생성 시 error_feedback은 빈 문자열"""
+        mock_llm.generate_cypher.return_value = {
+            "cypher": "MATCH (n) RETURN n",
+            "parameters": {},
+        }
+
+        await node(base_state)
+
+        assert mock_llm.generate_cypher.call_args.kwargs["error_feedback"] == ""
+
+    @pytest.mark.asyncio
     async def test_domain_corrections_applied(self, node, mock_llm, base_state):
         """노드 → 도메인 교정(apply_corrections) 배선 스모크.
 

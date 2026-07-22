@@ -196,3 +196,35 @@ class TestDecomposeQuery:
         call_kwargs = mock_gateway.generate_json.call_args.kwargs
         assert call_kwargs["model_tier"] == ModelTier.LIGHT
         assert result["is_multi_hop"] is False
+
+
+class TestGenerateCypherErrorFeedback:
+    """Self-Correction: error_feedback 파라미터 계약"""
+
+    @pytest.mark.asyncio
+    async def test_error_feedback_included_in_prompt(
+        self, service, mock_gateway
+    ) -> None:
+        """error_feedback이 user 프롬프트에 포함됨"""
+        mock_gateway.generate_json_with_fallback.return_value = {"cypher": "MATCH"}
+
+        await service.generate_cypher(
+            question="질문",
+            schema={},
+            entities=[],
+            error_feedback="PREVIOUS ATTEMPT FAILED: SyntaxError at line 5",
+        )
+
+        call_kwargs = mock_gateway.generate_json_with_fallback.call_args.kwargs
+        assert "PREVIOUS ATTEMPT FAILED" in call_kwargs["user_prompt"]
+        assert "SyntaxError at line 5" in call_kwargs["user_prompt"]
+
+    @pytest.mark.asyncio
+    async def test_empty_feedback_not_in_prompt(self, service, mock_gateway) -> None:
+        """최초 생성(빈 피드백) 시 프롬프트에 에러 섹션 없음"""
+        mock_gateway.generate_json_with_fallback.return_value = {"cypher": "MATCH"}
+
+        await service.generate_cypher(question="질문", schema={}, entities=[])
+
+        call_kwargs = mock_gateway.generate_json_with_fallback.call_args.kwargs
+        assert "PREVIOUS ATTEMPT FAILED" not in call_kwargs["user_prompt"]

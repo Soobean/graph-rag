@@ -66,6 +66,30 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
         return self._schema_cache
 
 
+    @staticmethod
+    def _build_error_feedback(state: GraphRAGState) -> str:
+        """Self-Correction 재생성용 에러 피드백 텍스트 조립.
+
+        이전 실행이 SyntaxError로 실패한 경우(state.cypher_error 존재)에만
+        내용을 만들고, 최초 생성 시에는 빈 문자열을 반환한다
+        (프롬프트 {error_feedback} placeholder가 빈 값으로 채워짐).
+        """
+        cypher_error = state.get("cypher_error")
+        if not cypher_error:
+            return ""
+
+        failed_cypher = state.get("failed_cypher", "") or ""
+        return (
+            "\n⚠️ PREVIOUS ATTEMPT FAILED — FIX THE ERROR:\n"
+            "The previous query failed with this Neo4j error:\n"
+            f"{cypher_error}\n\n"
+            "Failed query:\n"
+            f"{failed_cypher}\n\n"
+            "Generate a corrected query. Do NOT repeat the same mistake. "
+            "Use only valid Neo4j Cypher syntax (no SQL window functions like "
+            "OVER(), no map-property access inside MATCH patterns)."
+        )
+
     async def _process(self, state: GraphRAGState) -> CypherGeneratorUpdate:
         """
         Cypher 쿼리 생성
@@ -82,6 +106,8 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
         question = state.get("question", "")
 
         # 캐시 히트 시 스킵 (이미 cypher_query가 설정됨)
+        # 주: 캐시 쿼리가 SyntaxError로 실패하면 GraphExecutor가
+        # skip_generation=False로 클리어하므로 재시도 시 실제 재생성됨
         if state.get("skip_generation"):
             self._logger.info("Skipping Cypher generation (cache hit)")
             # 캐시된 값은 이미 state에 있으므로 execution_path만 추가
@@ -118,6 +144,14 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 policy = user_context.get_access_policy()
                 schema = self._filter_schema_for_policy(schema, policy)
 
+            # Self-Correction: 이전 실행이 SyntaxError로 실패했으면 피드백 조립
+            error_feedback = self._build_error_feedback(state)
+            if error_feedback:
+                self._logger.info(
+                    f"Regenerating Cypher with error feedback "
+                    f"(retry #{state.get('cypher_retry_count', 0)})"
+                )
+
             # LLM을 통한 Cypher 생성 (HEAVY 우선 + LIGHT fallback)
             intent = state.get("intent", "unknown")
             result = await self._llm.generate_cypher(
@@ -128,6 +162,7 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 if query_plan
                 else None,  # Multi-hop 쿼리 계획 전달
                 intent=intent,
+                error_feedback=error_feedback,
             )
 
             # Cypher/파라미터 교정 (도메인 규칙 일괄 적용 — 순서 불변식은
@@ -150,6 +185,11 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 cypher_query=cypher,
                 cypher_parameters=parameters,
                 execution_path=[self.name],
+                # Self-Correction: 재생성 성공 시 stale error/힌트 클리어
+                # (남겨두면 route_after_cypher가 즉시 response_generator로 빠짐)
+                error=None,
+                cypher_error=None,
+                failed_cypher=None,
             )
 
         except LLMContentFilterError as e:

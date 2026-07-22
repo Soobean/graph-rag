@@ -189,3 +189,4 @@ user: |
 
   Query Plan:
   {query_plan_str}
+  {error_feedback}

@@ -93,6 +93,7 @@ class LLMTaskService:
         entities: list[dict[str, Any]],
         query_plan: dict[str, Any] | None = None,
         intent: str = "",
+        error_feedback: str = "",
     ) -> CypherGenerationResult:
         """
         Cypher 쿼리 생성. HEAVY 우선, 실패 시 LIGHT fallback.
@@ -103,6 +104,8 @@ class LLMTaskService:
             entities: 추출된 엔티티 목록
             query_plan: Multi-hop 쿼리 계획 (선택적)
             intent: 질문 의도 (TYPE A/B 매핑에 사용)
+            error_feedback: Self-Correction 재생성 시 이전 실패 피드백
+                (실패 Cypher + SyntaxError 메시지). 최초 생성 시 빈 문자열.
 
         Returns:
             CypherGenerationResult: Generated Cypher query and metadata
@@ -122,6 +125,7 @@ class LLMTaskService:
             entities_str=entities_str,
             query_plan_str=query_plan_str,
             intent=intent or "unknown",
+            error_feedback=error_feedback,
         )
 
         result = await self._gateway.generate_json_with_fallback(
