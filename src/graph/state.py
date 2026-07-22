@@ -60,6 +60,11 @@ class GraphRAGState(TypedDict, total=False):
     graph_results: list[dict[str, Any]]
     result_count: int
 
+    # ── 3b. Self-Correction (SyntaxError 재생성 루프) ──
+    cypher_retry_count: int  # executor가 재시도 가능 실패 시 +1
+    cypher_error: str | None  # 재시도 사유 (SyntaxError 메시지), 성공 시 None
+    failed_cypher: str | None  # 실패한 쿼리 원문 (재생성 피드백용)
+
     # ── 4. Response ────────────────────────────────────
     response: str
 

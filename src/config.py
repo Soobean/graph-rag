@@ -247,6 +247,20 @@ class Settings(BaseSettings):
     )
 
     # ============================================
+    # Cypher Self-Correction 설정
+    # ============================================
+    cypher_self_correction_enabled: bool = Field(
+        default=True,
+        description="Cypher 실행 SyntaxError 시 에러 피드백 재생성 루프 활성화",
+    )
+    cypher_max_retries: int = Field(
+        default=1,
+        ge=0,
+        le=3,
+        description="Cypher 재생성 최대 횟수 (재시도당 HEAVY 호출 +1)",
+    )
+
+    # ============================================
     # 온톨로지 설정
     # ============================================
     ontology_mode: Literal["yaml", "neo4j", "hybrid"] = Field(

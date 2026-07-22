@@ -29,6 +29,9 @@ def mock_settings():
     # 채팅 자동 승인 설정
     settings.chat_auto_approve_enabled = True
     settings.chat_auto_approve_threshold = 0.9
+    # Cypher Self-Correction (MagicMock 속성은 int 비교가 안 되므로 명시 세팅)
+    settings.cypher_self_correction_enabled = True
+    settings.cypher_max_retries = 1
     return settings
 
 

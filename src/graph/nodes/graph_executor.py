@@ -15,6 +15,27 @@ from src.graph.state import GraphRAGState
 from src.repositories.neo4j_repository import Neo4jRepository
 from src.repositories.query_cache_repository import QueryCacheRepository
 
+# Cypher SyntaxError 판별용 메시지 패턴 (드라이버 예외 타입 접근 실패 시 fallback)
+_SYNTAX_ERROR_PATTERNS = (
+    "SyntaxError",
+    "Invalid input",
+    "Neo.ClientError.Statement.SyntaxError",
+)
+
+
+def _is_retryable_syntax_error(e: Exception) -> bool:
+    """실행 실패가 Cypher SyntaxError인지 판별 (재생성으로 고칠 수 있는 유형).
+
+    타임아웃/연결 오류(재생성 무의미), 보안 차단(의도된 거부)은 제외.
+    execute_cypher가 QueryExecutionError(str(e))로 래핑하며 `from e` 체이닝하므로
+    원본 드라이버 예외는 __cause__에서 확인한다.
+    """
+    cause = e.__cause__
+    if cause is not None and type(cause).__name__ == "CypherSyntaxError":
+        return True
+    message = str(e)
+    return any(pattern in message for pattern in _SYNTAX_ERROR_PATTERNS)
+
 
 def _is_node(value: Any) -> bool:
     """Neo4j 노드인지 판별 (labels 키가 list인 dict)"""
@@ -150,10 +171,32 @@ class GraphExecutorNode(BaseNode[GraphExecutorUpdate]):
                 graph_results=results,
                 result_count=len(results),
                 execution_path=[self.name],
+                # Self-Correction: 성공 시 stale 재시도 힌트 클리어
+                cypher_error=None,
+                failed_cypher=None,
             )
 
         except Exception as e:
             self._logger.error(f"Query execution failed: {e}")
+
+            if _is_retryable_syntax_error(e):
+                # SyntaxError → 재생성 루프 힌트 세팅 (라우팅은 pipeline 담당)
+                retry_count = state.get("cypher_retry_count", 0) + 1
+                self._logger.warning(
+                    f"Cypher SyntaxError detected (retry hint #{retry_count})"
+                )
+                return GraphExecutorUpdate(
+                    graph_results=[],
+                    result_count=0,
+                    error=f"Query execution failed: {str(e)}",
+                    execution_path=[f"{self.name}_error"],
+                    cypher_retry_count=retry_count,
+                    cypher_error=str(e),
+                    failed_cypher=cypher_query,
+                    # 캐시 히트 쿼리가 실패한 경우 재진입 시 실제 재생성 강제
+                    skip_generation=False,
+                )
+
             return GraphExecutorUpdate(
                 graph_results=[],
                 result_count=0,

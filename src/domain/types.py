@@ -266,6 +266,9 @@ class CypherGeneratorUpdate(TypedDict, total=False):
     cypher_parameters: dict[str, Any]
     execution_path: list[str]
     error: str | None
+    # Self-Correction: 재생성 성공 시 stale 재시도 힌트 클리어
+    cypher_error: str | None
+    failed_cypher: str | None
 
 
 class GraphExecutorUpdate(TypedDict, total=False):
@@ -275,6 +278,11 @@ class GraphExecutorUpdate(TypedDict, total=False):
     result_count: int
     execution_path: list[str]
     error: str | None
+    # Self-Correction: SyntaxError 시 재생성 루프 힌트
+    cypher_retry_count: int
+    cypher_error: str | None
+    failed_cypher: str | None
+    skip_generation: bool  # 캐시 히트 쿼리 실패 시 False로 클리어 (무한루프 방지)
 
 
 class ResponseGeneratorUpdate(TypedDict, total=False):

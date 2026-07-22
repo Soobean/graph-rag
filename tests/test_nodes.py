@@ -262,6 +262,69 @@ class TestGraphExecutorNode:
         assert "error" in result
         assert "graph_executor_error" in result["execution_path"]
 
+    # --- Self-Correction: SyntaxError 판별 ---
+
+    @pytest.mark.asyncio
+    async def test_syntax_error_sets_retry_hints(self, node, mock_neo4j):
+        """SyntaxError 실패 시 재생성 루프 힌트(cypher_error 등) 세팅"""
+        from src.domain.exceptions import QueryExecutionError
+
+        state = GraphRAGState(cypher_query="MATCH (n RETURN n", cypher_retry_count=0)
+        mock_neo4j.execute_cypher.side_effect = QueryExecutionError(
+            "Neo.ClientError.Statement.SyntaxError: Invalid input 'RETURN'",
+            query="MATCH (n RETURN n",
+        )
+
+        result = await node(state)
+
+        assert result["cypher_retry_count"] == 1
+        assert "SyntaxError" in result["cypher_error"]
+        assert result["failed_cypher"] == "MATCH (n RETURN n"
+        assert result["skip_generation"] is False  # 캐시 재사용 방지
+        assert "graph_executor_error" in result["execution_path"]
+
+    @pytest.mark.asyncio
+    async def test_non_syntax_error_no_retry_hints(self, node, mock_neo4j):
+        """연결 실패 등 비-신텍스 에러는 재시도 힌트 없음 (재생성 무의미)"""
+        state = GraphRAGState(cypher_query="MATCH (n) RETURN n")
+        mock_neo4j.execute_cypher.side_effect = Exception("Connection refused")
+
+        result = await node(state)
+
+        assert "cypher_error" not in result
+        assert "cypher_retry_count" not in result
+        assert "graph_executor_error" in result["execution_path"]
+
+    @pytest.mark.asyncio
+    async def test_success_clears_retry_hints(self, node, mock_neo4j):
+        """실행 성공 시 stale 재시도 힌트 클리어 (재시도 후 성공 경로)"""
+        state = GraphRAGState(
+            cypher_query="MATCH (n) RETURN n",
+            cypher_retry_count=1,
+            cypher_error="이전 SyntaxError",
+            failed_cypher="MATCH (n RETURN n",
+        )
+        mock_neo4j.execute_cypher.return_value = [{"n": "data"}]
+
+        result = await node(state)
+
+        assert result["cypher_error"] is None
+        assert result["failed_cypher"] is None
+        assert result["result_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_retry_count_increments_from_previous(self, node, mock_neo4j):
+        """재시도 카운터는 이전 값에서 +1 (한도 판정의 근거)"""
+        from src.domain.exceptions import QueryExecutionError
+
+        state = GraphRAGState(cypher_query="BAD", cypher_retry_count=1)
+        mock_neo4j.execute_cypher.side_effect = QueryExecutionError(
+            "SyntaxError: Invalid input", query="BAD"
+        )
+
+        result = await node(state)
+        assert result["cypher_retry_count"] == 2
+
 
 class TestResponseGeneratorNode:
     """ResponseGeneratorNode 테스트"""
