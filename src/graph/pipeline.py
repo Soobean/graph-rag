@@ -532,6 +532,15 @@ class GraphRAGPipeline:
             "session_id": session_id or "",
             "messages": [HumanMessage(content=question)],
             "execution_path": [],
+            # 질문 단위 상태 리셋 — checkpointer가 세션(thread_id) 단위로
+            # state를 유지하므로 리셋하지 않으면:
+            # - error: 실패한 이전 질문의 error가 route_after_resolver를 단락시켜
+            #   이후 질문 전부가 옛 에러로 응답됨 (세션 오염)
+            # - cypher_retry_count: 재시도 예산이 세션 누적으로 영구 소진됨
+            "error": None,
+            "cypher_retry_count": 0,
+            "cypher_error": None,
+            "failed_cypher": None,
         }
         if self._graph_schema:
             initial_state["schema"] = self._graph_schema
@@ -658,6 +667,15 @@ class GraphRAGPipeline:
             "session_id": session_id or "",
             "messages": [HumanMessage(content=question)],
             "execution_path": [],
+            # 질문 단위 상태 리셋 — checkpointer가 세션(thread_id) 단위로
+            # state를 유지하므로 리셋하지 않으면:
+            # - error: 실패한 이전 질문의 error가 route_after_resolver를 단락시켜
+            #   이후 질문 전부가 옛 에러로 응답됨 (세션 오염)
+            # - cypher_retry_count: 재시도 예산이 세션 누적으로 영구 소진됨
+            "error": None,
+            "cypher_retry_count": 0,
+            "cypher_error": None,
+            "failed_cypher": None,
         }
         if self._graph_schema:
             initial_state["schema"] = self._graph_schema
@@ -723,6 +741,15 @@ class GraphRAGPipeline:
             "session_id": session_id or "",
             "messages": [HumanMessage(content=question)],
             "execution_path": [],
+            # 질문 단위 상태 리셋 — checkpointer가 세션(thread_id) 단위로
+            # state를 유지하므로 리셋하지 않으면:
+            # - error: 실패한 이전 질문의 error가 route_after_resolver를 단락시켜
+            #   이후 질문 전부가 옛 에러로 응답됨 (세션 오염)
+            # - cypher_retry_count: 재시도 예산이 세션 누적으로 영구 소진됨
+            "error": None,
+            "cypher_retry_count": 0,
+            "cypher_error": None,
+            "failed_cypher": None,
         }
         if self._graph_schema:
             initial_state["schema"] = self._graph_schema

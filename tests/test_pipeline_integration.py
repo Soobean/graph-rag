@@ -289,6 +289,52 @@ class TestSelfCorrectingCypher:
         assert result["metadata"].get("error") is None
         assert result["metadata"]["result_count"] == 1
 
+    @pytest.mark.asyncio
+    async def test_retry_budget_resets_per_question_in_session(
+        self, mock_settings, mock_neo4j, mock_llm, mock_llm_gateway, graph_schema
+    ):
+        """[회귀] 재시도 예산은 질문마다 리셋 — checkpointer 세션 잔존 카운터 방어.
+
+        checkpointer가 thread_id(세션) 단위로 state를 유지하므로, 초기 상태에서
+        cypher_retry_count를 리셋하지 않으면 턴 1의 카운터가 턴 2로 누수되어
+        이후 질문들이 self-correction을 받지 못한다.
+        """
+        from langgraph.checkpoint.memory import MemorySaver
+
+        from src.graph.pipeline import GraphRAGPipeline
+
+        pipeline = GraphRAGPipeline(
+            settings=mock_settings,
+            neo4j_repository=mock_neo4j,
+            llm_tasks=mock_llm,
+            llm_gateway=mock_llm_gateway,
+            graph_schema=graph_schema,
+            checkpointer=MemorySaver(),
+        )
+
+        # 턴 1: 재시도 한도 소진 (SyntaxError 2연속 → count=2 잔존)
+        self._setup_llm(mock_llm, ["BAD 1", "BAD 2"])
+        mock_neo4j.execute_cypher.side_effect = [
+            self._syntax_error("turn1 a"),
+            self._syntax_error("turn1 b"),
+        ]
+        await pipeline.run("첫 번째 질문", session_id="same-session")
+        assert mock_llm.generate_cypher.call_count == 2  # 한도 소진 확인
+
+        # 턴 2 (같은 세션): 첫 SyntaxError → 재시도가 다시 가능해야 함
+        mock_llm.generate_cypher.reset_mock()
+        self._setup_llm(mock_llm, ["BAD 3", "MATCH (n) RETURN n"])
+        mock_neo4j.execute_cypher.side_effect = [
+            self._syntax_error("turn2"),
+            [{"n": "data"}],
+        ]
+        result = await pipeline.run("두 번째 질문", session_id="same-session")
+
+        # 리셋이 없으면 count가 3이 되어 재시도 없이 1회로 끝남 (버그)
+        assert mock_llm.generate_cypher.call_count == 2
+        assert result["metadata"]["result_count"] == 1
+        assert result["metadata"].get("error") is None
+
 
 class TestPipelineErrorHandling:
     """파이프라인 에러 처리 테스트"""
