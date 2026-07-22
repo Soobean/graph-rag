@@ -309,6 +309,26 @@ class TestCypherCorrections:
         cypher = "WHERE s.name IN ['Python', 'Java']"
         assert fix_in_clause_to_tolower(cypher) == cypher
 
+    def test_parenthesized_negation_not_converted_known_limitation(self):
+        """괄호 negation `NOT (x.name IN $l)`은 무변환 — 알려진 한계 (docstring 명시).
+
+        유효 Cypher이므로 실행은 되지만 case-sensitive로 남는다.
+        canonicalize(fix_not_in_syntax)가 만드는 형태가 아니라 실전 발생 빈도 낮음.
+        """
+        cypher = "WHERE NOT (s.name IN $excluded)"
+        assert fix_in_clause_to_tolower(cypher) == cypher
+
+    def test_idempotent_on_converted_output(self):
+        """이미 변환된 출력에 재적용해도 불변 (self-correcting 루프 재호출 안전)"""
+        once = fix_in_clause_to_tolower("WHERE NOT s.name IN $l")
+        assert "NONE(_item IN $l" in once
+        assert fix_in_clause_to_tolower(once) == once
+
+    def test_llm_own_not_any_form_preserved(self):
+        """LLM이 자발적으로 생성한 `NOT ANY(...toLower...)` 형태는 그대로 보존"""
+        cypher = "AND NOT ANY(x IN $l WHERE toLower(s.name) = toLower(x))"
+        assert fix_in_clause_to_tolower(cypher) == cypher
+
     def test_apply_corrections_end_to_end_negation(self):
         """apply_corrections 전체 파이프라인: SQL식 NOT IN → NONE + 파라미터 보정"""
         result = apply_corrections(

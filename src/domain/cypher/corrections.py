@@ -80,8 +80,12 @@ def fix_in_clause_to_tolower(cypher: str) -> str:
         → WHERE NONE(_item IN $skillNames WHERE toLower(s.name) = toLower(_item))
           (NOT ANY(...)와 동치이며 연산자 우선순위 이슈가 없는 관용형)
 
-    알려진 한계: 파라미터(`$param`)가 아닌 리터럴 리스트(`IN ['a','b']`)는
-    변환하지 않음 — 리터럴은 LLM이 케이싱을 직접 제어하므로 위험 대비 이득이 작음.
+    알려진 한계:
+    - 파라미터(`$param`)가 아닌 리터럴 리스트(`IN ['a','b']`)는 변환하지 않음
+      — 리터럴은 LLM이 케이싱을 직접 제어하므로 위험 대비 이득이 작음.
+    - 괄호로 감싼 negation(`WHERE NOT (x.name IN $list)`)은 변환하지 않음
+      — 프롬프트/canonicalize가 만드는 형태가 아니며, 괄호 내부 매칭은
+      오탐 위험(패턴 predicate 등) 대비 이득이 작음. 유효 문법이므로 실행은 됨.
     """
 
     def replace(match: re.Match[str]) -> str:
