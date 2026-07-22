@@ -10,6 +10,7 @@ CypherGeneratorNode에서 이관된 characterization 테스트 + 회귀 테스�
 import re
 
 from src.domain.cypher import (
+    apply_corrections,
     coerce_tolower_params,
     correct_parameters,
     fix_aggregation_type_a_return,
@@ -230,25 +231,92 @@ class TestCypherCorrections:
         # bool은 int의 서브클래스 → 현재 구현은 str로 강제함 (동작 고정)
         assert result["b"] == ["2.5", "True", "s"]
 
-    # --- 현재 버그 고정 (negation IN 절 — 커밋 4에서 기대 동작으로 갱신 예정) ---
+    # --- negation IN 절 (2-pass 정규화: canonicalize → convert) ---
 
-    def test_bug_negation_in_clause_not_converted(self):
-        """[버그 고정] `WHERE NOT x.name IN $list`는 toLower 변환에서 누락됨.
-
-        2단계 커밋 4(2-pass 정규화)에서 NONE(...) 변환으로 갱신될 예정.
-        """
+    def test_negation_where_not_converts_to_none(self):
+        """`WHERE NOT x.name IN $list` → NONE(...toLower...) 변환 (버그 수정)"""
         cypher = "MATCH (s) WHERE NOT s.name IN $excluded RETURN s"
-        assert fix_in_clause_to_tolower(cypher) == cypher
+        fixed = fix_in_clause_to_tolower(cypher)
+        assert "WHERE NONE(_item IN $excluded" in fixed
+        assert "toLower(s.name)" in fixed
+        assert "NOT s.name IN $excluded" not in fixed
 
-    def test_bug_not_in_chain_stops_at_canonical_form(self):
-        """[버그 고정] `x.name NOT IN $l` 연쇄: 문법 교정까지만 되고 toLower 누락.
+    def test_negation_and_not_converts_to_none(self):
+        """`AND NOT x.name IN $list` → NONE 변환"""
+        cypher = "WHERE e.active = true AND NOT s.name IN $skills"
+        fixed = fix_in_clause_to_tolower(cypher)
+        assert "AND NONE(_item IN $skills" in fixed
 
-        _fix_not_in_syntax → `NOT x.name IN $l` → _fix_in_clause_to_tolower가
-        건너뜀. 커밋 4에서 NONE(...) 변환으로 갱신될 예정.
-        """
+    def test_negation_or_not_title_converts_to_none(self):
+        """`OR NOT p.title IN $names` → NONE 변환 (title 속성)"""
+        cypher = "WHERE x = 1 OR NOT p.title IN $names"
+        fixed = fix_in_clause_to_tolower(cypher)
+        assert "OR NONE(_item IN $names" in fixed
+        assert "toLower(p.title)" in fixed
+
+    def test_negation_sql_not_in_chain_converts(self):
+        """[원 버그] `x.name NOT IN $l` → canonicalize → NONE까지 완주"""
         cypher = "WHERE s.name NOT IN $excluded"
         step1 = fix_not_in_syntax(cypher)
         assert step1 == "WHERE NOT s.name IN $excluded"
         step2 = fix_in_clause_to_tolower(step1)
-        assert step2 == step1  # 변환 안 됨 (버그)
+        assert "WHERE NONE(_item IN $excluded" in step2
+        assert "toLower(s.name)" in step2
+
+    def test_negation_and_sql_not_in_chain_converts(self):
+        """`AND x.name NOT IN $l` 연쇄도 NONE까지 완주"""
+        cypher = "WHERE e.active = true AND s.name NOT IN $skills"
+        fixed = fix_in_clause_to_tolower(fix_not_in_syntax(cypher))
+        assert "AND NONE(_item IN $skills" in fixed
+
+    def test_negation_non_name_prop_not_converted(self):
+        """`WHERE NOT s.status IN $l` — non-name 속성은 toLower 미적용 (유효 문법 보존)"""
+        cypher = "WHERE NOT s.status IN $statuses"
+        assert fix_in_clause_to_tolower(cypher) == cypher
+
+    def test_negation_already_tolower_not_converted(self):
+        """`WHERE NOT toLower(s.name) IN $l` — 이미 toLower면 무변환"""
+        cypher = "WHERE NOT toLower(s.name) IN $names"
+        assert fix_in_clause_to_tolower(cypher) == cypher
+
+    def test_negation_lowercase_keywords_convert(self):
+        """소문자 `where not ... in` 도 NONE 변환 (IGNORECASE)"""
+        cypher = "match (s) where not s.name in $list return s"
+        fixed = fix_in_clause_to_tolower(cypher)
+        assert "NONE(_item IN $list" in fixed
+
+    def test_negation_pattern_predicate_not_affected(self):
+        """`WHERE NOT (e)-[:HAS_SKILL]->(s)` — 패턴 negation은 오탐하지 않음"""
+        cypher = "MATCH (e), (s) WHERE NOT (e)-[:HAS_SKILL]->(s) RETURN e"
+        assert fix_in_clause_to_tolower(cypher) == cypher
+
+    def test_mixed_positive_and_negative_in_clauses(self):
+        """positive + negative 혼재 시 각각 ANY / NONE으로 변환"""
+        cypher = "WHERE s.name IN $include AND NOT p.name IN $exclude"
+        fixed = fix_in_clause_to_tolower(cypher)
+        assert "WHERE ANY(_item IN $include" in fixed
+        assert "AND NONE(_item IN $exclude" in fixed
+
+    def test_negation_none_output_coerces_int_list(self):
+        """NONE 변환 결과도 coerce_tolower_params가 int 리스트를 str로 강제 (연동)"""
+        cypher = fix_in_clause_to_tolower("WHERE NOT s.name IN $excluded")
+        assert "NONE(_item IN $excluded" in cypher
+        result = coerce_tolower_params(cypher, {"excluded": [1, 2]})
+        assert result["excluded"] == ["1", "2"]
+
+    def test_literal_list_not_converted_known_limitation(self):
+        """리터럴 리스트 `IN ['a','b']`는 무변환 — 알려진 한계 (docstring 명시)"""
+        cypher = "WHERE s.name IN ['Python', 'Java']"
+        assert fix_in_clause_to_tolower(cypher) == cypher
+
+    def test_apply_corrections_end_to_end_negation(self):
+        """apply_corrections 전체 파이프라인: SQL식 NOT IN → NONE + 파라미터 보정"""
+        result = apply_corrections(
+            cypher="MATCH (s:Skill) WHERE s.name NOT IN $excluded RETURN s",
+            parameters={"excluded": ["python"]},
+            entities={"Skill": ["Python"]},
+        )
+        assert "NONE(_item IN $excluded" in result.cypher
+        assert "toLower(s.name)" in result.cypher
+        assert result.parameters["excluded"] == ["Python"]  # 엔티티 케이싱 복원
 

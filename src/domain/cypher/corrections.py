@@ -53,10 +53,11 @@ def fix_not_in_syntax(cypher: str) -> str:
     return fixed
 
 
-# `WHERE x.name IN $param` 또는 `WHERE x.<prop> IN $param` 패턴 감지
+# `WHERE [NOT] x.<prop> IN $param` 패턴 감지 (negation은 canonical form 전제)
 # — `toLower(x.name)` 또는 `toLower(...)` 등 함수 호출은 제외 (이미 처리됨)
 _IN_CLAUSE_PATTERN = re.compile(
     r"\b(WHERE|AND|OR)\s+"
+    r"(NOT\s+)?"  # canonical negation (fix_not_in_syntax가 만든 형태)
     r"(?!toLower\b|toUpper\b)"  # toLower/toUpper 시작이면 제외 (이미 처리됨)
     r"(\w+\.\w+)\s+"  # variable.property (e.g., s.name)
     r"IN\s+\$(\w+)\b",  # IN $paramName
@@ -66,30 +67,37 @@ _IN_CLAUSE_PATTERN = re.compile(
 
 def fix_in_clause_to_tolower(cypher: str) -> str:
     """
-    `WHERE x.name IN $list` 패턴을 case-insensitive 비교로 변환.
+    `WHERE [NOT] x.name IN $list` 패턴을 case-insensitive 비교로 변환.
 
     Why: DB에 'Python'/'python' 같은 케이싱 차이가 있어 IN 비교가 silently 실패.
     프롬프트가 강제하지만 LLM이 가끔 빠뜨림 → 후처리로 안전망.
 
-    변환: WHERE s.name IN $skillNames
-       →  WHERE ANY(item IN $skillNames WHERE toLower(s.name) = toLower(item))
+    변환 (2-pass 불변식 — fix_not_in_syntax가 canonicalize한 형태를 전제):
+        WHERE s.name IN $skillNames
+        → WHERE ANY(_item IN $skillNames WHERE toLower(s.name) = toLower(_item))
 
-    알려진 한계: `WHERE NOT x.name IN $list` (negation) 패턴은 변환하지 않음.
-    2단계 커밋 4(2-pass 정규화)에서 근본 해결 예정.
+        WHERE NOT s.name IN $skillNames
+        → WHERE NONE(_item IN $skillNames WHERE toLower(s.name) = toLower(_item))
+          (NOT ANY(...)와 동치이며 연산자 우선순위 이슈가 없는 관용형)
+
+    알려진 한계: 파라미터(`$param`)가 아닌 리터럴 리스트(`IN ['a','b']`)는
+    변환하지 않음 — 리터럴은 LLM이 케이싱을 직접 제어하므로 위험 대비 이득이 작음.
     """
 
     def replace(match: re.Match[str]) -> str:
         keyword = match.group(1)
-        prop_path = match.group(2)  # e.g., s.name
-        param_name = match.group(3)  # e.g., skillNames
+        negation = match.group(2)  # "NOT " 또는 None
+        prop_path = match.group(3)  # e.g., s.name
+        param_name = match.group(4)  # e.g., skillNames
 
         # 단순 휴리스틱: name/title 류 속성만 case-insensitive (id/status/타입 enum 제외)
         prop_name = prop_path.split(".", 1)[1].lower()
         if prop_name not in CASE_INSENSITIVE_PROPS:
             return match.group(0)  # 변환하지 않음
 
+        quantifier = "NONE" if negation else "ANY"
         return (
-            f"{keyword} ANY(_item IN ${param_name} "
+            f"{keyword} {quantifier}(_item IN ${param_name} "
             f"WHERE toLower({prop_path}) = toLower(_item))"
         )
 
