@@ -1,15 +1,15 @@
 {
-  "timestamp": "20260722_133407",
+  "timestamp": "20260722_134907",
   "total": 26,
-  "passed": 22,
-  "pass_rate": 0.8462,
+  "passed": 26,
+  "pass_rate": 1.0,
   "category_pass_rate": {
-    "certificate_search": "1/2",
-    "global_analysis": "3/4",
-    "mentoring_network": "0/1",
+    "certificate_search": "2/2",
+    "global_analysis": "4/4",
+    "mentoring_network": "1/1",
     "org_analysis": "10/10",
     "personnel_search": "2/2",
-    "project_matching": "6/7"
+    "project_matching": "7/7"
   },
   "cases": [
     {
@@ -41,7 +41,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)\nWHERE e.department IS NOT NULL AND e.hourly_rate IS NOT NULL\nWITH e.department AS department, AVG(e.hourly_rate) AS avg_hourly_rate\nORDER BY avg_hourly_rate DESC\nWITH COLLECT({department: department, avg_hourly_rate: avg_hourly_rate}) AS rows\nUNWIND rows AS row\nWITH row, rows[0] AS top_row\nRETURN row.department AS department,\n       row.avg_hourly_rate AS avg_hourly_rate,\n       CASE WHEN row.department = top_row.department THEN true ELSE false END AS is_highest_department,\n       top_row.department AS highest_department,\n       top_row.avg_hourly_rate AS highest_avg_hourly_rate\nORDER BY avg_hourly_rate DESC",
+        "cypher_query": "MATCH (e:Employee)\nWHERE e.hourly_rate IS NOT NULL AND e.department IS NOT NULL\nWITH e.department AS department, AVG(e.hourly_rate) AS avg_hourly_rate\nRETURN department, avg_hourly_rate\nORDER BY avg_hourly_rate DESC\nLIMIT 200",
         "result_count": 15,
         "execution_path": [
           "intent_entity_extractor",
@@ -54,7 +54,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 8.37
+      "elapsed_seconds": 6.78
     },
     {
       "case_id": "q02_career_vs_guideline",
@@ -94,8 +94,8 @@
       },
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[:HAS_POSITION]->(pos:Position)\nWITH e, pos,\n     CASE\n       WHEN e.years_experience IS NULL OR pos.min_years IS NULL OR pos.max_years IS NULL THEN 'unknown'\n       WHEN e.years_experience >= pos.min_years AND e.years_experience <= pos.max_years THEN 'matched'\n       ELSE 'mismatched'\n     END AS fit_status\nWITH fit_status,\n     COUNT(*) AS employee_count,\n     COLLECT({employee: e.name, years_experience: e.years_experience, position: pos.name, level: pos.level, min_years: pos.min_years, max_years: pos.max_years}) AS employees\nRETURN fit_status, employee_count, employees\nORDER BY CASE fit_status WHEN 'matched' THEN 1 WHEN 'mismatched' THEN 2 ELSE 3 END",
-        "result_count": 2,
+        "cypher_query": "MATCH (e:Employee)-[:HAS_POSITION]->(pos:Position)\nWITH e.name AS employee,\n     max(e.years_experience) AS years_experience,\n     pos.name AS position,\n     max(pos.min_years) AS min_years,\n     max(pos.max_years) AS max_years\nWHERE years_experience IS NOT NULL AND min_years IS NOT NULL AND max_years IS NOT NULL\nWITH employee, years_experience, position, min_years, max_years,\n     CASE\n       WHEN years_experience >= min_years AND years_experience <= max_years THEN '일치'\n       WHEN years_experience < min_years THEN '기준 미달'\n       WHEN years_experience > max_years THEN '기준 초과'\n       ELSE '판단불가'\n     END AS match_status\nRETURN position AS position,\n       min_years AS min_years,\n       max_years AS max_years,\n       match_status AS match_status,\n       COUNT(DISTINCT employee) AS employee_count\nORDER BY position, match_status",
+        "result_count": 17,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
@@ -107,7 +107,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 12.59
+      "elapsed_seconds": 10.88
     },
     {
       "case_id": "q03_hires_by_year",
@@ -138,7 +138,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)\nWHERE e.hire_date IS NOT NULL\nWITH date(e.hire_date).year AS hire_year, COUNT(e) AS new_hire_count\nRETURN hire_year, new_hire_count\nORDER BY hire_year ASC",
+        "cypher_query": "MATCH (e:Employee)\nWHERE e.hire_date IS NOT NULL\nWITH date(e.hire_date).year AS hire_year, COUNT(DISTINCT e.name) AS new_hires\nRETURN hire_year, new_hires\nORDER BY hire_year ASC",
         "result_count": 21,
         "execution_path": [
           "intent_entity_extractor",
@@ -151,12 +151,12 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 7.51
+      "elapsed_seconds": 7.48
     },
     {
       "case_id": "q04_over_max_projects",
       "category": "global_analysis",
-      "passed": false,
+      "passed": true,
       "checks": [
         {
           "name": "intent_match",
@@ -175,14 +175,14 @@
         },
         {
           "name": "key_set:name",
-          "passed": false,
-          "detail": "missing from pipeline: ['곽유진', '구하은', '남시은', '남하윤', '류지우']"
+          "passed": true,
+          "detail": ""
         }
       ],
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[:WORKS_ON]->(p:Project)\nWITH e, COUNT(DISTINCT p) AS actual_project_count\nWHERE actual_project_count > e.max_projects\nRETURN e.name AS employee, e.max_projects AS max_projects, actual_project_count\nORDER BY actual_project_count DESC, employee ASC\nLIMIT 200",
+        "cypher_query": "MATCH (e:Employee)-[:WORKS_ON]->(p:Project)\nWITH e.name AS employee, MAX(e.max_projects) AS max_projects, COUNT(DISTINCT p.name) AS actual_project_count\nWHERE max_projects IS NOT NULL AND actual_project_count > max_projects\nRETURN employee, max_projects, actual_project_count\nORDER BY actual_project_count DESC, employee ASC\nLIMIT 200",
         "result_count": 200,
         "execution_path": [
           "intent_entity_extractor",
@@ -195,7 +195,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 7.01
+      "elapsed_seconds": 6.63
     },
     {
       "case_id": "q05_top10_skills",
@@ -231,7 +231,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)\nWITH s.name AS skill, COUNT(DISTINCT e) AS employee_count\nRETURN skill, employee_count\nORDER BY employee_count DESC, skill ASC\nLIMIT 10",
+        "cypher_query": "MATCH (e:Employee)-[:HAS_SKILL]->(s:Skill)\nWITH s.name AS skill, COUNT(DISTINCT e.name) AS employee_count\nRETURN skill, employee_count\nORDER BY employee_count DESC, skill ASC\nLIMIT 10",
         "result_count": 10,
         "execution_path": [
           "intent_entity_extractor",
@@ -244,7 +244,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 6.17
+      "elapsed_seconds": 5.73
     },
     {
       "case_id": "q06_shortage_high_demand",
@@ -279,7 +279,7 @@
       },
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (s:Skill)\nWHERE s.market_demand = $marketDemand\nOPTIONAL MATCH (e:Employee)-[r:HAS_SKILL]->(s)\nWITH s, COUNT(DISTINCT e) AS employee_count\nRETURN s.name AS skill, employee_count, s.market_demand AS market_demand, s.category AS category, s.difficulty AS difficulty\nORDER BY employee_count ASC, skill ASC\nLIMIT 1",
+        "cypher_query": "MATCH (s:Skill)\nWHERE s.market_demand = $marketDemand\nOPTIONAL MATCH (e:Employee)-[:HAS_SKILL]->(s)\nWITH s.name AS skill, COUNT(DISTINCT e.name) AS employee_count\nRETURN skill, employee_count\nORDER BY employee_count ASC, skill ASC\nLIMIT 1",
         "result_count": 1,
         "execution_path": [
           "intent_entity_extractor",
@@ -292,7 +292,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 6.58
+      "elapsed_seconds": 5.77
     },
     {
       "case_id": "q07_expert_python_ml_dept",
@@ -332,7 +332,7 @@
       },
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\nWHERE r.proficiency = $proficiency\n  AND ANY(skillName IN $skillNames WHERE toLower(s.name) = toLower(skillName))\nWITH e.department AS department, COUNT(DISTINCT e) AS employee_count, COLLECT(DISTINCT e.name) AS employees\nRETURN department, employee_count, employees\nORDER BY employee_count DESC, department ASC\nLIMIT 200",
+        "cypher_query": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\nWHERE r.proficiency = $proficiency\n  AND ANY(skillName IN $skillNames WHERE toLower(s.name) = toLower(skillName))\nWITH e.department AS department, COUNT(DISTINCT e.name) AS expert_count\nRETURN department, expert_count\nORDER BY expert_count DESC",
         "result_count": 9,
         "execution_path": [
           "intent_entity_extractor",
@@ -345,7 +345,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 8.36
+      "elapsed_seconds": 9.44
     },
     {
       "case_id": "q08_jobtype_skill_stats",
@@ -376,8 +376,8 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)\nOPTIONAL MATCH (e)-[r:HAS_SKILL]->(s:Skill)\nWITH e.job_type AS job_type,\n     COUNT(s) AS skill_count_per_employee,\n     AVG(r.effective_rate) AS avg_effective_rate_per_employee\nRETURN job_type,\n       AVG(skill_count_per_employee) AS avg_skill_count,\n       AVG(avg_effective_rate_per_employee) AS avg_effective_rate\nORDER BY job_type",
-        "result_count": 13,
+        "cypher_query": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\nWITH e.name AS employee, max(e.job_type) AS job_type,\n     COUNT(DISTINCT s.name) AS skill_count,\n     AVG(r.effective_rate) AS avg_effective_rate_per_employee\nWITH job_type,\n     AVG(skill_count) AS avg_skill_count,\n     AVG(avg_effective_rate_per_employee) AS avg_effective_rate,\n     COUNT(DISTINCT employee) AS employee_count\nRETURN job_type, avg_skill_count, avg_effective_rate, employee_count\nORDER BY job_type",
+        "result_count": 12,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
@@ -389,7 +389,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 8.86
+      "elapsed_seconds": 9.08
     },
     {
       "case_id": "q09_budget_execution_by_status",
@@ -424,7 +424,7 @@
       },
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)\nWHERE p.budget_allocated IS NOT NULL AND p.budget_allocated <> 0 AND p.budget_spent IS NOT NULL\nWITH p.status AS status,\n     SUM(p.budget_spent) AS total_budget_spent,\n     SUM(p.budget_allocated) AS total_budget_allocated,\n     CASE WHEN SUM(p.budget_allocated) = 0 THEN NULL ELSE toFloat(SUM(p.budget_spent)) / SUM(p.budget_allocated) END AS execution_rate\nRETURN status, total_budget_spent, total_budget_allocated, execution_rate\nORDER BY status",
+        "cypher_query": "MATCH (p:Project)\nWHERE p.budget_allocated IS NOT NULL AND p.budget_allocated <> 0 AND p.budget_spent IS NOT NULL\nWITH p.status AS status,\n     SUM(p.budget_spent) AS total_budget_spent,\n     SUM(p.budget_allocated) AS total_budget_allocated,\n     CASE WHEN SUM(p.budget_allocated) = 0 THEN NULL\n          ELSE toFloat(SUM(p.budget_spent)) / SUM(p.budget_allocated)\n     END AS execution_rate\nRETURN status, total_budget_spent, total_budget_allocated, execution_rate\nORDER BY execution_rate DESC",
         "result_count": 5,
         "execution_path": [
           "intent_entity_extractor",
@@ -437,7 +437,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 7.45
+      "elapsed_seconds": 8.89
     },
     {
       "case_id": "q10_understaffed_projects",
@@ -468,7 +468,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)\nOPTIONAL MATCH (p)<-[w:WORKS_ON]-(e:Employee)\nWITH p, COUNT(DISTINCT e) AS actual_assigned\nWHERE actual_assigned < p.required_headcount\nRETURN p.name AS project, p.required_headcount AS required_headcount, actual_assigned AS actual_assigned, (p.required_headcount - actual_assigned) AS shortage, p.status AS status, p.start_date AS start_date\nORDER BY shortage DESC, project ASC\nLIMIT 200",
+        "cypher_query": "MATCH (p:Project)\nOPTIONAL MATCH (e:Employee)-[:WORKS_ON]->(p)\nWITH p.name AS project, p.required_headcount AS required_headcount, COUNT(DISTINCT e.name) AS assigned_headcount\nWHERE required_headcount IS NOT NULL AND assigned_headcount < required_headcount\nRETURN project, required_headcount, assigned_headcount, (required_headcount - assigned_headcount) AS headcount_gap\nORDER BY headcount_gap DESC, project ASC\nLIMIT 200",
         "result_count": 1,
         "execution_path": [
           "intent_entity_extractor",
@@ -481,12 +481,12 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 5.06
+      "elapsed_seconds": 5.66
     },
     {
       "case_id": "q11_top5_projects_contribution",
       "category": "project_matching",
-      "passed": false,
+      "passed": true,
       "checks": [
         {
           "name": "intent_match",
@@ -505,19 +505,19 @@
         },
         {
           "name": "answer_contains_top:project",
-          "passed": false,
-          "detail": "top value '데이터레이크 개선' not in response"
+          "passed": true,
+          "detail": ""
         },
         {
           "name": "key_set:project",
-          "passed": false,
-          "detail": "missing from pipeline: ['데이터레이크 개선', '보안강화 리뉴얼', '실시간분석 v1', '추천시스템 v2']"
+          "passed": true,
+          "detail": ""
         }
       ],
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH p, COUNT(DISTINCT e) AS employee_count, AVG(w.contribution_percent) AS avg_contribution_percent\nRETURN p.name AS project, employee_count, avg_contribution_percent\nORDER BY employee_count DESC, project ASC\nLIMIT 5",
+        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH p.name AS project, COUNT(DISTINCT e.name) AS employee_count, AVG(w.contribution_percent) AS avg_contribution_percent\nRETURN project, employee_count, avg_contribution_percent\nORDER BY employee_count DESC, avg_contribution_percent DESC\nLIMIT 5",
         "result_count": 5,
         "execution_path": [
           "intent_entity_extractor",
@@ -530,7 +530,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 6.63
+      "elapsed_seconds": 6.11
     },
     {
       "case_id": "q12_project_type_budget_duration",
@@ -561,7 +561,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)\nWITH p.type AS project_type,\n     AVG(p.budget_million) AS avg_budget_million,\n     AVG(p.duration_months) AS avg_duration_months,\n     COUNT(p) AS project_count\nRETURN project_type, avg_budget_million, avg_duration_months, project_count\nORDER BY project_type",
+        "cypher_query": "MATCH (p:Project)\nWITH p.type AS project_type,\n     avg(p.budget_million) AS avg_budget_million,\n     avg(p.duration_months) AS avg_duration_months,\n     count(*) AS project_count\nRETURN project_type, avg_budget_million, avg_duration_months, project_count\nORDER BY project_type",
         "result_count": 7,
         "execution_path": [
           "intent_entity_extractor",
@@ -574,7 +574,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 7.24
+      "elapsed_seconds": 6.44
     },
     {
       "case_id": "q13_required_skill_qualified_by_dept",
@@ -605,7 +605,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE req.importance = '필수' AND req.required_proficiency IN ['고급']\nMATCH (e:Employee)-[hs:HAS_SKILL]->(s)\nWHERE hs.proficiency IN ['고급', '전문가']\nWITH DISTINCT p, e\nMATCH (e)-[:BELONGS_TO]->(d:Department)\nWITH d.name AS department, COUNT(DISTINCT e) AS employee_count\nRETURN department, employee_count\nORDER BY employee_count DESC, department ASC",
+        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE req.importance = '필수' AND req.required_proficiency IN ['고급']\nMATCH (e:Employee)-[hs:HAS_SKILL]->(s)\nWHERE hs.proficiency IN ['고급', '전문가']\nWITH DISTINCT p.name AS project, s.name AS skill, e.name AS employee, e.department AS department\nRETURN department, COUNT(DISTINCT employee) AS employee_count\nORDER BY employee_count DESC, department ASC",
         "result_count": 15,
         "execution_path": [
           "intent_entity_extractor",
@@ -618,7 +618,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 8.62
+      "elapsed_seconds": 7.55
     },
     {
       "case_id": "q14_pm_position_distribution",
@@ -658,7 +658,7 @@
       },
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWHERE p.status = $projectStatus AND w.role = $role\nOPTIONAL MATCH (e)-[:HAS_POSITION]->(pos:Position)\nWITH COALESCE(pos.name, $noPositionLabel) AS position, COUNT(DISTINCT e) AS employee_count\nRETURN position, employee_count\nORDER BY employee_count DESC, position ASC\nLIMIT 200",
+        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWHERE p.status = $projectStatus AND w.role = $role\nOPTIONAL MATCH (e)-[:HAS_POSITION]->(pos:Position)\nWITH COALESCE(pos.name, $unknownPosition) AS position, COUNT(DISTINCT e.name) AS employee_count\nRETURN position, employee_count\nORDER BY employee_count DESC, position ASC\nLIMIT 200",
         "result_count": 9,
         "execution_path": [
           "intent_entity_extractor",
@@ -671,12 +671,12 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 7.48
+      "elapsed_seconds": 7.55
     },
     {
       "case_id": "q15_top10_cert_holders",
       "category": "certificate_search",
-      "passed": false,
+      "passed": true,
       "checks": [
         {
           "name": "intent_match",
@@ -695,14 +695,14 @@
         },
         {
           "name": "key_set:name",
-          "passed": false,
-          "detail": "missing from pipeline: ['김서현', '백시윤', '윤은서', '임서준', '장지환']"
+          "passed": true,
+          "detail": ""
         }
       ],
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)\nOPTIONAL MATCH (e)-[:HAS_CERTIFICATE]->(c:Certificate)\nWITH e, COUNT(c) AS certificate_count\nOPTIONAL MATCH (e)-[:WORKS_ON]->(p:Project)\nWHERE p.status = '진행중'\nWITH e.name AS employee, certificate_count, COUNT(DISTINCT p) AS active_project_count\nRETURN employee, certificate_count, active_project_count\nORDER BY certificate_count DESC, active_project_count DESC, employee ASC\nLIMIT 10",
+        "cypher_query": "MATCH (e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)\nWITH e.name AS employee, COUNT(DISTINCT c.name) AS certificate_count\nOPTIONAL MATCH (e2:Employee)-[:WORKS_ON]->(p:Project)\nWHERE e2.name = employee AND p.status = '진행중'\nWITH employee, certificate_count, COUNT(DISTINCT p.name) AS active_project_count\nRETURN employee, certificate_count, active_project_count\nORDER BY certificate_count DESC, active_project_count DESC, employee ASC\nLIMIT 10",
         "result_count": 10,
         "execution_path": [
           "intent_entity_extractor",
@@ -715,12 +715,12 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 7.17
+      "elapsed_seconds": 6.78
     },
     {
       "case_id": "q16_mentor_stats",
       "category": "mentoring_network",
-      "passed": false,
+      "passed": true,
       "checks": [
         {
           "name": "intent_match",
@@ -729,23 +729,23 @@
         },
         {
           "name": "execution_ok",
-          "passed": false,
-          "detail": "error='Query execution failed: Failed to execute query: {neo4j_code: Neo.ClientError.Statement.SyntaxError} {message: Invalid input \\'.\\': expected a graph pattern, a parameter, \\')\\', \\':\\', \\'IS\\', \\'WHERE\\' or \\'{\\' (line 14, column 21 (offset: 604))\\n\"OPTIONAL MATCH (stat.mentor)-[:HAS_POSITION]->(pos:Position)\"\\n                     ^} {gql_status: 42001} {gql_status_description: error: syntax error or access rule violation - invalid syntax}', execution_path=['intent_entity_extractor', 'query_decomposer_skipped', 'concept_expander', 'entity_resolver_skipped', 'cypher_generator', 'graph_executor_error', 'response_generator_error_handler']"
+          "passed": true,
+          "detail": ""
         },
         {
           "name": "not_empty",
-          "passed": false,
-          "detail": "result_count=0"
+          "passed": true,
+          "detail": ""
         },
         {
           "name": "count_range",
-          "passed": false,
-          "detail": "result_count=0, expected [1, inf]"
+          "passed": true,
+          "detail": ""
         },
         {
           "name": "must_include_any",
-          "passed": false,
-          "detail": "none of ['멘토', '멘티'] found in response"
+          "passed": true,
+          "detail": ""
         }
       ],
       "judge_result": {
@@ -755,20 +755,20 @@
       },
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (mentor:Employee)-[:MENTORS]->(mentee:Employee)\nWITH mentor, COUNT(mentee) AS mentee_count\nWITH COLLECT({mentor: mentor, mentee_count: mentee_count}) AS mentor_stats,\n     AVG(toFloat(mentee_count)) AS avg_mentees_per_mentor\nUNWIND mentor_stats AS stat\nWITH stat, avg_mentees_per_mentor\nWITH avg_mentees_per_mentor,\n     stat.mentor.department AS department,\n     stat.mentor.id AS mentor_id,\n     stat.mentor.name AS mentor_name,\n     COALESCE(pos.name, 'Unknown') AS position_name,\n     COALESCE(pos.level, 'Unknown') AS position_level,\n     stat.mentee_count AS mentee_count\nOPTIONAL MATCH (stat.mentor)-[:HAS_POSITION]->(pos:Position)\nWITH avg_mentees_per_mentor, department, position_name, position_level, mentor_id, mentor_name, mentee_count\nRETURN avg_mentees_per_mentor,\n       department,\n       position_name,\n       position_level,\n       COUNT(DISTINCT mentor_id) AS mentor_count,\n       AVG(toFloat(mentee_count)) AS avg_mentees_in_group,\n       COLLECT(DISTINCT mentor_name)[0..20] AS example_mentors\nORDER BY mentor_count DESC, avg_mentees_in_group DESC\nLIMIT 200",
-        "result_count": 0,
+        "cypher_query": "MATCH (mentor:Employee)-[:MENTORS]->(mentee:Employee)\nWITH mentor.name AS mentor_name,\n     max(mentor.department) AS department,\n     COUNT(DISTINCT mentee.name) AS mentee_count\nOPTIONAL MATCH (mentorNode:Employee)-[:HAS_POSITION]->(pos:Position)\nWHERE mentorNode.name = mentor_name\nWITH mentor_name, department, mentee_count, max(pos.name) AS position\nWITH collect({mentor_name: mentor_name, department: department, position: position, mentee_count: mentee_count}) AS mentor_stats,\n     avg(toFloat(mentee_count)) AS avg_mentees_per_mentor\nUNWIND mentor_stats AS stat\nWITH stat, avg_mentees_per_mentor\nRETURN avg_mentees_per_mentor,\n       stat.position AS position,\n       stat.department AS department,\n       COUNT(*) AS mentor_count,\n       avg(toFloat(stat.mentee_count)) AS avg_mentees_in_group,\n       collect(stat.mentor_name) AS mentors\nORDER BY mentor_count DESC, avg_mentees_in_group DESC\nLIMIT 200",
+        "result_count": 81,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
           "concept_expander",
           "entity_resolver_skipped",
           "cypher_generator",
-          "graph_executor_error",
-          "response_generator_error_handler"
+          "graph_executor",
+          "response_generator"
         ],
-        "error": "Query execution failed: Failed to execute query: {neo4j_code: Neo.ClientError.Statement.SyntaxError} {message: Invalid input '.': expected a graph pattern, a parameter, ')', ':', 'IS', 'WHERE' or '{' (line 14, column 21 (offset: 604))\n\"OPTIONAL MATCH (stat.mentor)-[:HAS_POSITION]->(pos:Position)\"\n                     ^} {gql_status: 42001} {gql_status_description: error: syntax error or access rule violation - invalid syntax}"
+        "error": null
       },
-      "elapsed_seconds": 6.63
+      "elapsed_seconds": 10.9
     },
     {
       "case_id": "q17_agreed_below_hourly",
@@ -799,7 +799,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWHERE w.agreed_rate < e.hourly_rate\nRETURN COUNT(w) AS lower_agreed_rate_assignments",
+        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWHERE w.agreed_rate < e.hourly_rate\nRETURN COUNT(*) AS lower_agreed_rate_assignments",
         "result_count": 1,
         "execution_path": [
           "intent_entity_extractor",
@@ -812,7 +812,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 4.7
+      "elapsed_seconds": 4.44
     },
     {
       "case_id": "q18_hours_gap_employees",
@@ -841,18 +841,13 @@
         }
       ],
       "judge_result": {
-        "faithful": false,
-        "score": 0.95,
-        "violations": [
-          {
-            "claim": "참고로 전체는 200행이고, 지금은 상위 30개만 보입니다.",
-            "reason": "전체 결과 수 200행은 근거가 있지만, 제공된 샘플은 '최대 60행 샘플'이며 실제로 30행만 표시되고 '... 외 30개'라고 되어 있습니다. 이를 단정적으로 '지금은 상위 30개만 보입니다'라고 한 것은 graph_results에 직접적으로 명시되지 않은 해석입니다."
-          }
-        ]
+        "faithful": true,
+        "score": 1.0,
+        "violations": []
       },
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH e.name AS employee, p.name AS project,\n     w.allocated_hours AS allocated_hours,\n     w.actual_hours AS actual_hours,\n     (coalesce(w.actual_hours, 0) - coalesce(w.allocated_hours, 0)) AS hours_gap,\n     abs(coalesce(w.actual_hours, 0) - coalesce(w.allocated_hours, 0)) AS abs_hours_gap\nRETURN employee, project, allocated_hours, actual_hours, hours_gap\nORDER BY abs_hours_gap DESC, employee ASC, project ASC\nLIMIT 200",
+        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH e.name AS employee, p.name AS project,\n     SUM(COALESCE(w.allocated_hours, 0)) AS allocated_hours,\n     SUM(COALESCE(w.actual_hours, 0)) AS actual_hours,\n     SUM(COALESCE(w.actual_hours, 0)) - SUM(COALESCE(w.allocated_hours, 0)) AS gap\nRETURN employee, project, allocated_hours, actual_hours, gap\nORDER BY abs(gap) DESC, employee ASC, project ASC\nLIMIT 200",
         "result_count": 200,
         "execution_path": [
           "intent_entity_extractor",
@@ -865,7 +860,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 11.43
+      "elapsed_seconds": 9.88
     },
     {
       "case_id": "q19_dept_budget_vs_project_budget",
@@ -896,7 +891,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (d:Department)\nOPTIONAL MATCH (p:Project)-[:OWNED_BY]->(d)\nWITH d, COALESCE(SUM(p.budget_million), 0) AS total_project_budget_million\nRETURN d.name AS department,\n       d.budget_billion AS department_budget_billion,\n       total_project_budget_million,\n       CASE\n         WHEN d.budget_billion IS NULL OR d.budget_billion = 0 THEN NULL\n         ELSE toFloat(total_project_budget_million) / (d.budget_billion * 1000.0)\n       END AS budget_ratio\nORDER BY budget_ratio DESC, department",
+        "cypher_query": "MATCH (d:Department)\nOPTIONAL MATCH (p:Project)-[:OWNED_BY]->(d)\nWITH d.name AS department,\n     d.budget_billion AS department_budget_billion,\n     COALESCE(SUM(p.budget_million), 0) AS total_project_budget_million\nRETURN department,\n       department_budget_billion,\n       total_project_budget_million,\n       CASE\n         WHEN department_budget_billion IS NULL OR department_budget_billion = 0 THEN NULL\n         ELSE toFloat(total_project_budget_million) / (department_budget_billion * 1000.0)\n       END AS project_budget_ratio\nORDER BY project_budget_ratio DESC, department ASC",
         "result_count": 15,
         "execution_path": [
           "intent_entity_extractor",
@@ -909,7 +904,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 8.08
+      "elapsed_seconds": 8.26
     },
     {
       "case_id": "q20_office_dept_stats",
@@ -940,7 +935,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (d:Department)-[:LOCATED_AT]->(o:Office)\nOPTIONAL MATCH (e:Employee)-[:BELONGS_TO]->(d)\nWITH o, d, COUNT(e) AS department_headcount\nRETURN o.name AS office, COUNT(DISTINCT d) AS department_count, SUM(department_headcount) AS total_employees, SUM(d.budget_billion) AS total_department_budget_billion\nORDER BY office",
+        "cypher_query": "MATCH (d:Department)-[:LOCATED_AT]->(o:Office)\nWITH o, COUNT(DISTINCT d.name) AS department_count, SUM(COALESCE(d.head_count, 0)) AS total_head_count, SUM(COALESCE(d.budget_billion, 0)) AS total_budget_billion\nRETURN o.name AS office, o.city AS city, department_count, total_head_count, total_budget_billion\nORDER BY office",
         "result_count": 4,
         "execution_path": [
           "intent_entity_extractor",
@@ -953,7 +948,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 5.82
+      "elapsed_seconds": 6.49
     },
     {
       "case_id": "s01_aiml_headcount_gap",
@@ -988,8 +983,8 @@
       },
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)\nWHERE p.type = $projectType AND p.status = $projectStatus\nOPTIONAL MATCH (p)<-[w:WORKS_ON]-(e:Employee)\nWITH p, p.required_headcount AS required_headcount, COUNT(DISTINCT e) AS current_assigned\nRETURN p.name AS project_name,\n       required_headcount,\n       current_assigned,\n       (current_assigned - required_headcount) AS headcount_gap,\n       CASE\n         WHEN current_assigned < required_headcount THEN '부족'\n         WHEN current_assigned = required_headcount THEN '충족'\n         ELSE '초과'\n       END AS staffing_status\nORDER BY headcount_gap ASC, project_name ASC\nLIMIT 200",
-        "result_count": 19,
+        "cypher_query": "MATCH (p:Project)\nWHERE p.type = $projectType AND p.status = $projectStatus\nOPTIONAL MATCH (p)<-[:WORKS_ON]-(e:Employee)\nWITH p.name AS project, p.required_headcount AS required_headcount, COUNT(DISTINCT e.name) AS current_staff\nRETURN project, required_headcount, current_staff, (current_staff - required_headcount) AS headcount_gap\nORDER BY headcount_gap ASC, project ASC\nLIMIT 200",
+        "result_count": 18,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
@@ -1001,7 +996,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 9.84
+      "elapsed_seconds": 10.5
     },
     {
       "case_id": "s02_recsys_skill_coverage",
@@ -1030,23 +1025,14 @@
         }
       ],
       "judge_result": {
-        "faithful": false,
-        "score": 0.93,
-        "violations": [
-          {
-            "claim": "LangChain 요구: 어떤 행에서는 고급 2명 필수",
-            "reason": "제시된 graph_results 샘플에는 LangChain에 대해 required_proficiency=고급, required_headcount=2 인 REQUIRES 행이 없습니다. 샘플상 LangChain은 중급 우대(행 10, 18, 29, 43) 또는 고급 필수 2명(행 2, 22)로 보이지만, 행 2와 22의 LangChain 보유자는 각각 초급/중급이라 '요구' 자체가 고급 2명 필수라고 단정한 근거는 샘플에 없습니다."
-          },
-          {
-            "claim": "available/partial 인원 예시: 임지환(partial, Scikit-learn·Python·PyTorch 고급)",
-            "reason": "샘플에는 임지환이 추천시스템 고도화에 WORKS_ON 중이며 Scikit-learn/Python/PyTorch 모두 고급인 것은 맞지만, availability=partial인 임지환은 제시된 샘플 행들에서 p.required_headcount=3, duration_months=6 버전의 프로젝트와 연결됩니다. 응답은 이를 현재 전체 커버 판단의 가용 인원 예시로 일반화했는데, 프로젝트 버전/행 차이를 구분하지 않아 대상-값 재조합 소지가 있습니다."
-          }
-        ]
+        "faithful": true,
+        "score": 1.0,
+        "violations": []
       },
       "metadata": {
         "intent": "project_matching",
-        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE toLower(p.name) = toLower($projectName)\nOPTIONAL MATCH (p)<-[w:WORKS_ON]-(e:Employee)-[hs:HAS_SKILL]->(s)\nWITH p, req, s, w, e, hs,\n     CASE req.required_proficiency\n       WHEN '초급' THEN 1\n       WHEN '중급' THEN 2\n       WHEN '고급' THEN 3\n       ELSE 0\n     END AS requiredLevel,\n     CASE hs.proficiency\n       WHEN '초급' THEN 1\n       WHEN '중급' THEN 2\n       WHEN '고급' THEN 3\n       WHEN '전문가' THEN 4\n       ELSE 0\n     END AS employeeLevel\nRETURN p, req, s, w, e, hs\nLIMIT 200",
-        "result_count": 95,
+        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE toLower(p.name) = toLower($projectName)\nOPTIONAL MATCH (p)<-[w:WORKS_ON]-(e:Employee)\nOPTIONAL MATCH (e)-[hs:HAS_SKILL]->(s)\nWITH p, s, req, e.name AS employeeName, hs,\n     CASE req.required_proficiency\n       WHEN '초급' THEN 1\n       WHEN '중급' THEN 2\n       WHEN '고급' THEN 3\n       ELSE 0\n     END AS requiredLevel,\n     CASE hs.proficiency\n       WHEN '초급' THEN 1\n       WHEN '중급' THEN 2\n       WHEN '고급' THEN 3\n       WHEN '전문가' THEN 4\n       ELSE 0\n     END AS employeeLevel\nWITH p.name AS project, s.name AS skill, req.required_proficiency AS required_proficiency,\n     COUNT(DISTINCT employeeName) AS assigned_employee_count,\n     COUNT(DISTINCT CASE WHEN employeeName IS NOT NULL AND hs IS NOT NULL AND employeeLevel >= requiredLevel THEN employeeName END) AS covering_employee_count,\n     COLLECT(DISTINCT CASE WHEN employeeName IS NOT NULL AND hs IS NOT NULL AND employeeLevel >= requiredLevel THEN employeeName END) AS covering_employees,\n     COLLECT(DISTINCT CASE WHEN employeeName IS NOT NULL AND (hs IS NULL OR employeeLevel < requiredLevel) THEN employeeName END) AS gap_employees\nRETURN project, skill, required_proficiency, assigned_employee_count, covering_employee_count, covering_employees, gap_employees,\n       CASE WHEN covering_employee_count > 0 THEN true ELSE false END AS is_covered\nORDER BY is_covered ASC, skill ASC",
+        "result_count": 15,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
@@ -1058,7 +1044,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 18.8
+      "elapsed_seconds": 12.38
     },
     {
       "case_id": "s03_pinecone_gap_candidates",
@@ -1093,8 +1079,8 @@
       },
       "metadata": {
         "intent": "project_matching",
-        "cypher_query": "MATCH (p:Project)\nWHERE toLower(p.name) = toLower($projectName)\nMATCH (e:Employee)\nWHERE e.availability <> 'unavailable'\n  AND NOT EXISTS { MATCH (e)-[:WORKS_ON]->(p) }\nOPTIONAL MATCH (e)-[r1:HAS_SKILL]->(s1:Skill)\nWHERE toLower(s1.name) = toLower($skill1)\nOPTIONAL MATCH (e)-[r2:HAS_SKILL]->(s2:Skill)\nWHERE toLower(s2.name) = toLower($skill2)\nOPTIONAL MATCH (e)-[r3:HAS_SKILL]->(s3:Skill)\nWHERE toLower(s3.name) = toLower($skill3)\nWITH p, e, r1, s1, r2, s2, r3, s3,\n     ((CASE WHEN s1 IS NOT NULL THEN 1 ELSE 0 END) +\n      (CASE WHEN s2 IS NOT NULL THEN 1 ELSE 0 END) +\n      (CASE WHEN s3 IS NOT NULL THEN 1 ELSE 0 END)) AS matchedSkillCount\nWHERE matchedSkillCount > 0\nRETURN p, e, r1, s1, r2, s2, r3, s3\nLIMIT 200",
-        "result_count": 92,
+        "cypher_query": "MATCH (target:Project)\nWHERE toLower(target.name) = toLower($projectName)\nMATCH (s:Skill)\nWHERE ANY(skillName IN $skillNames WHERE toLower(s.name) = toLower(skillName))\nMATCH (e:Employee)-[hs:HAS_SKILL]->(s)\nWHERE NOT EXISTS {\n  MATCH (e)-[:WORKS_ON]->(target)\n}\nWITH e.name AS employeeName,\n     COLLECT(DISTINCT s.name) AS matchedSkills,\n     COUNT(DISTINCT s.name) AS matchedSkillCount,\n     SIZE($skillNames) AS requiredSkillCount,\n     MAX(e.department) AS department,\n     MAX(e.availability) AS availability,\n     MAX(e.job_type) AS jobType,\n     MAX(e.years_experience) AS yearsExperience,\n     MAX(e.hourly_rate) AS hourlyRate\nRETURN employeeName,\n       department,\n       availability,\n       jobType,\n       yearsExperience,\n       hourlyRate,\n       matchedSkills,\n       matchedSkillCount,\n       (requiredSkillCount - matchedSkillCount) AS gapCount\nORDER BY matchedSkillCount DESC, yearsExperience DESC, hourlyRate ASC\nLIMIT 200",
+        "result_count": 38,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
@@ -1106,7 +1092,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 14.61
+      "elapsed_seconds": 13.54
     },
     {
       "case_id": "s04_recsys_rate_filter",
@@ -1135,30 +1121,13 @@
         }
       ],
       "judge_result": {
-        "faithful": false,
-        "score": 0.94,
-        "violations": [
-          {
-            "claim": "\"Python은 필수 수준 이상이고 단가도 허용 범위 이내라 우선 추천 가능합니다.\" (조시윤 관련)",
-            "reason": "graph_results에서 Python의 required_proficiency는 고급이고, 조시윤의 Python proficiency는 전문가로 확인되지만, 응답의 '필수 수준 이상' 판단은 Scikit-learn/LangChain/PyTorch 등 다른 필수 스킬 충족 여부를 확인하지 않은 채 추천 적합성을 단정합니다. 샘플 근거만으로는 전체 필수 스킬 기준 충족 추천으로 단정하기 어렵습니다."
-          },
-          {
-            "claim": "\"단가 경쟁력이 좋고 Python 커버가 가능합니다.\" (우민서 관련 추천 맥락)",
-            "reason": "우민서는 Python 전문가, Scikit-learn 중급은 확인되지만 전체 필수 스킬 기준 추천 가능 인원으로 제시하려면 다른 필수 스킬 충족 여부가 필요합니다. graph_results에는 우민서의 LangChain/PyTorch 충족 정보가 없습니다."
-          },
-          {
-            "claim": "\"Scikit-learn 필수 스킬 충족 측면에서 유효한 후보입니다.\" (황승민 관련)",
-            "reason": "황승민의 Scikit-learn 고급은 확인되지만, 질문은 추천시스템 고도화의 필수 스킬 기준으로 후보 추천을 요구합니다. graph_results상 다른 필수 스킬(Python/LangChain/PyTorch) 충족 여부 없이 전체 후보로 유효하다고 단정한 것은 근거 부족입니다."
-          },
-          {
-            "claim": "\"PyTorch 필수 스킬 대응 후보로 매우 적합합니다.\" (최준서 관련)",
-            "reason": "최준서의 PyTorch 전문가와 단가 조건은 확인되지만, 다른 필수 스킬 충족 여부는 graph_results에 없습니다. 전체 필수 스킬 기준의 추천 적합성을 단정한 표현은 샘플 근거를 넘습니다."
-          }
-        ]
+        "faithful": true,
+        "score": 1.0,
+        "violations": []
       },
       "metadata": {
         "intent": "project_matching",
-        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE toLower(p.name) = toLower($projectName)\n  AND req.importance = '필수'\nMATCH (e:Employee)-[hs:HAS_SKILL]->(s)\nWHERE hs.effective_rate <= req.max_hourly_rate\nWITH p, req, s, e, hs\nORDER BY req.priority ASC, hs.years_used DESC, hs.proficiency DESC\nRETURN p, req, s, hs, e\nLIMIT 200",
+        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE toLower(p.name) = toLower($projectName)\n  AND req.importance = '필수'\nMATCH (e:Employee)-[hs:HAS_SKILL]->(s)\nWHERE hs.effective_rate <= req.max_hourly_rate\nRETURN p, req, s, hs, e\nLIMIT 200",
         "result_count": 200,
         "execution_path": [
           "intent_entity_extractor",
@@ -1171,7 +1140,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 21.09
+      "elapsed_seconds": 17.95
     },
     {
       "case_id": "n01_exclude_skills_aidept",
@@ -1220,7 +1189,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 10.17
+      "elapsed_seconds": 9.37
     },
     {
       "case_id": "n02_exclude_cert_holders",
@@ -1261,7 +1230,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "certificate_search",
-        "cypher_query": "MATCH (e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)\nWHERE toLower(c.name) <> toLower($certificateName)\nWITH e.name AS employee, COLLECT(DISTINCT c.name) AS certificates, COUNT(DISTINCT c) AS certificate_count\nRETURN employee, certificates, certificate_count\nORDER BY employee ASC\nLIMIT 200",
+        "cypher_query": "MATCH (e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)\nWHERE toLower(c.name) <> toLower($certificateName)\nWITH e.name AS employee, COLLECT(DISTINCT c.name) AS certificates\nRETURN employee, certificates\nORDER BY employee\nLIMIT 200",
         "result_count": 200,
         "execution_path": [
           "intent_entity_extractor",
@@ -1274,7 +1243,7 @@
         ],
         "error": null
       },
-      "elapsed_seconds": 8.3
+      "elapsed_seconds": 6.47
     }
   ]
 }

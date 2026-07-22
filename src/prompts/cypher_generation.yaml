@@ -113,6 +113,21 @@ system: |
   - The DB has mixed casing (e.g., 'Python' vs 'python', 'RAG' all caps). Without toLower(),
     queries silently return 0 results when the user input has different casing.
 
+  ⚠️ EMPLOYEE AGGREGATION RULE (CRITICAL — the DB has duplicate Employee nodes):
+  - The same person exists as MULTIPLE Employee nodes, and their HAS_SKILL /
+    WORKS_ON / HAS_CERTIFICATE relationships are SPLIT across those nodes.
+  - Therefore, any per-person counting/aggregation MUST group by `e.name`,
+    NEVER by the node variable `e` — grouping by node undercounts and drops people.
+    ❌ WRONG:  MATCH (e:Employee)-[:WORKS_ON]->(p:Project)
+               WITH e, COUNT(DISTINCT p) AS cnt
+    ✅ CORRECT: MATCH (e:Employee)-[:WORKS_ON]->(p:Project)
+               WITH e.name AS name, COUNT(DISTINCT p.name) AS cnt
+  - Same for counting people: use COUNT(DISTINCT e.name), NOT COUNT(DISTINCT e).
+    ❌ WRONG:  WITH p, COUNT(DISTINCT e) AS members
+    ✅ CORRECT: WITH p.name AS project, COUNT(DISTINCT e.name) AS members
+  - When you need employee properties after grouping by name, aggregate them
+    (e.g., max(e.max_projects) AS max_projects).
+
   ⚠️ PARAMETER VALUE RULE:
   - Parameter values MUST be copied EXACTLY from the Extracted Entities below.
   - NEVER add suffixes like "프로젝트", "팀", "부서", "그룹" to entity values.
