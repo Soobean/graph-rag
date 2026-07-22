@@ -1,0 +1,201 @@
+# Graph RAG 골든셋 — Eval Harness 케이스 정의
+#
+# 출처: docs/SCENARIOS.md 11장 HR 20문 (q01~q20)
+#      + PROGRESS.md 2026-05 검증 시나리오 4건 (s01~s04)
+#      + negation 회귀 2문 (n01~n02, src/domain/cypher NONE 변환 E2E)
+#
+# 채점 티어:
+#   tier0 (전 문항 기본): expected_intent 허용 리스트 + 실행 성공 + not_empty
+#   tier1: count_range / must_include_any (경량)
+#   reference: 사람이 작성·검증한 Cypher oracle (커밋 3에서 큐레이션)
+#   judge: --judge 시 LLM faithfulness 채점 대상
+#
+# 큐레이션 규칙 (docs/EVALS.md):
+#   - reference.cypher는 질문 + load_to_neo4j.py 스키마로부터 작성.
+#     파이프라인이 생성한 Cypher를 복사하면 oracle이 순환됨 — 금지.
+#   - 인원 집계는 Employee 중복 노드 때문에 반드시 e.name 기준 DISTINCT/그룹.
+#   - --verify-refs로 행수·샘플 육안 확인 후 verified에 날짜 기록.
+
+version: 1
+
+cases:
+  # ============================================
+  # HR 골든셋 20문 (docs/SCENARIOS.md)
+  # ============================================
+
+  - id: q01_dept_avg_rate
+    question: "부서별 평균 시간 단가(hourly_rate)는 얼마이며, 가장 높은 부서는?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis]
+
+  - id: q02_career_vs_guideline
+    question: "경력 연수별 직급(position) 분포가 실제 기준표(min_years~max_years)와 얼마나 일치하는가?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis]
+    tier1:
+      count_range: {min: 1}
+      must_include_any: [직급, position]
+    judge: true
+
+  - id: q03_hires_by_year
+    question: "입사 연도별 신규 입사자 수 추이는 어떻게 되는가?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis]
+
+  - id: q04_over_max_projects
+    question: "최대 동시 프로젝트 수(max_projects)를 초과해서 배정된 직원은 누구인가?"
+    category: global_analysis
+    expected_intent: [global_analysis, org_analysis, personnel_search]
+
+  - id: q05_top10_skills
+    question: "사내에서 가장 많은 직원이 보유한 스킬 TOP 10은?"
+    category: global_analysis
+    expected_intent: [global_analysis, org_analysis, personnel_search]
+
+  - id: q06_shortage_high_demand
+    question: "시장 수요(market_demand=high)인 스킬 중 사내 보유 인력이 가장 부족한 스킬은?"
+    category: global_analysis
+    expected_intent: [global_analysis, org_analysis]
+    tier1:
+      count_range: {min: 1}
+    judge: true
+
+  - id: q07_expert_python_ml_dept
+    question: "'전문가' 수준 Python/ML 스킬 보유자는 어느 부서에 집중되어 있는가?"
+    category: personnel_search
+    expected_intent: [personnel_search, org_analysis, global_analysis]
+    tier1:
+      count_range: {min: 1}
+      must_include_any: [부서, 팀, 연구소]
+    judge: true
+
+  - id: q08_jobtype_skill_stats
+    question: "직무 유형별 평균 스킬 보유 개수와 평균 effective_rate는?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis]
+
+  - id: q09_budget_execution_by_status
+    question: "프로젝트 상태별 예산 집행률(budget_spent/budget_allocated)은?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis, project_matching]
+    tier1:
+      count_range: {min: 1}
+    judge: true
+
+  - id: q10_understaffed_projects
+    question: "필요 인원(required_headcount) 대비 실제 배정 인원이 부족한 프로젝트는?"
+    category: project_matching
+    expected_intent: [project_matching, global_analysis, org_analysis]
+
+  - id: q11_top5_projects_contribution
+    question: "가장 많은 직원이 참여한 프로젝트 TOP 5와 평균 기여도(contribution_percent)는?"
+    category: project_matching
+    expected_intent: [project_matching, global_analysis, org_analysis]
+
+  - id: q12_project_type_budget_duration
+    question: "프로젝트 타입별 평균 예산과 평균 기간(duration_months)은?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis, project_matching]
+
+  - id: q13_required_skill_qualified_by_dept
+    question: "프로젝트 필수 스킬(고급 이상)을 충족하는 직원은 부서별로 몇 명인가?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis, project_matching, personnel_search]
+
+  - id: q14_pm_position_distribution
+    question: "진행 중인 프로젝트에 PM 역할로 참여하는 직원의 직급(position) 분포는?"
+    category: org_analysis
+    expected_intent: [org_analysis, project_matching, global_analysis]
+    tier1:
+      count_range: {min: 1}
+      must_include_any: [pm, 직급, position]
+    judge: true
+
+  - id: q15_top10_cert_holders
+    question: "자격증 보유 수 TOP 10 직원과 그들이 참여 중인 프로젝트 수는?"
+    category: certificate_search
+    expected_intent: [certificate_search, global_analysis, personnel_search]
+
+  - id: q16_mentor_stats
+    question: "멘토 1인당 평균 멘티 수는? 멘토는 어떤 직급·부서에 집중되어 있는가?"
+    category: mentoring_network
+    expected_intent: [mentoring_network, org_analysis, global_analysis]
+    tier1:
+      count_range: {min: 1}
+      must_include_any: [멘토, 멘티]
+    judge: true
+
+  - id: q17_agreed_below_hourly
+    question: "agreed_rate가 hourly_rate보다 낮게 책정된 프로젝트 배정 건은 얼마나 되는가?"
+    category: global_analysis
+    expected_intent: [global_analysis, org_analysis, project_matching]
+
+  - id: q18_hours_gap_employees
+    question: "프로젝트별 실제 투입 공수(actual_hours) vs 배정 공수(allocated_hours) 갭이 큰 직원은?"
+    category: project_matching
+    expected_intent: [project_matching, global_analysis, org_analysis]
+
+  - id: q19_dept_budget_vs_project_budget
+    question: "부서 예산(budget_billion) 대비 해당 부서 주관 프로젝트 예산 합계 비율은?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis]
+
+  - id: q20_office_dept_stats
+    question: "오피스별 소속 부서 수, 총 인원, 총 부서 예산 합계는?"
+    category: org_analysis
+    expected_intent: [org_analysis, global_analysis]
+
+  # ============================================
+  # 검증 시나리오 4건 (PROGRESS.md 2026-05)
+  # 다중 조건 추론이 본질 → tier1 + judge
+  # ============================================
+
+  - id: s01_aiml_headcount_gap
+    question: "AI/ML 진행중 프로젝트중, 요구인력 대비 현재 투입 인원이 어떻게 되지?"
+    category: project_matching
+    expected_intent: [global_analysis, project_matching, org_analysis]
+    tier1:
+      count_range: {min: 5}    # 과거 실측 18~19건
+    judge: true
+
+  - id: s02_recsys_skill_coverage
+    question: "추천시스템 고도화의 요구 스킬과 요구 숙련도 대비, 현재 투입 인원이 커버하고 있니?"
+    category: project_matching
+    expected_intent: [project_matching, personnel_search, global_analysis]
+    tier1:
+      count_range: {min: 5}    # 과거 실측 15건
+    judge: true
+
+  - id: s03_pinecone_gap_candidates
+    question: "Pinecone/Kubeflow/Angular 갭을 메울 후보를 추천시스템 고도화 미투입인원중에서 찾아줘"
+    category: project_matching
+    expected_intent: [project_matching, personnel_search]
+    tier1:
+      count_range: {min: 10}   # 과거 실측 37~38건
+    judge: true               # 페어 충실성 감시 (과거 페어 손실 버그 케이스)
+
+  - id: s04_recsys_rate_filter
+    question: "추천시스템 고도화의 필수 스킬을 기준으로, 후보직원을 추천해줘. 후보 직원의 시간당 단가가 최대 허용단가를 초과하면 제외해줘"
+    category: project_matching
+    expected_intent: [project_matching, personnel_search]
+    tier1:
+      count_range: {min: 10}   # 과거 실측 200건
+    judge: true
+
+  # ============================================
+  # negation 회귀 2문 (src/domain/cypher NONE 변환 E2E)
+  # ============================================
+
+  - id: n01_exclude_skills_aidept
+    question: "Python, Java 스킬을 제외한 스킬을 가진 AI연구소 직원을 알려줘"
+    category: personnel_search
+    expected_intent: [personnel_search]
+    tier1:
+      count_range: {min: 1}
+
+  - id: n02_exclude_cert_holders
+    question: "정보처리기사를 제외한 자격증을 보유한 직원은 누구야?"
+    category: certificate_search
+    expected_intent: [certificate_search, personnel_search]
+    tier1:
+      count_range: {min: 1}
