@@ -136,17 +136,23 @@ cases:
     question: "필요 인원(required_headcount) 대비 실제 배정 인원이 부족한 프로젝트는?"
     category: project_matching
     expected_intent: [project_matching, global_analysis, org_analysis]
+    # 이름 병합 의미론에서 현재 데이터의 정답은 0건 (부족 프로젝트 없음)
+    # → 빈 결과가 정답이므로 not_empty 해제, 건수 일치로 채점
+    not_empty: false
     reference:
+      # 교정 이력 (2026-07-22): 초기 reference가 (p.name, p.required_headcount)로
+      # 그룹핑해 중복 Project 노드('CI/CD파이프라인 통합' ×2, req 8/3)의 조각을
+      # 별개 행으로 세는 버그 — 자기 규칙(이름 병합) 위반. name 단독 그룹핑으로 교정.
       verified: "2026-07-22"
       cypher: |
         MATCH (p:Project)
         OPTIONAL MATCH (e:Employee)-[:WORKS_ON]->(p)
-        WITH p.name AS project, p.required_headcount AS req,
+        WITH p.name AS project, max(p.required_headcount) AS req,
              count(DISTINCT e.name) AS assigned
         WHERE assigned < req
         RETURN project, req, assigned ORDER BY req - assigned DESC
       checks:
-        - {type: key_set, column: project, mode: jaccard, jaccard_min: 0.5}
+        - {type: count_match, tolerance: 0}
 
   - id: q11_top5_projects_contribution
     question: "가장 많은 직원이 참여한 프로젝트 TOP 5와 평균 기여도(contribution_percent)는?"
