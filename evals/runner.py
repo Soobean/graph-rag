@@ -124,6 +124,7 @@ async def run_case(
             "cypher_query": metadata.get("cypher_query"),
             "result_count": metadata.get("result_count"),
             "execution_path": metadata.get("execution_path"),
+            "node_timings": metadata.get("node_timings", {}),
             "error": metadata.get("error"),
         },
         elapsed_seconds=round(time.time() - start, 2),
@@ -200,6 +201,24 @@ def print_report(report: EvalReport) -> None:
     if judged:
         faithful = sum(1 for r in judged if r.judge_result and r.judge_result.faithful)
         print(f"  judge faithful: {faithful}/{len(judged)}")
+
+    # 노드별 레이턴시 브레이크다운 (계측 데이터가 있는 케이스 기준)
+    node_samples: dict[str, list[float]] = {}
+    for r in report.case_results:
+        for node, sec in (r.metadata.get("node_timings") or {}).items():
+            node_samples.setdefault(node, []).append(sec)
+    if node_samples:
+        print("\n노드별 레이턴시 (avg / max, n=케이스 수):")
+        total_avg = 0.0
+        for node, samples in sorted(
+            node_samples.items(), key=lambda kv: -sum(kv[1]) / len(kv[1])
+        ):
+            avg = sum(samples) / len(samples)
+            total_avg += avg
+            print(
+                f"  {node:<28} {avg:6.2f}s / {max(samples):6.2f}s  (n={len(samples)})"
+            )
+        print(f"  {'합계(노드 평균의 합)':<27} {total_avg:6.2f}s")
     print(SEP)
 
 

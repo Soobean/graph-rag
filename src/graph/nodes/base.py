@@ -7,6 +7,7 @@ Base Node Abstract Class
 
 import asyncio
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -77,22 +78,30 @@ class BaseNode[T](ABC):
         ...
 
     async def __call__(self, state: GraphRAGState) -> T | dict[str, Any]:
-        """노드 실행 (타임아웃 적용)"""
+        """노드 실행 (타임아웃 + 노드별 소요시간 계측)"""
         self._logger.debug(f"Node '{self.name}' started")
+        start = time.perf_counter()
         try:
             result = await asyncio.wait_for(
                 self._process(state),
                 timeout=self.timeout_seconds,
             )
-            self._logger.debug(f"Node '{self.name}' completed")
+            elapsed = round(time.perf_counter() - start, 3)
+            self._logger.debug(f"Node '{self.name}' completed in {elapsed}s")
+            # 계측: state의 node_timings(reducer: dict 병합)에 자기 항목만 추가.
+            # _process 반환은 런타임상 dict이므로 안전하게 주입 가능.
+            if isinstance(result, dict):
+                result.setdefault("node_timings", {})[self.name] = elapsed
             return result
         except TimeoutError:
+            elapsed = round(time.perf_counter() - start, 3)
             self._logger.error(
                 f"Node '{self.name}' timed out after {self.timeout_seconds}s"
             )
             return {
                 "error": f"처리 시간이 초과되었습니다 ({self.name}: {self.timeout_seconds}초)",
                 "execution_path": [f"{self.name}_timeout"],
+                "node_timings": {self.name: elapsed},
             }
         except Exception as e:
             self._logger.error(f"Node '{self.name}' failed: {e}")

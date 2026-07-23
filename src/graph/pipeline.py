@@ -572,6 +572,7 @@ class GraphRAGPipeline:
                 "cypher_parameters": final_state.get("cypher_parameters", {}),
                 "result_count": final_state.get("result_count", 0),
                 "execution_path": final_state.get("execution_path", []),
+                "node_timings": final_state.get("node_timings", {}),
                 "query_plan": query_plan_dict,
                 "error": final_state.get("error"),
             }

@@ -71,6 +71,7 @@ class GraphRAGState(TypedDict, total=False):
     # ── 5. 메타데이터 및 에러 처리 ─────────────────────
     error: str | None
     execution_path: Annotated[list[str], operator.add]  # 각 노드가 append
+    node_timings: Annotated[dict[str, float], operator.or_]  # 노드별 소요시간(초)
 
     # ── 6. Vector Search / Cache ───────────────────────
     question_embedding: list[float] | None

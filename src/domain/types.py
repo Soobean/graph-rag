@@ -189,6 +189,7 @@ class PipelineMetadata(TypedDict, total=False):
     cypher_parameters: dict[str, Any]
     result_count: int
     execution_path: list[str]
+    node_timings: dict[str, float]  # 노드별 소요시간(초) — 관측성/레이턴시 분석
     query_plan: dict[str, Any] | None
     error: str | None
     _full_state: FullState  # 내부용 상세 상태

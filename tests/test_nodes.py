@@ -610,3 +610,63 @@ class TestGraphRAGState:
         state = GraphRAGState(execution_path=["step1"])
         # 새로운 상태 업데이트 시 리스트가 합쳐짐 (LangGraph 동작)
         assert state["execution_path"] == ["step1"]
+
+
+class TestBaseNodeTiming:
+    """BaseNode 노드별 소요시간 계측 테스트"""
+
+    def _make_node(self):
+        from src.graph.nodes.base import BaseNode
+
+        class FastNode(BaseNode[dict]):
+            @property
+            def name(self) -> str:
+                return "fast_node"
+
+            @property
+            def input_keys(self) -> list[str]:
+                return []
+
+            async def _process(self, state):
+                return {"execution_path": ["fast_node"]}
+
+        return FastNode()
+
+    @pytest.mark.asyncio
+    async def test_success_injects_node_timing(self):
+        """성공 경로에서 node_timings에 자기 항목 주입"""
+        node = self._make_node()
+        result = await node(GraphRAGState(question="t"))
+
+        assert "fast_node" in result["node_timings"]
+        assert result["node_timings"]["fast_node"] >= 0.0
+
+    @pytest.mark.asyncio
+    async def test_timeout_injects_node_timing(self):
+        """타임아웃 경로에서도 소요시간 기록"""
+        from src.graph.nodes.base import BaseNode
+
+        class SlowNode(BaseNode[dict]):
+            @property
+            def name(self) -> str:
+                return "slow_node"
+
+            @property
+            def timeout_seconds(self) -> float:
+                return 0.05
+
+            @property
+            def input_keys(self) -> list[str]:
+                return []
+
+            async def _process(self, state):
+                import asyncio
+
+                await asyncio.sleep(5)
+                return {}
+
+        result = await SlowNode()(GraphRAGState(question="t"))
+
+        assert "slow_node" in result["node_timings"]
+        assert result["node_timings"]["slow_node"] >= 0.05
+        assert "slow_node_timeout" in result["execution_path"]

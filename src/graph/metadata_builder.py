@@ -22,6 +22,7 @@ class ResponseMetadataBuilder:
             "cypher_query": state.get("cypher_query", ""),
             "result_count": state.get("result_count", 0),
             "execution_path": state.get("execution_path", []),
+            "node_timings": state.get("node_timings", {}),
         }
 
         graph_data = self.build_graph_data(state)

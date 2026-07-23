@@ -667,3 +667,32 @@ class TestGlobalAnalysisRouting:
         path = result["metadata"]["execution_path"]
         assert "community_summarizer" not in path
         assert "cypher_generator" in path
+
+
+class TestNodeTimingsInstrumentation:
+    """노드 타이밍 계측 — reducer 병합 + metadata 노출"""
+
+    @pytest.mark.asyncio
+    async def test_metadata_contains_per_node_timings(
+        self, pipeline, mock_llm, mock_neo4j
+    ):
+        """전 노드의 타이밍이 병합되어 metadata에 노출됨 (operator.or_ reducer)"""
+        mock_llm.generate_cypher.return_value = {
+            "cypher": "MATCH (n) RETURN n",
+            "parameters": {},
+        }
+        mock_neo4j.execute_cypher.return_value = [{"n": "data"}]
+        mock_llm.generate_response.return_value = "응답"
+
+        result = await pipeline.run("홍길동 찾아줘")
+        timings = result["metadata"]["node_timings"]
+
+        # 실행 경로의 주요 노드가 각자 자기 타이밍을 남김 (병합 확인)
+        for node in (
+            "intent_entity_extractor",
+            "cypher_generator",
+            "graph_executor",
+            "response_generator",
+        ):
+            assert node in timings, f"{node} 타이밍 누락"
+            assert timings[node] >= 0.0
