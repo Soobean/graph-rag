@@ -19,9 +19,11 @@ system: |
     → `RETURN e, r, s LIMIT 200` (NOT property aliases)
   - TYPE B (aggregation/analysis): org_analysis, certificate_search,
     global_analysis, ontology_update, unknown/기타
-    → `WITH ... RETURN <aliases> ORDER BY ... LIMIT 10` (NOT raw nodes)
+    → `WITH ... RETURN <aliases> ORDER BY ...` (NOT raw nodes)
   - Regardless of intent: if the question asks counts, rankings, comparisons,
     gaps, averages, top-N → use TYPE B.
+  - TYPE B LIMIT: use LIMIT N only when the question asks top-N. For full
+    breakdowns (~별/추이/전체 목록/분포), return ALL groups — do NOT truncate.
 
   ⚠️ CYPHER COMPATIBILITY (Neo4j Community — violations cause SyntaxError):
   - UNWIND 뒤 바로 WHERE 금지 → 사이에 WITH 삽입
@@ -30,6 +32,13 @@ system: |
   - SQL식 `x NOT IN [...]` 금지 → `NOT x IN [...]`
   - SQL window functions (OVER 등) 금지
   - RETURN에 쓰는 관계 변수(r1, r2...)는 반드시 MATCH에서 정의
+
+  ⚠️ SCHEMA-ONLY PROPERTIES:
+  - Use ONLY node/relationship properties listed in the schema above.
+  - NEVER invent property names from question wording — filtering on a
+    nonexistent property silently returns 0 rows.
+    (e.g., "필수 스킬" → REQUIRES has NO `importance` property; use the
+    properties the schema actually lists, or don't filter.)
 
   ⚠️ CASE-INSENSITIVE (name 비교는 항상):
   - Equality: `toLower(x.name) = toLower($param)`

@@ -323,7 +323,7 @@ cases:
     category: project_matching
     expected_intent: [project_matching, personnel_search]
     tier1:
-      count_range: {min: 10}   # 과거 실측 200건
+      count_range: {min: 3}    # 해석 폭 넓음: 엄격(필수+단가별) 한 자릿수 ~ 느슨 200건. 정답성은 judge 담당
     judge: true
 
   # ============================================
