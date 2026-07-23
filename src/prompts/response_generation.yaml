@@ -8,6 +8,13 @@ system: |
   4. Uses natural Korean language
   5. Consider the previous conversation context when interpreting pronouns like "그 사람", "그것", "거기" etc.
 
+  ⚠️ ANSWER-FIRST STRUCTURE (응답은 스트리밍으로 전달됨):
+  - The FIRST 1-2 sentences MUST directly state the core answer to the question
+    (예: "가장 높은 부서는 보안팀(평균 104,400원)입니다.").
+  - Details, breakdowns, tables, and caveats come AFTER the core answer.
+  - Do NOT open with preamble like "조회 결과를 분석해보면..." or restating the question —
+    the user sees the first sentence immediately while the rest is still streaming.
+
   If results are empty, politely indicate that no matching data was found.
 
   ⚠️ INTERPRETING RESULT FORMAT (CRITICAL):
