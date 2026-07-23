@@ -4,8 +4,7 @@ system: |
   Graph Schema (labels and properties are auto-detected from DB):
   {schema_str}
 
-  Generate a Cypher query to answer the user's question.
-  Use parameterized queries for safety.
+  Generate a parameterized Cypher query answering the user's question.
 
   Respond in JSON format:
   {{
@@ -14,168 +13,77 @@ system: |
     "explanation": "<brief_explanation>"
   }}
 
-  Important:
-  - Use MATCH, OPTIONAL MATCH appropriately
-  - Use parameters ($param) for user-provided values
-  - Limit results when appropriate (LIMIT 200 for non-aggregation queries)
-  - Do NOT use SIMILAR relationship (it's auto-generated for analytics, not for queries)
+  ⚠️ RETURN STYLE — pick by intent (and by question):
+  - TYPE A (return raw nodes/rels for graph view): relationship_search,
+    path_analysis, mentoring_network, personnel_search, project_matching
+    → `RETURN e, r, s LIMIT 200` (NOT property aliases)
+  - TYPE B (aggregation/analysis): org_analysis, certificate_search,
+    global_analysis, ontology_update, unknown/기타
+    → `WITH ... RETURN <aliases> ORDER BY ... LIMIT 10` (NOT raw nodes)
+  - Regardless of intent: if the question asks counts, rankings, comparisons,
+    gaps, averages, top-N → use TYPE B.
 
-  ⚠️ CRITICAL RETURN CLAUSE RULE:
-  If the question requires COUNT, SUM, AVG, comparison, ranking, or statistics
-  → use TYPE B regardless of intent (property aliases in RETURN, not raw nodes).
+  ⚠️ CYPHER COMPATIBILITY (Neo4j Community — violations cause SyntaxError):
+  - UNWIND 뒤 바로 WHERE 금지 → 사이에 WITH 삽입
+  - CALL {{...}} 서브쿼리 금지 → WITH/OPTIONAL MATCH로 평탄화
+  - /* */ 블록 주석 금지 (// 만 허용)
+  - SQL식 `x NOT IN [...]` 금지 → `NOT x IN [...]`
+  - SQL window functions (OVER 등) 금지
+  - RETURN에 쓰는 관계 변수(r1, r2...)는 반드시 MATCH에서 정의
 
-  Intent → RETURN style mapping:
-  | Intent               | Style  | Reason                        |
-  |----------------------|--------|-------------------------------|
-  | relationship_search  | TYPE A | 관계 구조를 그래프로 시각화     |
-  | path_analysis        | TYPE A | 경로를 그래프로 시각화          |
-  | mentoring_network    | TYPE A | 멘토링 네트워크 시각화          |
-  | personnel_search     | TYPE A | 인력과 스킬/프로젝트 관계 표시  |
-  | project_matching     | TYPE A | 프로젝트-인력 관계 표시         |
-  | org_analysis         | TYPE B | 부서 통계/집계                 |
-  | certificate_search   | TYPE B | 자격증 목록/집계               |
-  | global_analysis      | TYPE B | 거시적 통계                    |
-  | ontology_update      | TYPE B | 온톨로지 변경은 집계/확인용     |
+  ⚠️ CASE-INSENSITIVE (name 비교는 항상):
+  - Equality: `toLower(x.name) = toLower($param)`
+  - List: `ANY(item IN $list WHERE toLower(x.name) = toLower(item))`
+  - DB에 'Python'/'python' 혼재 — toLower 없으면 조용히 0건.
 
-  If the intent is not in the table above (e.g., "unknown"), default to TYPE B.
+  ⚠️ EMPLOYEE AGGREGATION RULE (CRITICAL — DB has duplicate Employee nodes):
+  - The same person exists as MULTIPLE Employee nodes; HAS_SKILL / WORKS_ON /
+    HAS_CERTIFICATE relationships are SPLIT across those duplicate nodes.
+  - Any per-person counting/aggregation MUST group by `e.name`,
+    NEVER by the node variable `e` (node grouping undercounts and drops people).
+    ❌ WRONG:  WITH e, COUNT(DISTINCT p) AS cnt
+    ✅ CORRECT: WITH e.name AS name, COUNT(DISTINCT p.name) AS cnt
+  - Counting people: use COUNT(DISTINCT e.name), NOT COUNT(DISTINCT e).
+  - Need employee properties after grouping by name? Aggregate them:
+    max(e.max_projects) AS max_projects.
+  - Same principle applies to Project aggregation (duplicate Project nodes exist).
 
-  📌 TYPE A — Entity browsing / exploration:
-  When the intent is TYPE A (see table above), return node and relationship variables
-  directly for graph visualization.
+  ⚠️ PARAMETER VALUE RULE:
+  - Copy parameter values EXACTLY from Extracted Entities. NEVER add suffixes
+    (프로젝트/팀/부서 등) or rephrase. Entity "챗봇 리뉴얼" → param "챗봇 리뉴얼".
 
-  ❌ WRONG for Type A:
-    RETURN e.name AS employeeName, s.name AS skillName
-
-  ✅ CORRECT for Type A:
-    RETURN e, r, s
-    LIMIT 200
-
-  📌 TYPE B — Aggregation / analysis:
-  When the intent is TYPE B (see table above), or the question explicitly asks for
-  counts, rankings, comparisons, gaps, averages, sums, top-N, or statistical analysis,
-  use WITH + RETURN with property aliases. Do NOT return raw nodes.
-
-  ✅ CORRECT for Type B:
-    WITH e.name AS name, COUNT(s) AS skill_count
-    RETURN name, skill_count
-    ORDER BY skill_count DESC
-    LIMIT 10
-
-  Example - Simple skill query (Type A):
+  Example — TYPE A filtered search:
     MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
-    WHERE toLower(e.name) = toLower($employeeName)
+    WHERE toLower(s.name) = toLower($skillName)
+      AND r.proficiency IN ['고급', '전문가']
     RETURN e, r, s
     LIMIT 200
 
-  For Multi-hop queries:
-  - Follow the query plan steps if provided
-  - Chain MATCH clauses for each hop
-  - CRITICAL: Define relationship variables in MATCH, then use them in RETURN
-  - CRITICAL: Always use toLower() for name comparisons (case-insensitive matching)
-  - Use variable names that reflect each step (e.g., e1, e2, mentor)
-
-  Example 2-hop (Find colleagues who worked on same projects):
+  Example — TYPE A multi-hop (2-hop colleagues; chain MATCH per hop, follow the
+  query plan if provided; reverse direction uses `(p)<-[r:WORKS_ON]-(e)`):
     MATCH (e:Employee)-[r1:WORKS_ON]->(p:Project)<-[r2:WORKS_ON]-(colleague:Employee)
     WHERE toLower(e.name) = toLower($name) AND colleague <> e
     RETURN e, r1, p, r2, colleague
     LIMIT 200
 
-  Example 3-hop (Find skills of mentee's project colleagues):
-    MATCH (mentor:Employee)-[r1:MENTORS]->(mentee:Employee)
-    WHERE toLower(mentor.name) = toLower($name)
-    MATCH (mentee)-[r2:WORKS_ON]->(p:Project)<-[r3:WORKS_ON]-(colleague:Employee)
-    WHERE colleague <> mentee
-    MATCH (colleague)-[r4:HAS_SKILL]->(s:Skill)
-    RETURN mentor, r1, mentee, r2, p, r3, colleague, r4, s
-    LIMIT 200
-
-  ⚠️ IMPORTANT: Every relationship variable (r1, r2, etc.) in RETURN must be defined in a MATCH clause!
-
-  ⚠️ CYPHER COMPATIBILITY RULES:
-  - NEVER use WHERE directly after UNWIND. Always insert WITH in between.
-    ❌ WRONG:  UNWIND stats AS stat WHERE stat.x = y RETURN stat
-    ✅ CORRECT: UNWIND stats AS stat WITH stat, y WHERE stat.x = y RETURN stat
-  - NEVER use CALL {{}} subqueries (CALL {{...}} WITH ...). Neo4j Community Edition does not support them.
-    ❌ WRONG:  CALL {{ MATCH (n) RETURN count(n) AS cnt }}
-    ✅ CORRECT: Rewrite as a single flat query using WITH, OPTIONAL MATCH, or multiple MATCH clauses.
-  - NEVER use /* */ block comments in Cypher. Use // for single-line comments if needed, or omit comments entirely.
-  - NEVER use SQL-style `x NOT IN [...]` syntax. Neo4j Cypher does NOT support it.
-    ❌ WRONG:  WHERE toLower(e.name) NOT IN $excludeNames
-    ✅ CORRECT: WHERE NOT toLower(e.name) IN $excludeNames
-
-  ⚠️ CASE-INSENSITIVE MATCHING (ALWAYS REQUIRED for name comparisons):
-  - Equality:  use `toLower(x.name) = toLower($param)`
-    ❌ WRONG:  WHERE s.name = $skillName
-    ✅ CORRECT: WHERE toLower(s.name) = toLower($skillName)
-  - List membership: use `ANY(item IN $list WHERE toLower(x.name) = toLower(item))`
-    ❌ WRONG:  WHERE s.name IN $skillNames
-    ✅ CORRECT: WHERE ANY(skill IN $skillNames WHERE toLower(s.name) = toLower(skill))
-  - The DB has mixed casing (e.g., 'Python' vs 'python', 'RAG' all caps). Without toLower(),
-    queries silently return 0 results when the user input has different casing.
-
-  ⚠️ EMPLOYEE AGGREGATION RULE (CRITICAL — the DB has duplicate Employee nodes):
-  - The same person exists as MULTIPLE Employee nodes, and their HAS_SKILL /
-    WORKS_ON / HAS_CERTIFICATE relationships are SPLIT across those nodes.
-  - Therefore, any per-person counting/aggregation MUST group by `e.name`,
-    NEVER by the node variable `e` — grouping by node undercounts and drops people.
-    ❌ WRONG:  MATCH (e:Employee)-[:WORKS_ON]->(p:Project)
-               WITH e, COUNT(DISTINCT p) AS cnt
-    ✅ CORRECT: MATCH (e:Employee)-[:WORKS_ON]->(p:Project)
-               WITH e.name AS name, COUNT(DISTINCT p.name) AS cnt
-  - Same for counting people: use COUNT(DISTINCT e.name), NOT COUNT(DISTINCT e).
-    ❌ WRONG:  WITH p, COUNT(DISTINCT e) AS members
-    ✅ CORRECT: WITH p.name AS project, COUNT(DISTINCT e.name) AS members
-  - When you need employee properties after grouping by name, aggregate them
-    (e.g., max(e.max_projects) AS max_projects).
-
-  ⚠️ PARAMETER VALUE RULE:
-  - Parameter values MUST be copied EXACTLY from the Extracted Entities below.
-  - NEVER add suffixes like "프로젝트", "팀", "부서", "그룹" to entity values.
-  - NEVER modify, translate, or rephrase entity values.
-  - If the entity is "챗봇 리뉴얼", the parameter must be "챗봇 리뉴얼" (NOT "챗봇 리뉴얼 프로젝트").
-  - If the entity is "데이터레이크 개선", the parameter must be "데이터레이크 개선" (NOT "데이터레이크 개선 프로젝트").
-
-  Example - Project matching (Type A, reverse direction):
-    MATCH (p:Project)<-[r:WORKS_ON]-(e:Employee)
-    WHERE toLower(p.name) = toLower($projectName)
-    RETURN p, r, e
-    LIMIT 200
-
-  Example - Filtered search (Type A with WHERE conditions):
-    MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
-    WHERE toLower(s.name) = toLower($skillName)
-      AND r.proficiency IN ['고급', '전문가']
-      AND e.availability <> 'unavailable'
-    RETURN e, r, s
-    LIMIT 200
-
-  Example - Hours gap (Type B aggregation with calculation):
+  Example — TYPE B aggregation with calculation (note e.name grouping):
     MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)
     WITH e.name AS employee, p.name AS project,
-         w.allocated_hours AS allocated, w.actual_hours AS actual,
          (w.actual_hours - w.allocated_hours) AS gap
-    RETURN employee, project, allocated, actual, gap
+    RETURN employee, project, gap
     ORDER BY gap DESC
     LIMIT 10
 
-  Example - Skill count (Type B aggregation with COUNT/COLLECT):
-    MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)
-    WITH e.name AS employee, COUNT(s) AS skill_count,
-         COLLECT(s.name) AS skills
-    RETURN employee, skill_count, skills
-    ORDER BY skill_count DESC
-    LIMIT 10
-
-  ⚠️ PROPERTY vs AGGREGATION COMPARISON PATTERN:
-  When the question compares a node property against a counted/summed relationship
-  value, use WITH to compute the aggregation first, then filter with WHERE.
-
-  Example (Type B):
+  Example — property vs aggregation comparison (aggregate first, then WHERE;
+  e.name grouping + property aggregated):
     MATCH (e:Employee)-[:WORKS_ON]->(p:Project)
-    WITH e, COUNT(p) AS actual_count
-    WHERE actual_count > e.max_projects
-    RETURN e.name AS employee, e.max_projects, actual_count
+    WITH e.name AS employee, max(e.max_projects) AS max_projects,
+         COUNT(DISTINCT p.name) AS actual_count
+    WHERE actual_count > max_projects
+    RETURN employee, max_projects, actual_count
     ORDER BY actual_count DESC
+
+  Do NOT use the SIMILAR relationship (analytics-only, not for queries).
 
 user: |
   Question: {question}

@@ -509,7 +509,7 @@ class Neo4jClient:
                             f"MATCH (n:`{label}`) WHERE n.`{prop_name}` IS NOT NULL "
                             f"WITH DISTINCT n.`{prop_name}` AS val "
                             f"WITH val WHERE val IS :: STRING "
-                            f"RETURN collect(val)[..20] AS vals, count(val) AS cnt"
+                            f"RETURN collect(val)[..8] AS vals, count(val) AS cnt"
                         )
                         if distinct_result:
                             row = distinct_result[0]
@@ -540,7 +540,7 @@ class Neo4jClient:
                             f"MATCH ()-[r:`{rel_type}`]->() WHERE r.`{prop_name}` IS NOT NULL "
                             f"WITH DISTINCT r.`{prop_name}` AS val "
                             f"WITH val WHERE val IS :: STRING "
-                            f"RETURN collect(val)[..20] AS vals, count(val) AS cnt"
+                            f"RETURN collect(val)[..8] AS vals, count(val) AS cnt"
                         )
                         if distinct_result:
                             row = distinct_result[0]
