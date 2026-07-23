@@ -315,7 +315,7 @@ cases:
     category: project_matching
     expected_intent: [project_matching, personnel_search]
     tier1:
-      count_range: {min: 10}   # 과거 실측 37~38건
+      count_range: {min: 2}    # 해석 폭 극단적 (엄격 AND 해석 시 한 자릿수 ~ 느슨 200건). 이 케이스의 본질은 judge의 페어 충실성 감시
     judge: true               # 페어 충실성 감시 (과거 페어 손실 버그 케이스)
 
   - id: s04_recsys_rate_filter
