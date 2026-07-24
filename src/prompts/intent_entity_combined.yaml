@@ -6,22 +6,36 @@ system: |
   {available_intents}
 
   Intent descriptions:
-  - personnel_search: Finding people with specific skills, experience, or attributes
-  - project_matching: Finding projects or matching people to projects
-  - relationship_search: Finding relationships or connections between entities
-  - org_analysis: Analyzing organizational structure or departments
-  - mentoring_network: Finding mentors, mentees, or mentoring relationships
-  - certificate_search: Finding people with specific certifications
-  - path_analysis: Analyzing paths or connections between entities
+  - personnel_search: Finding PEOPLE by skills/experience/attributes — "누구인가",
+    "~한 직원/사람 찾아줘". 집계("초과 배정된 직원은 누구")여도 답이 사람 목록이면 이것.
+    예: "Python 고급 개발자 찾아줘", "max_projects 초과 배정된 직원은 누구인가?"
+  - project_matching: PROJECT participation/staffing/requirements — 프로젝트 참여자,
+    프로젝트별 인원/공수/예산, 프로젝트-인력 매칭. 예: "챗봇 리뉴얼에 누가 참여해?",
+    "인원이 부족한 프로젝트는?", "참여 인원 TOP 5 프로젝트는?"
+  - relationship_search: Connections between specific entities — "같은 프로젝트 동료",
+    "공통 스킬 가진 사람"
+  - org_analysis: DEPARTMENT/OFFICE-level statistics — 부서/오피스/직무 단위 통계.
+    예: "부서별 평균 시급은?", "오피스별 인원과 예산은?", "직무 유형별 평균 스킬 수는?"
+  - mentoring_network: Anything about MENTORS/MENTEES — 멘토/멘티가 언급되면 집계여도
+    이것. 예: "멘토 1인당 평균 멘티 수는?", "김철수의 멘티는?"
+  - certificate_search: Anything about CERTIFICATES — 자격증이 언급되면 집계여도 이것.
+    예: "자격증 보유 수 TOP 10 직원은?", "정보처리기사 보유자는?"
+  - path_analysis: Paths between two specific entities — "A와 B는 어떻게 연결돼?"
   - ontology_update: User requests to add/modify ontology concepts, synonyms, or relationships. Examples:
     - Direct: "LangGraph를 스킬로 추가해줘", "React와 ReactJS는 같은 거야"
     - Follow-up after "추가할까요?" question: "네", "응 추가해", "추가해줘", "등록해줘"
     - When user confirms adding a missing entity from previous context
-  - global_analysis: Macro-level questions about the entire organization or large groups.
-    Requires aggregating data across many entities rather than finding specific ones.
-    Examples: "조직 전체 기술 스택 분포는?", "부서별 프로젝트 현황을 요약해줘",
-    "가장 많이 보유한 스킬 Top 10은?", "팀별 인력 구성은?",
-    "전체적으로 어떤 기술이 부족해?", "회사 전체 요약해줘"
+  - global_analysis: COMPANY-WIDE cross-domain aggregation ONLY — 전사 수준이고
+    위의 어느 도메인에도 속하지 않을 때만. 예: "조직 전체 기술 스택 분포는?",
+    "전사에서 가장 부족한 기술은?", "회사 전체 요약해줘", "입사 연도별 추이는?"
+
+  ## Intent Priority (IMPORTANT)
+  - 집계(평균/TOP N/몇 명)가 있어도 질문의 SUBJECT DOMAIN이 우선한다:
+    자격증→certificate_search, 멘토/멘티→mentoring_network,
+    프로젝트 참여/배정→project_matching, 부서/오피스 통계→org_analysis,
+    사람 찾기→personnel_search.
+  - global_analysis는 마지막 선택지 — 특정 도메인으로 분류할 수 없는
+    전사 수준 질문에만 사용.
 
   ## Entity Extraction
   Extract entities from the question. Entity types to look for:

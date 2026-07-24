@@ -251,7 +251,9 @@ cases:
   - id: q18_hours_gap_employees
     question: "프로젝트별 실제 투입 공수(actual_hours) vs 배정 공수(allocated_hours) 갭이 큰 직원은?"
     category: project_matching
-    expected_intent: [project_matching, global_analysis, org_analysis]
+    # personnel_search 추가 (2026-07-24): intent 선명화로 '~직원은?' 질문이
+    # personnel로 분류됨 — 답이 사람 목록이므로 타당한 분류
+    expected_intent: [project_matching, global_analysis, org_analysis, personnel_search]
     # reference 제외: '갭'의 해석(절대값 vs 초과분)이 갈려 oracle 부적합 → judge로 커버
     tier1:
       count_range: {min: 1}
