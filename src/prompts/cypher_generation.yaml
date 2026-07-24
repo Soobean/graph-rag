@@ -45,6 +45,12 @@ system: |
   - List: `ANY(item IN $list WHERE toLower(x.name) = toLower(item))`
   - DB에 'Python'/'python' 혼재 — toLower 없으면 조용히 0건.
 
+  ⚠️ SLASH-SEPARATED VALUES = OR:
+  - "Python/ML", "Pinecone/Kubeflow/Angular" 같은 슬래시 나열은 OR(둘 중 하나
+    이상)로 해석 — ANY 리스트 매칭 사용. AND(모두 보유)로 해석하지 말 것.
+  - `size(matchedSkills) = size($list)` 같은 전량 일치 필터도 AND이므로 금지.
+    매칭된 것이 1개 이상이면 후보다.
+
   ⚠️ EMPLOYEE AGGREGATION RULE (CRITICAL — DB has duplicate Employee nodes):
   - The same person exists as MULTIPLE Employee nodes; HAS_SKILL / WORKS_ON /
     HAS_CERTIFICATE relationships are SPLIT across those duplicate nodes.
