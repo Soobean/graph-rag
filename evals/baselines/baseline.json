@@ -1,5 +1,5 @@
 {
-  "timestamp": "20260723_123404",
+  "timestamp": "20260724_134956",
   "total": 26,
   "passed": 26,
   "pass_rate": 1.0,
@@ -40,8 +40,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)\nWHERE e.department IS NOT NULL AND e.hourly_rate IS NOT NULL\nWITH e.department AS department, avg(e.hourly_rate) AS avg_hourly_rate\nWITH collect({department: department, avg_hourly_rate: avg_hourly_rate}) AS department_avgs, max(avg_hourly_rate) AS highest_avg_hourly_rate\nUNWIND department_avgs AS row\nRETURN row.department AS department, row.avg_hourly_rate AS avg_hourly_rate, highest_avg_hourly_rate, row.avg_hourly_rate = highest_avg_hourly_rate AS is_highest_department\nORDER BY avg_hourly_rate DESC, department ASC",
+        "intent": "org_analysis",
+        "cypher_query": "MATCH (e:Employee)\nWHERE e.department IS NOT NULL AND e.hourly_rate IS NOT NULL\nWITH e.department AS department, AVG(e.hourly_rate) AS avg_hourly_rate\nWITH collect({department: department, avg_hourly_rate: avg_hourly_rate}) AS rows, max(avg_hourly_rate) AS max_avg_hourly_rate\nUNWIND rows AS row\nRETURN row.department AS department, row.avg_hourly_rate AS avg_hourly_rate, row.avg_hourly_rate = max_avg_hourly_rate AS is_highest\nORDER BY avg_hourly_rate DESC",
         "result_count": 15,
         "execution_path": [
           "intent_entity_extractor",
@@ -53,17 +53,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 2.994,
+          "intent_entity_extractor": 1.959,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.599,
-          "graph_executor": 0.066,
-          "response_generator": 2.648
+          "cypher_generator": 5.284,
+          "graph_executor": 0.036,
+          "response_generator": 2.762
         },
         "error": null
       },
-      "elapsed_seconds": 8.38
+      "elapsed_seconds": 10.05
     },
     {
       "case_id": "q02_career_vs_guideline",
@@ -99,7 +99,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[:HAS_POSITION]->(pos:Position)\nWITH e.name AS employee,\n     pos.name AS position,\n     max(e.years_experience) AS years_experience,\n     max(pos.min_years) AS min_years,\n     max(pos.max_years) AS max_years\nWITH employee, position, years_experience, min_years, max_years,\n     CASE\n       WHEN years_experience IS NULL OR min_years IS NULL OR max_years IS NULL THEN '기준정보없음'\n       WHEN years_experience < min_years THEN '기준미달'\n       WHEN years_experience > max_years THEN '기준초과'\n       ELSE '기준일치'\n     END AS match_status\nWITH position, min_years, max_years, match_status, COUNT(DISTINCT employee) AS employee_count\nWITH position, collect({min_years: min_years, max_years: max_years, match_status: match_status, employee_count: employee_count}) AS rows,\n     sum(employee_count) AS total_count\nUNWIND rows AS row\nWITH position, total_count, row\nRETURN position,\n       row.min_years AS min_years,\n       row.max_years AS max_years,\n       row.match_status AS match_status,\n       row.employee_count AS employee_count,\n       round(100.0 * row.employee_count / total_count, 2) AS ratio_within_position\nORDER BY position, match_status",
+        "cypher_query": "MATCH (e:Employee)-[:HAS_POSITION]->(pos:Position)\nWITH e.name AS employee,\n     max(e.years_experience) AS years_experience,\n     pos.name AS position,\n     max(pos.min_years) AS min_years,\n     max(pos.max_years) AS max_years\nWITH employee, years_experience, position, min_years, max_years,\n     CASE\n       WHEN years_experience IS NULL OR min_years IS NULL OR max_years IS NULL THEN '기준정보없음'\n       WHEN years_experience < min_years THEN '기준 미달'\n       WHEN years_experience > max_years THEN '기준 초과'\n       ELSE '기준 일치'\n     END AS match_status\nRETURN position,\n       min_years,\n       max_years,\n       match_status,\n       COUNT(DISTINCT employee) AS employee_count\nORDER BY position, match_status",
         "result_count": 17,
         "execution_path": [
           "intent_entity_extractor",
@@ -107,23 +107,21 @@
           "concept_expander",
           "entity_resolver_skipped",
           "cypher_generator",
-          "graph_executor_error",
-          "cypher_generator",
           "graph_executor",
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.36,
+          "intent_entity_extractor": 1.245,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 4.107,
-          "graph_executor": 0.077,
-          "response_generator": 4.8
+          "cypher_generator": 3.68,
+          "graph_executor": 0.026,
+          "response_generator": 4.2
         },
         "error": null
       },
-      "elapsed_seconds": 14.54
+      "elapsed_seconds": 9.16
     },
     {
       "case_id": "q03_hires_by_year",
@@ -154,7 +152,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)\nWHERE e.hire_date IS NOT NULL\nWITH substring(e.hire_date, 0, 4) AS hire_year, COUNT(DISTINCT e.name) AS new_hires\nRETURN hire_year, new_hires\nORDER BY hire_year ASC",
+        "cypher_query": "MATCH (e:Employee)\nWHERE e.hire_date IS NOT NULL\nWITH substring(toString(e.hire_date), 0, 4) AS hire_year, COUNT(DISTINCT e.name) AS new_hires\nRETURN hire_year, new_hires\nORDER BY hire_year ASC",
         "result_count": 21,
         "execution_path": [
           "intent_entity_extractor",
@@ -166,17 +164,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.837,
+          "intent_entity_extractor": 1.183,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.431,
-          "graph_executor": 0.036,
-          "response_generator": 4.179
+          "cypher_generator": 2.335,
+          "graph_executor": 0.005,
+          "response_generator": 4.361
         },
         "error": null
       },
-      "elapsed_seconds": 8.5
+      "elapsed_seconds": 7.9
     },
     {
       "case_id": "q04_over_max_projects",
@@ -206,8 +204,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[:WORKS_ON]->(p:Project)\nWITH e.name AS employee, max(e.max_projects) AS max_projects, COUNT(DISTINCT p.name) AS assigned_projects\nWHERE assigned_projects > max_projects\nRETURN employee, max_projects, assigned_projects\nORDER BY assigned_projects DESC, employee",
+        "intent": "personnel_search",
+        "cypher_query": "MATCH (e:Employee)-[:WORKS_ON]->(p:Project)\nWITH e.name AS employee, max(e.max_projects) AS max_projects, COUNT(DISTINCT p.name) AS assigned_projects\nWHERE assigned_projects > max_projects\nRETURN employee, max_projects, assigned_projects\nORDER BY assigned_projects DESC, employee ASC",
         "result_count": 237,
         "execution_path": [
           "intent_entity_extractor",
@@ -219,17 +217,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.496,
+          "intent_entity_extractor": 1.057,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.137,
-          "graph_executor": 0.022,
-          "response_generator": 3.777
+          "cypher_generator": 2.032,
+          "graph_executor": 0.026,
+          "response_generator": 3.271
         },
         "error": null
       },
-      "elapsed_seconds": 7.47
+      "elapsed_seconds": 6.43
     },
     {
       "case_id": "q05_top10_skills",
@@ -277,17 +275,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.502,
+          "intent_entity_extractor": 1.868,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.371,
-          "graph_executor": 0.02,
-          "response_generator": 2.317
+          "cypher_generator": 1.796,
+          "graph_executor": 0.021,
+          "response_generator": 2.145
         },
         "error": null
       },
-      "elapsed_seconds": 6.24
+      "elapsed_seconds": 5.86
     },
     {
       "case_id": "q06_shortage_high_demand",
@@ -318,7 +316,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "global_analysis",
-        "cypher_query": "MATCH (s:Skill)\nWHERE s.market_demand = $marketDemand\nOPTIONAL MATCH (e:Employee)-[:HAS_SKILL]->(s)\nWITH s.name AS skill, COUNT(DISTINCT e.name) AS employee_count\nRETURN skill, employee_count\nORDER BY employee_count ASC, skill ASC",
+        "cypher_query": "MATCH (s:Skill)\nWHERE s.market_demand = $marketDemand\nOPTIONAL MATCH (e:Employee)-[:HAS_SKILL]->(s)\nWITH s.name AS skill, COUNT(DISTINCT e.name) AS available_people\nRETURN skill, available_people\nORDER BY available_people ASC, skill ASC",
         "result_count": 11,
         "execution_path": [
           "intent_entity_extractor",
@@ -330,17 +328,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 19.368,
+          "intent_entity_extractor": 1.204,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.375,
-          "graph_executor": 0.024,
-          "response_generator": 2.372
+          "cypher_generator": 2.692,
+          "graph_executor": 0.041,
+          "response_generator": 2.119
         },
         "error": null
       },
-      "elapsed_seconds": 24.15
+      "elapsed_seconds": 6.07
     },
     {
       "case_id": "q07_expert_python_ml_dept",
@@ -375,30 +373,30 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\nWHERE r.proficiency = $proficiency\n  AND ANY(skillName IN $skillNames WHERE toLower(s.name) = toLower(skillName))\nWITH e.department AS department, COUNT(DISTINCT e.name) AS expert_count\nRETURN department, expert_count\nORDER BY expert_count DESC",
+        "intent": "org_analysis",
+        "cypher_query": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\nWHERE ANY(skillName IN $skillNames WHERE toLower(s.name) = toLower(skillName))\n  AND r.proficiency = $proficiency\nWITH e.department AS department, COUNT(DISTINCT e.name) AS employee_count\nRETURN department, employee_count\nORDER BY employee_count DESC, department ASC",
         "result_count": 9,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
           "concept_expander",
-          "entity_resolver_skipped",
+          "entity_resolver",
           "cypher_generator",
           "graph_executor",
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.187,
+          "intent_entity_extractor": 1.25,
           "query_decomposer": 0.0,
-          "concept_expander": 0.0,
-          "entity_resolver": 0.0,
-          "cypher_generator": 2.461,
-          "graph_executor": 0.006,
-          "response_generator": 3.476
+          "concept_expander": 0.032,
+          "entity_resolver": 0.037,
+          "cypher_generator": 2.538,
+          "graph_executor": 0.043,
+          "response_generator": 2.286
         },
         "error": null
       },
-      "elapsed_seconds": 7.14
+      "elapsed_seconds": 6.2
     },
     {
       "case_id": "q08_jobtype_skill_stats",
@@ -428,8 +426,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[hs:HAS_SKILL]->(s:Skill)\nWITH e.job_type AS job_type, e.name AS employee,\n     COUNT(DISTINCT s.name) AS skill_count,\n     AVG(hs.effective_rate) AS avg_effective_rate_per_employee\nRETURN job_type,\n       AVG(skill_count) AS avg_skill_count,\n       AVG(avg_effective_rate_per_employee) AS avg_effective_rate\nORDER BY job_type",
+        "intent": "org_analysis",
+        "cypher_query": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\nWITH e.name AS employee, max(e.job_type) AS job_type,\n     COUNT(DISTINCT s.name) AS skill_count,\n     AVG(r.effective_rate) AS avg_effective_rate_per_employee\nWITH job_type,\n     AVG(skill_count) AS avg_skill_count,\n     AVG(avg_effective_rate_per_employee) AS avg_effective_rate\nRETURN job_type, avg_skill_count, avg_effective_rate\nORDER BY job_type",
         "result_count": 12,
         "execution_path": [
           "intent_entity_extractor",
@@ -441,17 +439,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.086,
+          "intent_entity_extractor": 1.118,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.293,
-          "graph_executor": 0.026,
-          "response_generator": 4.735
+          "cypher_generator": 2.384,
+          "graph_executor": 0.029,
+          "response_generator": 5.233
         },
         "error": null
       },
-      "elapsed_seconds": 8.18
+      "elapsed_seconds": 8.81
     },
     {
       "case_id": "q09_budget_execution_by_status",
@@ -481,8 +479,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)\nWHERE p.budget_allocated IS NOT NULL\n  AND p.budget_allocated <> 0\n  AND p.budget_spent IS NOT NULL\nWITH p.status AS status,\n     avg(toFloat(p.budget_spent) / toFloat(p.budget_allocated)) AS execution_rate,\n     count(DISTINCT p.name) AS project_count\nRETURN status, execution_rate, project_count\nORDER BY status",
+        "intent": "project_matching",
+        "cypher_query": "MATCH (p:Project)\nWITH p.status AS status,\n     sum(coalesce(p.budget_spent, 0)) AS total_budget_spent,\n     sum(coalesce(p.budget_allocated, 0)) AS total_budget_allocated\nRETURN status,\n       total_budget_spent,\n       total_budget_allocated,\n       CASE\n         WHEN total_budget_allocated = 0 THEN 0\n         ELSE toFloat(total_budget_spent) / total_budget_allocated\n       END AS execution_rate\nORDER BY status",
         "result_count": 5,
         "execution_path": [
           "intent_entity_extractor",
@@ -494,17 +492,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 0.985,
+          "intent_entity_extractor": 1.251,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.173,
-          "graph_executor": 0.042,
-          "response_generator": 5.456
+          "cypher_generator": 2.197,
+          "graph_executor": 0.005,
+          "response_generator": 2.601
         },
         "error": null
       },
-      "elapsed_seconds": 8.67
+      "elapsed_seconds": 6.06
     },
     {
       "case_id": "q10_understaffed_projects",
@@ -529,8 +527,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)<-[:WORKS_ON]-(e:Employee)\nWITH p.name AS project, max(p.required_headcount) AS required_headcount, COUNT(DISTINCT e.name) AS actual_assigned\nWHERE actual_assigned < required_headcount\nRETURN project, required_headcount, actual_assigned, (required_headcount - actual_assigned) AS shortage\nORDER BY shortage DESC, project ASC",
+        "intent": "project_matching",
+        "cypher_query": "MATCH (p:Project)<-[w:WORKS_ON]-(e:Employee)\nWITH p.name AS project, max(p.required_headcount) AS required_headcount, COUNT(DISTINCT e.name) AS actual_assigned\nWHERE actual_assigned < required_headcount\nRETURN project, required_headcount, actual_assigned, (required_headcount - actual_assigned) AS shortage\nORDER BY shortage DESC, project ASC",
         "result_count": 0,
         "execution_path": [
           "intent_entity_extractor",
@@ -542,17 +540,17 @@
           "response_generator_empty"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.22,
+          "intent_entity_extractor": 1.274,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.215,
-          "graph_executor": 0.023,
+          "cypher_generator": 2.546,
+          "graph_executor": 0.024,
           "response_generator": 0.0
         },
         "error": null
       },
-      "elapsed_seconds": 3.48
+      "elapsed_seconds": 3.87
     },
     {
       "case_id": "q11_top5_projects_contribution",
@@ -587,8 +585,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH p.name AS project,\n     COUNT(DISTINCT e.name) AS employee_count,\n     AVG(w.contribution_percent) AS avg_contribution_percent\nRETURN project, employee_count, avg_contribution_percent\nORDER BY employee_count DESC, project ASC\nLIMIT 5",
+        "intent": "project_matching",
+        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH p.name AS project, COUNT(DISTINCT e.name) AS employee_count, AVG(w.contribution_percent) AS avg_contribution_percent\nRETURN project, employee_count, avg_contribution_percent\nORDER BY employee_count DESC, avg_contribution_percent DESC\nLIMIT 5",
         "result_count": 5,
         "execution_path": [
           "intent_entity_extractor",
@@ -600,17 +598,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.182,
+          "intent_entity_extractor": 0.961,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.282,
-          "graph_executor": 0.013,
-          "response_generator": 2.952
+          "cypher_generator": 2.392,
+          "graph_executor": 0.012,
+          "response_generator": 2.757
         },
         "error": null
       },
-      "elapsed_seconds": 6.44
+      "elapsed_seconds": 6.14
     },
     {
       "case_id": "q12_project_type_budget_duration",
@@ -640,8 +638,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)\nWITH p.type AS project_type,\n     avg(p.budget_million) AS avg_budget_million,\n     avg(p.duration_months) AS avg_duration_months,\n     COUNT(DISTINCT p.name) AS project_count\nRETURN project_type, avg_budget_million, avg_duration_months, project_count\nORDER BY project_type",
+        "intent": "project_matching",
+        "cypher_query": "MATCH (p:Project)\nWITH p.type AS project_type,\n     avg(p.budget_million) AS avg_budget_million,\n     avg(p.duration_months) AS avg_duration_months,\n     count(DISTINCT p.name) AS project_count\nRETURN project_type, avg_budget_million, avg_duration_months, project_count\nORDER BY project_type",
         "result_count": 7,
         "execution_path": [
           "intent_entity_extractor",
@@ -653,17 +651,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 0.98,
+          "intent_entity_extractor": 1.148,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.055,
-          "graph_executor": 0.031,
-          "response_generator": 4.055
+          "cypher_generator": 1.799,
+          "graph_executor": 0.022,
+          "response_generator": 3.377
         },
         "error": null
       },
-      "elapsed_seconds": 7.13
+      "elapsed_seconds": 6.36
     },
     {
       "case_id": "q13_required_skill_qualified_by_dept",
@@ -693,8 +691,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE req.importance = '필수'\n  AND req.required_proficiency IN ['고급']\nMATCH (e:Employee)-[hs:HAS_SKILL]->(s)\nWHERE hs.proficiency IN ['고급', '전문가']\nWITH e.department AS department, e.name AS employee, COUNT(DISTINCT s.name) AS matchedRequiredSkills\nWHERE matchedRequiredSkills > 0\nRETURN department, COUNT(DISTINCT employee) AS employee_count\nORDER BY employee_count DESC, department ASC",
+        "intent": "org_analysis",
+        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE req.required_proficiency IN ['고급']\nMATCH (e:Employee)-[hs:HAS_SKILL]->(s)\nWHERE hs.proficiency IN ['고급', '전문가']\nWITH e.department AS department, e.name AS employee, COUNT(DISTINCT s.name) AS matched_required_skills\nWHERE matched_required_skills > 0\nRETURN department, COUNT(DISTINCT employee) AS employee_count\nORDER BY employee_count DESC, department ASC",
         "result_count": 15,
         "execution_path": [
           "intent_entity_extractor",
@@ -706,17 +704,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.026,
+          "intent_entity_extractor": 1.135,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.762,
-          "graph_executor": 0.093,
-          "response_generator": 3.095
+          "cypher_generator": 2.647,
+          "graph_executor": 0.096,
+          "response_generator": 2.891
         },
         "error": null
       },
-      "elapsed_seconds": 7.02
+      "elapsed_seconds": 6.82
     },
     {
       "case_id": "q14_pm_position_distribution",
@@ -751,8 +749,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWHERE p.status = $projectStatus\n  AND w.role = $role\nOPTIONAL MATCH (e)-[:HAS_POSITION]->(pos:Position)\nWITH e.name AS employee, max(pos.name) AS position\nRETURN coalesce(position, '미지정') AS position, COUNT(DISTINCT employee) AS employee_count\nORDER BY employee_count DESC, position ASC",
+        "intent": "project_matching",
+        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWHERE p.status = $projectStatus\n  AND w.role = $role\nOPTIONAL MATCH (e)-[:HAS_POSITION]->(pos:Position)\nWITH e.name AS employee, max(pos.name) AS position\nRETURN coalesce(position, $unknownLabel) AS position, COUNT(DISTINCT employee) AS employeeCount\nORDER BY employeeCount DESC, position ASC",
         "result_count": 9,
         "execution_path": [
           "intent_entity_extractor",
@@ -764,17 +762,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 0.996,
+          "intent_entity_extractor": 1.139,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.796,
-          "graph_executor": 0.052,
-          "response_generator": 2.267
+          "cypher_generator": 2.42,
+          "graph_executor": 0.045,
+          "response_generator": 2.707
         },
         "error": null
       },
-      "elapsed_seconds": 6.12
+      "elapsed_seconds": 6.32
     },
     {
       "case_id": "q15_top10_cert_holders",
@@ -804,8 +802,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)\nOPTIONAL MATCH (e)-[:HAS_CERTIFICATE]->(c:Certificate)\nWITH e.name AS employee, COUNT(DISTINCT c.name) AS certificate_count\nOPTIONAL MATCH (e2:Employee)-[:WORKS_ON]->(p:Project)\nWHERE e2.name = employee AND p.status = '진행중'\nWITH employee, certificate_count, COUNT(DISTINCT p.name) AS active_project_count\nRETURN employee, certificate_count, active_project_count\nORDER BY certificate_count DESC, active_project_count DESC, employee ASC\nLIMIT 10",
+        "intent": "certificate_search",
+        "cypher_query": "MATCH (e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)\nOPTIONAL MATCH (e)-[:WORKS_ON]->(p:Project)\nWHERE p.status = '진행중'\nWITH e.name AS employee,\n     COUNT(DISTINCT c.name) AS certificate_count,\n     COUNT(DISTINCT p.name) AS active_project_count\nRETURN employee, certificate_count, active_project_count\nORDER BY certificate_count DESC, active_project_count DESC, employee ASC\nLIMIT 10",
         "result_count": 10,
         "execution_path": [
           "intent_entity_extractor",
@@ -817,17 +815,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.431,
+          "intent_entity_extractor": 1.716,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.609,
-          "graph_executor": 0.024,
-          "response_generator": 3.615
+          "cypher_generator": 2.523,
+          "graph_executor": 0.015,
+          "response_generator": 3.125
         },
         "error": null
       },
-      "elapsed_seconds": 7.7
+      "elapsed_seconds": 7.4
     },
     {
       "case_id": "q16_mentor_stats",
@@ -862,30 +860,32 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (mentor:Employee)-[:MENTORS]->(mentee:Employee)\nOPTIONAL MATCH (mentor)-[:HAS_POSITION]->(pos:Position)\nOPTIONAL MATCH (mentor)-[:BELONGS_TO]->(dept:Department)\nWITH mentor.name AS mentor_name,\n     max(pos.name) AS position,\n     max(dept.name) AS department,\n     COUNT(DISTINCT mentee.name) AS mentee_count\nWITH collect(mentee_count) AS mentee_counts,\n     collect({position: position, department: department, mentor_name: mentor_name, mentee_count: mentee_count}) AS mentor_rows\nUNWIND mentor_rows AS row\nWITH mentee_counts,\n     row.position AS position,\n     row.department AS department,\n     row.mentor_name AS mentor_name,\n     row.mentee_count AS mentee_count\nRETURN round(reduce(total = 0.0, c IN mentee_counts | total + c) / CASE WHEN size(mentee_counts) = 0 THEN 1 ELSE size(mentee_counts) END, 2) AS avg_mentees_per_mentor,\n       position,\n       department,\n       COUNT(DISTINCT mentor_name) AS mentor_count,\n       round(avg(1.0 * mentee_count), 2) AS avg_mentees_in_group,\n       sum(mentee_count) AS total_mentees_in_group\nORDER BY mentor_count DESC, total_mentees_in_group DESC",
-        "result_count": 70,
+        "intent": "mentoring_network",
+        "cypher_query": "MATCH (mentor:Employee)-[:MENTORS]->(mentee:Employee)\nWITH mentor.name AS mentor_name,\n     COUNT(DISTINCT mentee.name) AS mentee_count,\n     max(mentor.department) AS department\nOPTIONAL MATCH (mentorNode:Employee)-[:HAS_POSITION]->(pos:Position)\nWHERE mentorNode.name = mentor_name\nWITH mentor_name, mentee_count, department, collect(DISTINCT pos.name) AS positions\nWITH collect({mentor_name: mentor_name, mentee_count: mentee_count, department: department, positions: positions}) AS mentorRows,\n     avg(toFloat(mentee_count)) AS avg_mentees_per_mentor\nUNWIND mentorRows AS row\nWITH avg_mentees_per_mentor, row.department AS department, row.positions AS positions, row.mentor_name AS mentor_name\nUNWIND CASE WHEN size(positions) = 0 THEN [null] ELSE positions END AS position\nWITH avg_mentees_per_mentor, department, position, COUNT(DISTINCT mentor_name) AS mentor_count\nRETURN avg_mentees_per_mentor, position, department, mentor_count\nORDER BY mentor_count DESC, position, department",
+        "result_count": 88,
         "execution_path": [
           "intent_entity_extractor",
-          "query_decomposer_skipped",
+          "query_decomposer",
           "concept_expander",
           "entity_resolver_skipped",
+          "cypher_generator",
+          "graph_executor_error",
           "cypher_generator",
           "graph_executor",
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.416,
-          "query_decomposer": 0.0,
+          "intent_entity_extractor": 1.851,
+          "query_decomposer": 3.316,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 4.393,
-          "graph_executor": 0.073,
-          "response_generator": 5.615
+          "cypher_generator": 7.812,
+          "graph_executor": 0.074,
+          "response_generator": 3.717
         },
         "error": null
       },
-      "elapsed_seconds": 11.51
+      "elapsed_seconds": 22.9
     },
     {
       "case_id": "q17_agreed_below_hourly",
@@ -915,8 +915,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH e.name AS employee,\n     p.name AS project,\n     max(e.hourly_rate) AS hourly_rate,\n     max(w.agreed_rate) AS agreed_rate\nWHERE agreed_rate < hourly_rate\nRETURN COUNT(*) AS lower_priced_assignments",
+        "intent": "project_matching",
+        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWHERE w.agreed_rate < e.hourly_rate\nRETURN COUNT(*) AS lower_agreed_rate_assignments",
         "result_count": 1,
         "execution_path": [
           "intent_entity_extractor",
@@ -928,17 +928,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.068,
+          "intent_entity_extractor": 1.123,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.336,
-          "graph_executor": 0.028,
-          "response_generator": 1.511
+          "cypher_generator": 1.664,
+          "graph_executor": 0.009,
+          "response_generator": 1.191
         },
         "error": null
       },
-      "elapsed_seconds": 4.96
+      "elapsed_seconds": 4.01
     },
     {
       "case_id": "q18_hours_gap_employees",
@@ -968,8 +968,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "project_matching",
-        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH e.name AS employee, p.name AS project,\n     SUM(coalesce(w.actual_hours, 0)) AS actual_hours,\n     SUM(coalesce(w.allocated_hours, 0)) AS allocated_hours\nWITH employee, project, actual_hours, allocated_hours,\n     (actual_hours - allocated_hours) AS gap,\n     abs(actual_hours - allocated_hours) AS abs_gap\nRETURN employee, project, actual_hours, allocated_hours, gap, abs_gap\nORDER BY abs_gap DESC, gap DESC",
+        "intent": "personnel_search",
+        "cypher_query": "MATCH (e:Employee)-[w:WORKS_ON]->(p:Project)\nWITH e.name AS employee, p.name AS project,\n     SUM(COALESCE(w.actual_hours, 0)) AS actual_hours,\n     SUM(COALESCE(w.allocated_hours, 0)) AS allocated_hours\nWITH employee, project, actual_hours, allocated_hours,\n     (actual_hours - allocated_hours) AS gap\nRETURN employee, project, actual_hours, allocated_hours, gap\nORDER BY abs(gap) DESC, gap DESC",
         "result_count": 2543,
         "execution_path": [
           "intent_entity_extractor",
@@ -981,17 +981,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.338,
+          "intent_entity_extractor": 1.31,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.435,
-          "graph_executor": 0.132,
-          "response_generator": 6.872
+          "cypher_generator": 2.521,
+          "graph_executor": 0.128,
+          "response_generator": 4.022
         },
         "error": null
       },
-      "elapsed_seconds": 10.79
+      "elapsed_seconds": 7.99
     },
     {
       "case_id": "q19_dept_budget_vs_project_budget",
@@ -1021,8 +1021,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (d:Department)\nOPTIONAL MATCH (p:Project)-[:OWNED_BY]->(d)\nWITH d.name AS department,\n     max(d.budget_billion) AS department_budget_billion,\n     sum(DISTINCT p.budget_million) AS total_project_budget_million\nRETURN department,\n       department_budget_billion,\n       coalesce(total_project_budget_million, 0) AS total_project_budget_million,\n       CASE\n         WHEN department_budget_billion IS NULL OR department_budget_billion = 0 THEN NULL\n         ELSE round((coalesce(total_project_budget_million, 0) / (department_budget_billion * 1000.0)) * 100, 2)\n       END AS project_budget_ratio_percent\nORDER BY project_budget_ratio_percent DESC, department ASC",
+        "intent": "org_analysis",
+        "cypher_query": "MATCH (d:Department)<-[:BELONGS_TO]-(e:Employee)-[:WORKS_ON]->(p:Project)\nWITH d.name AS department, max(d.budget_billion) AS department_budget_billion, SUM(DISTINCT p.budget_million) AS total_project_budget_million\nRETURN department,\n       department_budget_billion,\n       total_project_budget_million,\n       CASE \n         WHEN department_budget_billion IS NULL OR department_budget_billion = 0 THEN NULL\n         ELSE round((toFloat(total_project_budget_million) / (department_budget_billion * 1000)) * 100, 2)\n       END AS budget_ratio_percent\nORDER BY budget_ratio_percent DESC, department",
         "result_count": 15,
         "execution_path": [
           "intent_entity_extractor",
@@ -1034,17 +1034,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.809,
+          "intent_entity_extractor": 0.989,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 3.578,
-          "graph_executor": 0.051,
-          "response_generator": 5.387
+          "cypher_generator": 2.764,
+          "graph_executor": 0.05,
+          "response_generator": 4.653
         },
         "error": null
       },
-      "elapsed_seconds": 10.84
+      "elapsed_seconds": 8.47
     },
     {
       "case_id": "q20_office_dept_stats",
@@ -1074,8 +1074,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (d:Department)-[:LOCATED_AT]->(o:Office)\nOPTIONAL MATCH (e:Employee)-[:BELONGS_TO]->(d)\nWITH o.name AS office,\n     COUNT(DISTINCT d.name) AS department_count,\n     COUNT(DISTINCT e.name) AS total_employees,\n     SUM(DISTINCT d.budget_billion) AS total_department_budget_billion\nRETURN office, department_count, total_employees, total_department_budget_billion\nORDER BY office",
+        "intent": "org_analysis",
+        "cypher_query": "MATCH (d:Department)-[:LOCATED_AT]->(o:Office)\nOPTIONAL MATCH (e:Employee)-[:BELONGS_TO]->(d)\nWITH o.name AS office,\n     COUNT(DISTINCT d.name) AS department_count,\n     COUNT(DISTINCT e.name) AS total_headcount,\n     SUM(DISTINCT d.budget_billion) AS total_department_budget_billion\nRETURN office, department_count, total_headcount, total_department_budget_billion\nORDER BY office",
         "result_count": 4,
         "execution_path": [
           "intent_entity_extractor",
@@ -1087,17 +1087,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 2.869,
+          "intent_entity_extractor": 1.014,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.748,
-          "graph_executor": 0.008,
-          "response_generator": 2.942
+          "cypher_generator": 3.125,
+          "graph_executor": 0.04,
+          "response_generator": 2.744
         },
         "error": null
       },
-      "elapsed_seconds": 8.58
+      "elapsed_seconds": 6.95
     },
     {
       "case_id": "s01_aiml_headcount_gap",
@@ -1127,8 +1127,8 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "global_analysis",
-        "cypher_query": "MATCH (p:Project)\nWHERE p.type = $projectType\n  AND p.status = $projectStatus\nOPTIONAL MATCH (e:Employee)-[:WORKS_ON]->(p)\nWITH p.name AS project,\n     max(p.required_headcount) AS required_headcount,\n     COUNT(DISTINCT e.name) AS current_staff\nRETURN project,\n       required_headcount,\n       current_staff,\n       (current_staff - required_headcount) AS staffing_gap\nORDER BY staffing_gap ASC, project ASC",
+        "intent": "project_matching",
+        "cypher_query": "MATCH (p:Project)\nWHERE p.type = $projectType\n  AND p.status = $projectStatus\nOPTIONAL MATCH (e:Employee)-[w:WORKS_ON]->(p)\nWITH p.name AS project, max(p.required_headcount) AS required_headcount, COUNT(DISTINCT e.name) AS current_staff\nRETURN project, required_headcount, current_staff, (required_headcount - current_staff) AS staffing_gap\nORDER BY staffing_gap DESC, project ASC",
         "result_count": 14,
         "execution_path": [
           "intent_entity_extractor",
@@ -1140,17 +1140,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.281,
+          "intent_entity_extractor": 1.065,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.0,
-          "cypher_generator": 2.483,
-          "graph_executor": 0.006,
-          "response_generator": 5.348
+          "cypher_generator": 2.634,
+          "graph_executor": 0.046,
+          "response_generator": 4.353
         },
         "error": null
       },
-      "elapsed_seconds": 9.13
+      "elapsed_seconds": 8.11
     },
     {
       "case_id": "s02_recsys_skill_coverage",
@@ -1181,7 +1181,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "project_matching",
-        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE toLower(p.name) = toLower($projectName)\nOPTIONAL MATCH (e:Employee)-[w:WORKS_ON]->(p)\nOPTIONAL MATCH (e)-[hs:HAS_SKILL]->(s)\nWITH p, req, s, e.name AS employee_name,\n     CASE req.required_proficiency\n       WHEN '초급' THEN 1\n       WHEN '중급' THEN 2\n       WHEN '고급' THEN 3\n       ELSE 0\n     END AS required_level,\n     max(\n       CASE hs.proficiency\n         WHEN '초급' THEN 1\n         WHEN '중급' THEN 2\n         WHEN '고급' THEN 3\n         WHEN '전문가' THEN 4\n         ELSE 0\n       END\n     ) AS employee_skill_level\nWITH p, req, s,\n     COUNT(DISTINCT employee_name) AS assigned_people,\n     COUNT(DISTINCT CASE WHEN employee_skill_level >= required_level AND employee_name IS NOT NULL THEN employee_name END) AS covered_people\nRETURN p, req, s, assigned_people, covered_people,\n       CASE WHEN covered_people > 0 THEN 'covered' ELSE 'not_covered' END AS coverage_status\nLIMIT 200",
+        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE toLower(p.name) = toLower($projectName)\nOPTIONAL MATCH (e:Employee)-[w:WORKS_ON]->(p)\nOPTIONAL MATCH (e)-[hs:HAS_SKILL]->(s)\nWITH p, req, s, e.name AS employee,\n     CASE req.required_proficiency\n       WHEN '초급' THEN 1\n       WHEN '중급' THEN 2\n       WHEN '고급' THEN 3\n       ELSE 0\n     END AS requiredLevel,\n     max(CASE hs.proficiency\n       WHEN '초급' THEN 1\n       WHEN '중급' THEN 2\n       WHEN '고급' THEN 3\n       WHEN '전문가' THEN 4\n       ELSE 0\n     END) AS employeeSkillLevel\nWITH p, req, s,\n     COUNT(DISTINCT employee) AS assignedPeople,\n     COUNT(DISTINCT CASE WHEN employeeSkillLevel >= requiredLevel AND employee IS NOT NULL THEN employee END) AS qualifiedPeople\nRETURN p, req, s\nLIMIT 200",
         "result_count": 21,
         "execution_path": [
           "intent_entity_extractor",
@@ -1193,17 +1193,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.412,
+          "intent_entity_extractor": 1.155,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.005,
-          "cypher_generator": 3.912,
-          "graph_executor": 0.066,
-          "response_generator": 6.359
+          "cypher_generator": 3.928,
+          "graph_executor": 0.067,
+          "response_generator": 5.472
         },
         "error": null
       },
-      "elapsed_seconds": 11.77
+      "elapsed_seconds": 10.64
     },
     {
       "case_id": "s03_pinecone_gap_candidates",
@@ -1233,30 +1233,32 @@
       ],
       "judge_result": null,
       "metadata": {
-        "intent": "project_matching",
-        "cypher_query": "MATCH (proj:Project)\nWHERE toLower(proj.name) = toLower($projectName)\nMATCH (req:Skill)<-[rr:REQUIRES]-(proj)\nWITH proj, collect(DISTINCT toLower(req.name)) AS projectRequiredSkills\nRETURN proj.name AS name, projectRequiredSkills\nORDER BY projectRequiredSkills DESC",
-        "result_count": 3,
+        "intent": "personnel_search",
+        "cypher_query": "MATCH (target:Project)\nWHERE toLower(target.name) = toLower($projectName)\nMATCH (e:Employee)\nWHERE NOT EXISTS {\n  MATCH (e)-[:WORKS_ON]->(tp:Project)\n  WHERE toLower(tp.name) = toLower($projectName)\n}\nOPTIONAL MATCH (e)-[r:HAS_SKILL]->(s:Skill)\nWITH e, target, collect(DISTINCT CASE WHEN ANY(skillName IN $skillNames WHERE toLower(s.name) = toLower(skillName)) THEN s END) AS matchedSkills\nWITH e, target, [x IN matchedSkills WHERE x IS NOT NULL] AS filteredSkills\nWHERE size(filteredSkills) > 0\nRETURN e, target\nLIMIT 200",
+        "result_count": 105,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
           "concept_expander",
           "entity_resolver",
           "cypher_generator",
+          "graph_executor_error",
+          "cypher_generator",
           "graph_executor",
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 2.96,
+          "intent_entity_extractor": 1.527,
           "query_decomposer": 0.0,
-          "concept_expander": 0.02,
-          "entity_resolver": 0.032,
-          "cypher_generator": 4.474,
-          "graph_executor": 0.031,
-          "response_generator": 3.89
+          "concept_expander": 0.0,
+          "entity_resolver": 0.02,
+          "cypher_generator": 3.44,
+          "graph_executor": 0.117,
+          "response_generator": 7.218
         },
         "error": null
       },
-      "elapsed_seconds": 11.42
+      "elapsed_seconds": 15.43
     },
     {
       "case_id": "s04_recsys_rate_filter",
@@ -1287,8 +1289,8 @@
       "judge_result": null,
       "metadata": {
         "intent": "project_matching",
-        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE toLower(p.name) = toLower($projectName)\nAND req.importance = '필수'\nWITH p, collect(DISTINCT {skillName: s.name, required_proficiency: req.required_proficiency, max_hourly_rate: req.max_hourly_rate}) AS requiredSkills\nUNWIND requiredSkills AS rs\nWITH p, requiredSkills, rs\nRETURN p.name AS name, requiredSkills\nORDER BY requiredSkills DESC",
-        "result_count": 9,
+        "cypher_query": "MATCH (p:Project)-[req:REQUIRES]->(s:Skill)\nWHERE toLower(p.name) = toLower($projectName)\n  AND req.importance = '필수'\nMATCH (e:Employee)-[hs:HAS_SKILL]->(s)\nWHERE hs.proficiency = req.required_proficiency\n  AND hs.effective_rate <= req.max_hourly_rate\nRETURN p, req, s, hs, e\nLIMIT 200",
+        "result_count": 200,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
@@ -1299,17 +1301,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.243,
+          "intent_entity_extractor": 1.234,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
-          "entity_resolver": 0.005,
-          "cypher_generator": 4.95,
-          "graph_executor": 0.044,
-          "response_generator": 4.972
+          "entity_resolver": 0.003,
+          "cypher_generator": 2.982,
+          "graph_executor": 0.106,
+          "response_generator": 7.058
         },
         "error": null
       },
-      "elapsed_seconds": 11.22
+      "elapsed_seconds": 11.4
     },
     {
       "case_id": "n01_exclude_skills_aidept",
@@ -1345,7 +1347,7 @@
       "judge_result": null,
       "metadata": {
         "intent": "personnel_search",
-        "cypher_query": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\nWHERE e.department = $department\n  AND NOT ANY(excluded IN $excludedSkills WHERE toLower(s.name) = toLower(excluded))\nRETURN e, r, s\nLIMIT 200",
+        "cypher_query": "MATCH (e:Employee)-[r:HAS_SKILL]->(s:Skill)\nWHERE e.department = $department\n  AND NOT ANY(skillName IN $excludedSkills WHERE toLower(s.name) = toLower(skillName))\nRETURN e, r, s\nLIMIT 200",
         "result_count": 200,
         "execution_path": [
           "intent_entity_extractor",
@@ -1357,17 +1359,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.569,
+          "intent_entity_extractor": 1.742,
           "query_decomposer": 0.0,
-          "concept_expander": 0.019,
-          "entity_resolver": 0.024,
-          "cypher_generator": 1.997,
-          "graph_executor": 0.042,
-          "response_generator": 7.003
+          "concept_expander": 0.0,
+          "entity_resolver": 0.034,
+          "cypher_generator": 2.039,
+          "graph_executor": 0.036,
+          "response_generator": 5.136
         },
         "error": null
       },
-      "elapsed_seconds": 10.69
+      "elapsed_seconds": 9.03
     },
     {
       "case_id": "n02_exclude_cert_holders",
@@ -1398,18 +1400,13 @@
           "name": "key_set:name",
           "passed": true,
           "detail": ""
-        },
-        {
-          "name": "result_excludes",
-          "passed": true,
-          "detail": ""
         }
       ],
       "judge_result": null,
       "metadata": {
         "intent": "certificate_search",
-        "cypher_query": "MATCH (e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)\nWITH e.name AS employee, collect(DISTINCT c.name) AS certificates\nWHERE NOT ANY(cert IN certificates WHERE toLower(cert) = toLower($excludedCertificate))\nRETURN employee, certificates\nORDER BY employee",
-        "result_count": 317,
+        "cypher_query": "MATCH (e:Employee)-[:HAS_CERTIFICATE]->(c:Certificate)\nWHERE NOT toLower(c.name) = toLower($certificateName)\nWITH e.name AS employee, collect(DISTINCT c.name) AS certificates\nRETURN employee, certificates\nORDER BY employee",
+        "result_count": 396,
         "execution_path": [
           "intent_entity_extractor",
           "query_decomposer_skipped",
@@ -1420,17 +1417,17 @@
           "response_generator"
         ],
         "node_timings": {
-          "intent_entity_extractor": 1.923,
+          "intent_entity_extractor": 1.24,
           "query_decomposer": 0.0,
           "concept_expander": 0.0,
           "entity_resolver": 0.003,
-          "cypher_generator": 2.913,
-          "graph_executor": 0.036,
-          "response_generator": 5.507
+          "cypher_generator": 1.886,
+          "graph_executor": 0.033,
+          "response_generator": 2.232
         },
         "error": null
       },
-      "elapsed_seconds": 10.41
+      "elapsed_seconds": 5.43
     }
   ]
 }

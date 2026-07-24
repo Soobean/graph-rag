@@ -363,5 +363,6 @@ cases:
         WHERE toLower(c.name) <> '정보처리기사'
         RETURN DISTINCT e.name AS name
       checks:
+        # result_excludes 제거 (2026-07-24): collect형 응답(인당 전체 자격증 목록)에서
+        # 제외 대상 자격증이 정당하게 등장 가능 — negation 정합성은 key_set(명단 대조)이 담당
         - {type: key_set, column: name, mode: jaccard, jaccard_min: 0.5}
-        - {type: result_excludes, values: [정보처리기사]}
