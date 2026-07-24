@@ -16,7 +16,7 @@ Cypher Generator Node
 from src.application.llm import LLMTaskService
 from src.auth.access_policy import AccessPolicy
 from src.config import Settings
-from src.domain.cypher import corrections
+from src.domain.cypher import corrections, validations
 from src.domain.exceptions import LLMContentFilterError
 from src.domain.types import CypherGeneratorUpdate, GraphSchema
 from src.graph.nodes.base import BaseNode
@@ -172,6 +172,49 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 parameters=result.get("parameters", {}),
                 entities=raw_entities,
             )
+
+            # 속성 환각 방어: 스키마에 없는 속성 참조 시 피드백 재생성 1회.
+            # 유효 문법이라 SyntaxError self-correction이 못 잡는 실패 모드
+            # (예: 존재하지 않는 req.importance 필터 → 조용히 0건).
+            # 스키마 인트로스펙션이 불완전할 수 있어 하드 차단은 하지 않는다.
+            unknown_props = validations.find_unknown_properties(cypher, dict(schema))
+            if unknown_props:
+                self._logger.warning(
+                    f"Unknown properties referenced: {unknown_props} — "
+                    "regenerating with feedback"
+                )
+                retry_result = await self._llm.generate_cypher(
+                    question=question,
+                    schema=dict(schema),
+                    entities=formatted_entities,
+                    query_plan=dict(query_plan) if query_plan else None,
+                    intent=intent,
+                    error_feedback=(
+                        "\n⚠️ PREVIOUS ATTEMPT USED NONEXISTENT PROPERTIES: "
+                        f"{unknown_props}\n"
+                        "These properties do NOT exist in the schema. Regenerate "
+                        "using ONLY properties listed in the schema, or drop the "
+                        "filter.\nFailed query:\n" + cypher
+                    ),
+                )
+                retry_cypher, retry_parameters = corrections.apply_corrections(
+                    cypher=retry_result.get("cypher", ""),
+                    parameters=retry_result.get("parameters", {}),
+                    entities=raw_entities,
+                )
+                still_unknown = validations.find_unknown_properties(
+                    retry_cypher, dict(schema)
+                )
+                if retry_cypher.strip() and not still_unknown:
+                    cypher, parameters = retry_cypher, retry_parameters
+                    self._logger.info("Property-hallucination retry succeeded")
+                else:
+                    # 재생성도 의심 속성 잔존 → false positive 가능성 감안,
+                    # 경고만 남기고 원본 진행 (하드 차단 금지)
+                    self._logger.warning(
+                        f"Property retry still suspicious ({still_unknown}) — "
+                        "proceeding with original query"
+                    )
 
             # 기본적인 쿼리 검증
             if not cypher or not cypher.strip():

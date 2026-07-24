@@ -670,3 +670,78 @@ class TestBaseNodeTiming:
         assert "slow_node" in result["node_timings"]
         assert result["node_timings"]["slow_node"] >= 0.05
         assert "slow_node_timeout" in result["execution_path"]
+
+
+class TestCypherPropertyHallucinationDefense:
+    """속성 환각 방어 — 무존재 속성 감지 시 피드백 재생성 1회"""
+
+    SCHEMA = {
+        "node_labels": ["Employee"],
+        "relationship_types": ["REQUIRES"],
+        "nodes": [{"label": "Employee", "properties": [{"name": "name"}]}],
+        "relationships": [
+            {"type": "REQUIRES", "properties": [{"name": "priority"}]}
+        ],
+    }
+
+    @pytest.fixture
+    def node(self):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from src.application.llm import LLMTaskService
+
+        llm = MagicMock(spec=LLMTaskService)
+        llm.generate_cypher = AsyncMock()
+        neo4j = MagicMock()
+        return CypherGeneratorNode(llm, neo4j), llm
+
+    @pytest.mark.asyncio
+    async def test_hallucination_triggers_regeneration(self, node):
+        """무존재 속성 → 피드백 재생성, 깨끗한 재생성 결과 채택"""
+        n, llm = node
+        llm.generate_cypher.side_effect = [
+            {"cypher": "MATCH (e) WHERE e.importance = '필수' RETURN e", "parameters": {}},
+            {"cypher": "MATCH (e:Employee) RETURN e.name", "parameters": {}},
+        ]
+        state = GraphRAGState(
+            question="필수 스킬 기준 후보?", entities={}, schema=self.SCHEMA
+        )
+
+        result = await n(state)
+
+        assert llm.generate_cypher.call_count == 2
+        feedback = llm.generate_cypher.call_args_list[1].kwargs["error_feedback"]
+        assert "NONEXISTENT PROPERTIES" in feedback
+        assert "importance" in feedback
+        assert "e.name" in result["cypher_query"]  # 재생성 결과 채택
+
+    @pytest.mark.asyncio
+    async def test_persistent_suspicion_proceeds_with_original(self, node):
+        """재생성도 의심 속성 잔존 → false positive 감안, 원본 진행 (하드 차단 금지)"""
+        n, llm = node
+        llm.generate_cypher.side_effect = [
+            {"cypher": "MATCH (e) WHERE e.importance = 'a' RETURN e", "parameters": {}},
+            {"cypher": "MATCH (e) WHERE e.significance = 'b' RETURN e", "parameters": {}},
+        ]
+        state = GraphRAGState(question="q", entities={}, schema=self.SCHEMA)
+
+        result = await n(state)
+
+        assert llm.generate_cypher.call_count == 2
+        # 원본(1차) 쿼리로 진행
+        assert "importance" in result["cypher_query"]
+        assert result.get("error") is None
+
+    @pytest.mark.asyncio
+    async def test_clean_query_no_regeneration(self, node):
+        """정상 쿼리는 재생성 없음 (비용 불변)"""
+        n, llm = node
+        llm.generate_cypher.return_value = {
+            "cypher": "MATCH (e:Employee) RETURN e.name",
+            "parameters": {},
+        }
+        state = GraphRAGState(question="q", entities={}, schema=self.SCHEMA)
+
+        await n(state)
+
+        assert llm.generate_cypher.call_count == 1

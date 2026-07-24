@@ -14,8 +14,10 @@ from src.domain.cypher.corrections import (
     fix_in_clause_to_tolower,
     fix_not_in_syntax,
 )
+from src.domain.cypher.validations import find_unknown_properties
 
 __all__ = [
+    "find_unknown_properties",
     "CASE_INSENSITIVE_PROPS",
     "CorrectedQuery",
     "apply_corrections",
