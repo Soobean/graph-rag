@@ -130,8 +130,10 @@ Node wiring: task nodes (intent/cypher/response/clarification/decomposer) take `
 ### Cypher Domain Model
 
 - **`src/domain/cypher/corrections.py`** — pure functions that correct LLM-generated Cypher before execution: `fix_not_in_syntax` (SQL-style `NOT IN` → canonical `NOT x IN`), `fix_in_clause_to_tolower` (IN clause → `ANY`/`NONE` + `toLower`), `fix_aggregation_type_a_return`, `correct_parameters`, `coerce_tolower_params`. `CypherGeneratorNode` calls the single entry point `apply_corrections(cypher, parameters, entities)`.
+- **`src/domain/cypher/validations.py`** — `find_unknown_properties(cypher, schema)`: detects LLM property hallucination (valid syntax filtering on nonexistent properties → silent 0 rows). The node regenerates once with feedback; never hard-blocks (schema introspection may be incomplete).
 - Order invariant (documented in module docstring): canonicalize before convert — the 2-pass structure is what makes negation handling correct.
-- Tests live in `tests/domain/test_cypher_corrections.py`. When a new Cypher correction is needed, add it here (with tests), NOT as a regex in the node.
+- Tests live in `tests/domain/test_cypher_corrections.py` and `test_cypher_validations.py`. When a new Cypher correction is needed, add it here (with tests), NOT as a regex in the node.
+- Self-correction loop: on Neo4j SyntaxError, `route_after_executor` cycles back to `cypher_generator` with error feedback (max `cypher_max_retries`, default 1). Per-question state (`cypher_retry_count`, `error`) is reset in `initial_state` — the checkpointer keeps session state across turns.
 
 ### Bootstrap Subsystem
 

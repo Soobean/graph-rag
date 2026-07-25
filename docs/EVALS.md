@@ -10,7 +10,7 @@ mock 테스트는 "코드를 보고 코드에 맞춘" 테스트라 품질을 증
 
 | 정답의 출처 | 채점 |
 |------------|------|
-| 사람이 스키마 문서로 작성·검증한 **reference Cypher** | key_set / answer_contains_top / count_match / numeric_close |
+| 사람이 스키마 문서로 작성·검증한 **reference Cypher** | key_set / answer_contains_top / count_match / numeric_close / result_excludes |
 | 도메인 지식으로 큐레이션한 기대 intent | intent 허용 리스트 |
 | 실제 Neo4j 실행 | 실행 성공 / not_empty |
 | LLM judge (선택) | 응답이 조회된 페어에 충실한가 |
@@ -46,7 +46,10 @@ uv run python -m evals.runner --baseline evals/baselines/baseline.json  # 회귀
    `verified: "YYYY-MM-DD"`를 기록한다. UNVERIFIED reference는 신뢰하지 않는다.
 4. **대조는 의미 단위로.** 파이프라인은 같은 답을 다른 행 모양으로 반환할 수
    있으므로 원시 행 비교는 금지 — key_set(값 집합), answer_contains_top(응답
-   텍스트), count/numeric(수치)만 사용한다.
+   텍스트), count/numeric(수치), result_excludes(negation 검증)만 사용한다.
+   주의: result_excludes는 collect형 응답(엔티티당 전체 속성 목록)에서 제외
+   대상이 정당하게 등장할 수 있어 오탐 가능 — 매칭 행 반환형 케이스에만 쓸 것
+   (n02에서 실증되어 제거된 사례 참고).
 5. **해석 여지가 큰 질문은 reference를 만들지 않는다.**
    "갭이 큰"(절대값? 초과분?) 같은 질문은 oracle이 한 해석을 강요하게 되므로
    tier1 + judge로 커버한다 (예: q18).
