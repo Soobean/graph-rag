@@ -59,19 +59,21 @@ graph-rag/
 │   │       └── response_generator.py    # 응답 생성 + 에러/빈결과 처리
 │   │
 │   ├── prompts/                         # [Prompt Templates]
-│   │   ├── intent_classification.yaml
-│   │   ├── entity_extraction.yaml
+│   │   ├── intent_entity_combined.yaml  # 통합 의도+엔티티 (구 intent/entity 분리 대체)
 │   │   ├── cypher_generation.yaml
 │   │   ├── response_generation.yaml
 │   │   └── clarification.yaml
 │   │
+│   ├── application/                     # [Application Layer] (2026-07 신설)
+│   │   └── llm/                         # LLMTaskService(파이프라인 task) + formatters
+│   │
 │   ├── repositories/                    # [Repository Layer]
-│   │   ├── neo4j_repository.py          # Neo4j 데이터 접근 + 스키마 캐싱
-│   │   ├── llm_repository.py            # Azure OpenAI (openai SDK 직접 사용)
+│   │   ├── neo4j_repository.py          # Neo4j Facade (+ 세부 레포 7종)
 │   │   └── query_cache_repository.py    # 질문-Cypher 캐싱 (Vector Index)
 │   │
 │   ├── infrastructure/                  # [Infrastructure Layer]
-│   │   └── neo4j_client.py              # Neo4j 드라이버 + Vector Index (Neo4j 5.11+)
+│   │   ├── neo4j_client.py              # Neo4j 드라이버 + Vector Index (Neo4j 5.11+)
+│   │   └── llm/gateway.py               # AzureOpenAIGateway (구 llm_repository 대체, 2026-07)
 │   │
 │   ├── utils/                           # [Utilities]
 │   │   └── prompt_manager.py            # YAML 프롬프트 로더 + 캐싱
@@ -79,7 +81,8 @@ graph-rag/
 │   └── domain/                          # [Domain Models & Ontology]
 │       ├── types.py                     # TypedDict 정의 (노드 입출력)
 │       ├── exceptions.py                # 도메인 예외
-│       └── ontology/                    # [New] 온톨로지 정의
+│       ├── cypher/                      # Cypher 교정/검증 규칙 (2026-07 신설)
+│       └── ontology/                    # 온톨로지 정의
 │           ├── __init__.py
 │           ├── loader.py                # YAML 로더
 │           ├── schema.yaml              # 개념 계층 정의 (Concept Hierarchy)
@@ -90,6 +93,10 @@ graph-rag/
 │   ├── test_nodes.py
 │   ├── test_pipeline_integration.py
 │   └── ...
+│
+├── evals/                               # 골든셋 자동 평가 (2026-07 신설, docs/EVALS.md)
+│   ├── golden_set.yaml                  # 26케이스 + reference oracle
+│   └── runner.py                        # python -m evals.runner
 │
 ├── scripts/
 │   └── verify_pipeline.py               # 파이프라인 검증 스크립트

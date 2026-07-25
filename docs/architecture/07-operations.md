@@ -106,14 +106,16 @@ async def call_llm(prompt: str) -> str:
 
 ### 노드별 타임아웃 설정
 
+> ⚠️ 현행 구현 값은 `src/graph/nodes/base.py` 기준: LLM 노드 30초(DEFAULT),
+> DB 노드 15초, CPU 노드 10초. 아래 표는 2026-02 설계 시점 값.
+> 실측 노드별 레이턴시는 metadata의 `node_timings`와 eval 리포트 참조.
+
 | 노드 | 타임아웃 | 비고 |
 |------|---------|------|
-| intent_classifier | 5초 | LLM 호출 포함 |
-| entity_extractor | 5초 | LLM 호출 포함 |
-| cypher_generator | 10초 | 복잡한 쿼리 생성 고려 |
-| graph_executor | 30초 | 복잡한 경로 탐색 고려 |
-| response_generator | 10초 | LLM 호출 포함 |
-| **전체 파이프라인** | 60초 | 모든 노드 합계 |
+| intent_entity_extractor (구 classifier+extractor 통합) | 30초 | LLM 호출 포함 |
+| cypher_generator | 30초 | 복잡한 쿼리 생성 고려 |
+| graph_executor | 15초 | DB 전용 |
+| response_generator | 30초 | LLM 호출 포함 |
 
 ### 동시성 및 처리량
 

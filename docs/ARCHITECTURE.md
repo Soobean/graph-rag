@@ -1,6 +1,11 @@
 # Graph RAG 시스템 아키텍처 설계서
 
 > 📚 이 문서는 목차입니다. 상세 내용은 `architecture/` 폴더의 개별 문서를 참조하세요.
+>
+> ⚠️ **시점 주의**: architecture/ 문서들은 2026-02 설계 기준입니다.
+> 2026-07 재편(LLM 계층 분해 → AzureOpenAIGateway+LLMTaskService, Cypher 도메인
+> 모델 `src/domain/cypher/`, Self-Correction 루프, Eval Harness `evals/`)의
+> 현행 기준은 루트 **CLAUDE.md**와 **docs/EVALS.md**입니다.
 
 ## 문서 구조
 

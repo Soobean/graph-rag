@@ -95,21 +95,30 @@ result2 = await pipeline.run("그 사람의 직급은?", session_id="user-123")
 
 ## 4.2 LangGraph 노드 정의
 
+> ⚠️ 노드 구성 변경 이력: intent_classifier + entity_extractor는 통합 노드
+> `intent_entity_extractor`로 대체됨 (Latency Optimization, LLM 2콜→1콜).
+> 스키마는 앱 시작 시 사전 주입(schema_fetcher 노드 없음). 현행 12노드 목록과
+> Self-Correction 사이클(graph_executor → cypher_generator 역방향 엣지)은
+> 루트 CLAUDE.md "Backend Pipeline" 참조.
+
 | 노드 | 역할 | 입력 | 출력 | 모델 |
 |------|------|------|------|------|
-| **intent_classifier** | 질문 유형 분류 | question | intent, confidence | light |
-| **entity_extractor** | 엔티티 추출 | question | entities | light |
-| **schema_fetcher** | 스키마 조회 (병렬) | - | schema | DB |
+| **intent_entity_extractor** | 의도 분류 + 엔티티 추출 (통합 1콜) | question | intent, confidence, entities | light |
+| **query_decomposer** | Multi-hop 분해 (해당 intent만) | question, intent | query_plan | light |
+| **concept_expander** | 온톨로지 동의어/계층 확장 | entities | expanded_entities | - |
 | **entity_resolver** | DB 엔티티 매칭 | entities | resolved_entities | DB |
 | **cache_checker** | Vector 캐시 조회 | question | cypher_query (캐시 히트) | embedding |
-| **cypher_generator** | Cypher 생성 | question, entities, schema | cypher_query | heavy |
-| **graph_executor** | Neo4j 실행 | cypher_query | graph_results | DB |
-| **response_generator** | 응답 생성 | question, results | response | heavy |
-| **clarification_handler** | 동명이인 처리 | entities | response | light |
+| **cypher_generator** | Cypher 생성 + 교정/검증 (domain/cypher) | question, entities, schema | cypher_query | heavy |
+| **graph_executor** | Neo4j 실행 (+SyntaxError 시 재생성 힌트) | cypher_query | graph_results | DB |
+| **response_generator** | 응답 생성 (답-먼저 구조, 스트리밍) | question, results | response | heavy |
+| **clarification_handler** | 미해결 엔티티 명확화 | entities | response | light |
 
 ---
 
 ## 4.3 파이프라인 흐름도
+
+> ⚠️ 아래 흐름도는 2026-02 시점 개념도 (intent/entity 분리, schema_fetcher 병렬
+> 구조). 현행 선형 흐름 + Self-Correction 사이클은 루트 CLAUDE.md 참조.
 
 ```
                                       ┌─────────┐
