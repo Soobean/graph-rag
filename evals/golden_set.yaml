@@ -366,3 +366,63 @@ cases:
         # result_excludes 제거 (2026-07-24): collect형 응답(인당 전체 자격증 목록)에서
         # 제외 대상 자격증이 정당하게 등장 가능 — negation 정합성은 key_set(명단 대조)이 담당
         - {type: key_set, column: name, mode: jaccard, jaccard_min: 0.5}
+
+  # ============================================
+  # 그래프 차별화 시나리오 (docs/GRAPH_UNIQUE_SCENARIOS.md Tier 1/3/4)
+  # Tier 2(GDS 알고리즘)·Tier 5(시각화 채점)는 채팅 파이프라인 밖 — 제외
+  # 실존 데이터로 구체화 (2026-07-25 라이브 확인: 허윤서-강현준 경로 존재,
+  # 백엔드↔데이터분석 브릿지 43개, ML 직접 보유자 0명, 멘토링 2단 체인 없음→4-2 제외)
+  # ============================================
+
+  - id: g11_connection_path
+    question: "허윤서와 강현준은 어떤 경로로 연결되어 있어?"
+    category: path_analysis
+    expected_intent: [path_analysis, relationship_search]
+    judge: true
+
+  - id: g12_bridge_person
+    question: "백엔드개발팀과 데이터분석팀을 연결하는 브릿지 인물은 누구야?"
+    category: relationship_search
+    expected_intent: [relationship_search, org_analysis, personnel_search]
+    tier1:
+      count_range: {min: 1}
+    judge: true
+
+  - id: g13_knowledge_spread
+    question: "RAG 기술이 어떤 경로로 우리 조직에 퍼졌어?"
+    category: relationship_search
+    expected_intent: [relationship_search, global_analysis, personnel_search, org_analysis, path_analysis]
+    judge: true
+
+  - id: g31_skill_transfer
+    question: "Pinecone 기술을 가장 빠르게 습득할 가능성이 높은 인원은 누구야?"
+    category: personnel_search
+    expected_intent: [personnel_search]
+    tier1:
+      count_range: {min: 1}
+    judge: true
+
+  - id: g32_semantic_expansion
+    question: "머신러닝 관련 스킬 보유자 전체 목록 보여줘"
+    category: personnel_search
+    expected_intent: [personnel_search, global_analysis]
+    # 'ML/머신러닝' 직접 스킬 보유자는 0명 (라이브 확인) —
+    # 결과가 나온다는 것 자체가 온톨로지 확장(AI/ML 하위 12스킬) 작동 증명
+    tier1:
+      count_range: {min: 10}
+
+  - id: g33_cross_domain
+    question: "백엔드와 AI/ML 양쪽 모두 경험 있는 엔지니어는 누구야?"
+    category: personnel_search
+    expected_intent: [personnel_search]
+    tier1:
+      count_range: {min: 1}
+    judge: true
+
+  - id: g41_collab_network
+    question: "추천시스템 고도화 핵심 개발자와 과거에 협업 경험이 있는 인원은?"
+    category: relationship_search
+    expected_intent: [relationship_search, project_matching, personnel_search]
+    tier1:
+      count_range: {min: 1}
+    judge: true

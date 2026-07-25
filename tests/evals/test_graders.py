@@ -327,15 +327,15 @@ class TestGradeCaseDeterministic:
 class TestGoldenSetFile:
     """golden_set.yaml 무결성"""
 
-    def test_loads_26_cases(self):
+    def test_loads_33_cases(self):
         cases = load_golden_set(GOLDEN_SET_PATH)
-        assert len(cases) == 26
+        assert len(cases) == 33
 
     def test_ids_unique_and_prefixed(self):
         cases = load_golden_set(GOLDEN_SET_PATH)
         ids = [c.id for c in cases]
         assert len(ids) == len(set(ids))
-        assert all(i[0] in ("q", "s", "n") for i in ids)
+        assert all(i[0] in ("q", "s", "n", "g") for i in ids)
 
     def test_all_cases_have_expected_intent(self):
         cases = load_golden_set(GOLDEN_SET_PATH)
