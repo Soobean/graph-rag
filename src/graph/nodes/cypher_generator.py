@@ -115,9 +115,12 @@ class CypherGeneratorNode(BaseNode[CypherGeneratorUpdate]):
                 execution_path=[f"{self.name}_cached"],
             )
 
-        # entities는 dict[str, list[str]] 구조임 (e.g. {'skills': ['Python']})
-        # LLMTaskService.generate_cypher는 list[dict]를 기대함.
-        raw_entities = state.get("entities", {})
+        # 온톨로지 확장 값을 우선 사용 (2026-07-28 수정 — eval g32 발견):
+        # 이전에는 원본 entities만 읽어 concept_expander의 확장(동의어+계층 하위)이
+        # Cypher 생성에 전달되지 않았음 — "머신러닝 관련" 같은 의미 확장 질문이
+        # 단수 등식($skillName='머신러닝')으로 생성되어 조용히 0건.
+        # 확장 값이 있으면 ANY 리스트 매칭으로 하위 스킬까지 커버된다.
+        raw_entities = state.get("expanded_entities") or state.get("entities", {})
         formatted_entities: list[dict[str, str]] = []
         for entity_type, values in raw_entities.items():
             for value in values:

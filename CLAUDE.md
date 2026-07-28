@@ -79,7 +79,7 @@ All 12 pipeline nodes (`src/graph/nodes/`):
 | `IntentEntityExtractorNode` | Combined intent classification + entity extraction (single LLM call) |
 | `ConceptExpanderNode` | Expands entities using ontology synonyms/hierarchy |
 | `EntityResolverNode` | Resolves extracted entities against Neo4j |
-| `CypherGeneratorNode` | Translates to Cypher (uses `state.entities`, not `resolved_entities`) |
+| `CypherGeneratorNode` | Translates to Cypher (uses `expanded_entities` → fallback `entities`, not `resolved_entities`) |
 | `GraphExecutorNode` | Executes Cypher against Neo4j |
 | `ResponseGeneratorNode` | Synthesizes natural language answer from results |
 | `ClarificationHandlerNode` | Generates clarification questions for unresolved entities |
@@ -229,7 +229,7 @@ The DB has duplicate Employee nodes (same person, different node IDs). Queries t
 LLM may extract "챗봇 리뉴얼 프로젝트" but DB stores "챗봇 리뉴얼". Entity resolution in `Neo4jRepository._strip_korean_suffix()` handles common suffixes (프로젝트, 팀, 부서, 회사, 센터, 연구소, 본부, 사업부).
 
 ### Pipeline Routing Detail
-`CypherGeneratorNode` uses `state.entities` (raw extracted), NOT `resolved_entities` (Neo4j-matched). Cypher generation can work even with unresolved entities — don't block the pipeline flow on resolution failures.
+`CypherGeneratorNode` uses `state.expanded_entities` (ontology-expanded: synonyms + hierarchy children) with fallback to `state.entities` (raw extracted) — NOT `resolved_entities` (Neo4j-matched). This wiring is what makes semantic expansion work end-to-end ("머신러닝 관련" → AI/ML sub-skills in the generated Cypher). Cypher generation can work even with unresolved entities — don't block the pipeline flow on resolution failures.
 
 ## Testing
 

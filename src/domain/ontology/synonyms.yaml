@@ -55,9 +55,13 @@ skills:
       - "고랭"
 
   # AI/ML
+  # canonical을 계층 노드명 "AI/ML"로 연결 (2026-07-28):
+  # 이전 canonical "ML"은 계층 트리에 없는 고립 노드라 get_children()이 빈 값 →
+  # "머신러닝 관련" 질문의 의미 확장(AI/ML 하위 11스킬)이 미작동했음 (eval g32).
   ML:
-    canonical: "ML"
+    canonical: "AI/ML"
     aliases:
+      - "ML"
       - "머신러닝"
       - "Machine Learning"
       - "기계학습"
